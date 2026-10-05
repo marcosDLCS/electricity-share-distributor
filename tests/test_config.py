@@ -59,3 +59,35 @@ def test_ensure_directories(tmp_path: Path) -> None:
     assert cons_p.is_dir()
     assert gen_p.is_dir()
     assert out_p.is_dir()
+
+
+def test_validate_share_precision() -> None:
+    from src.config import validate_share_precision
+
+    assert validate_share_precision(0) == 0
+    assert validate_share_precision(1) == 1
+    assert validate_share_precision(2) == 2
+
+    with pytest.raises(ValueError, match="Invalid share precision"):
+        validate_share_precision(-1)
+
+    with pytest.raises(ValueError, match="Invalid share precision"):
+        validate_share_precision(3)
+
+
+def test_config_precision_lifecycle(tmp_path: Path) -> None:
+    from src.config import get_precision, load_config, set_precision
+
+    cfg_file = tmp_path / ".esd_config.json"
+    # Default is 0
+    assert get_precision(cfg_file) == 0
+
+    # Set to 1
+    set_precision(1, path=cfg_file)
+    assert get_precision(cfg_file) == 1
+    assert load_config(cfg_file).share_precision == 1
+
+    # Set to 2
+    set_precision(2, path=cfg_file)
+    assert get_precision(cfg_file) == 2
+    assert load_config(cfg_file).share_precision == 2

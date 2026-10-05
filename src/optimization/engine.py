@@ -113,15 +113,51 @@ class DistributionOptimizer:
         return betas
 
     @staticmethod
-    def _round_betas(betas: np.ndarray, decimals: int = 4) -> np.ndarray:
-        """Round coefficients to specified decimal precision ensuring sum <= 1.0."""
-        rounded = np.round(betas, decimals=decimals)
-        diff = 1.0 - np.sum(rounded)
-        if abs(diff) > 1e-6:
-            # Adjust the largest coefficient so the sum equals 1.0000 exactly
-            max_idx = int(np.argmax(rounded))
-            rounded[max_idx] = round(rounded[max_idx] + diff, decimals)
-        return rounded
+    def _round_betas(betas: np.ndarray, precision: int = 0) -> np.ndarray:
+        """Round coefficients to specified percentage precision using Hare-Niemeyer largest remainder method.
+
+        Guarantees that:
+          1. sum(round(betas * 100, precision)) == 100.0 exactly
+          2. sum(betas) == 1.0000 exactly
+          3. All betas >= 0.0
+        """
+        n = len(betas)
+        if n == 0:
+            return betas
+
+        # Scale factor for target precision:
+        # precision=0 -> scale=100 (integer percentages, sum=100)
+        # precision=1 -> scale=1000 (tenth of percent, sum=1000)
+        # precision=2 -> scale=10000 (hundredth of percent, sum=10000)
+        scale = 100 * (10**precision)
+
+        # Normalize raw betas to sum to 1.0 before rounding
+        beta_sum = float(np.sum(betas))
+        if beta_sum > 0:
+            norm_betas = betas / beta_sum
+        else:
+            norm_betas = np.full(n, 1.0 / n)
+
+        exact_alloc = norm_betas * scale
+        floors = np.floor(exact_alloc).astype(int)
+        remainders = exact_alloc - floors
+
+        deficit = scale - int(np.sum(floors))
+
+        if deficit > 0:
+            # Distribute remaining units to items with largest remainders
+            order = np.lexsort((-exact_alloc, -remainders))
+            for i in range(deficit):
+                floors[order[i % n]] += 1
+        elif deficit < 0:
+            order = np.lexsort((exact_alloc, remainders))
+            for i in range(abs(deficit)):
+                idx = order[i % n]
+                if floors[idx] > 0:
+                    floors[idx] -= 1
+
+        rounded_betas = floors / scale
+        return rounded_betas
 
     @classmethod
     def calculate_betas(
@@ -129,6 +165,7 @@ class DistributionOptimizer:
         consumption: np.ndarray,
         generation: np.ndarray,
         strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL,
+        precision: int = 0,
     ) -> np.ndarray:
         """Calculate distribution coefficients for given consumption and generation arrays."""
         _, n_cups = consumption.shape
@@ -142,7 +179,7 @@ class DistributionOptimizer:
         else:
             raw = cls._solve_optimal_betas(consumption, generation)
 
-        return cls._round_betas(raw, decimals=4)
+        return cls._round_betas(raw, precision=precision)
 
     @classmethod
     def evaluate_month(
@@ -151,12 +188,13 @@ class DistributionOptimizer:
         cups_list: list[str],
         month_name: str,
         strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL,
+        precision: int = 0,
     ) -> CommunityMonthlyMetrics:
         """Evaluate and compute self-consumption metrics for a single month."""
         consumption = df_month[cups_list].values
         generation = df_month["generation_kwh"].values
 
-        betas = cls.calculate_betas(consumption, generation, strategy=strategy)
+        betas = cls.calculate_betas(consumption, generation, strategy=strategy, precision=precision)
 
         # Vectorized hourly energy balance:
         # allocated_gen shape: (T, N)
@@ -231,6 +269,7 @@ class DistributionOptimizer:
         aligned_dataset: AlignedDataset,
         strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL,
         include_baselines: bool = True,
+        precision: int | None = None,
     ) -> OptimizationResult:
         """Run optimization across all months in the dataset.
 
@@ -238,10 +277,16 @@ class DistributionOptimizer:
             aligned_dataset: Ingested and aligned dataset.
             strategy: Primary optimization strategy.
             include_baselines: If True, also computes results for baseline strategies.
+            precision: Share percentage precision (0, 1, or 2 decimals). If None, uses configured setting.
 
         Returns:
             OptimizationResult containing monthly breakdowns, total summary, and baselines.
         """
+        from src.config import get_precision, validate_share_precision
+
+        active_precision = (
+            get_precision() if precision is None else validate_share_precision(precision)
+        )
         cups_list = aligned_dataset.cups_list
         sorted_months = sorted(aligned_dataset.monthly_groups.keys())
 
@@ -253,6 +298,7 @@ class DistributionOptimizer:
                 cups_list=cups_list,
                 month_name=ym,
                 strategy=strategy,
+                precision=active_precision,
             )
             monthly_results.append(res)
 
@@ -268,6 +314,7 @@ class DistributionOptimizer:
                             cups_list=cups_list,
                             month_name=ym,
                             strategy=base_strat,
+                            precision=active_precision,
                         )
                         for ym in sorted_months
                     ]

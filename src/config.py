@@ -14,6 +14,10 @@ DEFAULT_GENERATION_DIR: Final[Path] = Path(".input/generation")
 DEFAULT_OUTPUT_DIR: Final[Path] = Path(".output")
 CONFIG_FILE_PATH: Final[Path] = Path(".esd_config.json")
 
+# Default precision for share distribution percentages (0, 1, or 2 decimals)
+DEFAULT_SHARE_PRECISION: Final[int] = 0
+VALID_SHARE_PRECISIONS: Final[list[int]] = [0, 1, 2]
+
 # Required DATADIS CSV columns (case-insensitive)
 REQUIRED_CONSUMPTION_COLUMNS: Final[list[str]] = [
     "cups",
@@ -61,6 +65,7 @@ class AppConfig:
 
     Attributes:
         language: Active output language ('en' for English, 'es' for Spanish).
+        share_precision: Decimal places for distribution percentage shares (0, 1, or 2).
         input_dir: Base input folder path.
         consumption_dir: Folder containing DATADIS hourly consumption CSVs.
         generation_dir: Folder containing Huawei/FusionSolar generation Excel reports.
@@ -70,12 +75,26 @@ class AppConfig:
     """
 
     language: str = "en"
+    share_precision: int = 0
     input_dir: str = ".input"
     consumption_dir: str = ".input/consumption"
     generation_dir: str = ".input/generation"
     output_dir: str = ".output"
     initialized_at: str | None = None
     version: str | None = None
+
+
+def validate_share_precision(precision: int) -> int:
+    """Validate that share percentage precision is an integer between 0 and 2.
+
+    Raises:
+        ValueError: If precision is not in (0, 1, 2).
+    """
+    if precision not in VALID_SHARE_PRECISIONS:
+        raise ValueError(
+            f"Invalid share precision '{precision}'. Must be 0 (e.g. 53%), 1 (e.g. 52.8%), or 2 (e.g. 52.86%)."
+        )
+    return precision
 
 
 def normalize_language_code(lang_raw: str) -> str:
@@ -108,8 +127,15 @@ def load_config(path: Path | None = None) -> AppConfig:
         except ValueError:
             normalized_lang = "en"
 
+        prec = data.get("share_precision", DEFAULT_SHARE_PRECISION)
+        try:
+            valid_prec = validate_share_precision(int(prec))
+        except (ValueError, TypeError):
+            valid_prec = DEFAULT_SHARE_PRECISION
+
         return AppConfig(
             language=normalized_lang,
+            share_precision=valid_prec,
             input_dir=data.get("input_dir", ".input"),
             consumption_dir=data.get("consumption_dir", ".input/consumption"),
             generation_dir=data.get("generation_dir", ".input/generation"),
@@ -176,6 +202,24 @@ def set_language(language: str, path: Path | None = None) -> str:
 def get_language(path: Path | None = None) -> str:
     """Retrieve the currently configured language code ('en' or 'es')."""
     return load_config(path).language
+
+
+def set_precision(precision: int, path: Path | None = None) -> int:
+    """Update and persist the active share percentage precision setting (0, 1, or 2).
+
+    Returns:
+        The validated precision integer.
+    """
+    valid_prec = validate_share_precision(precision)
+    cfg = load_config(path)
+    cfg.share_precision = valid_prec
+    save_config(cfg, path)
+    return valid_prec
+
+
+def get_precision(path: Path | None = None) -> int:
+    """Retrieve the currently configured share percentage precision (0, 1, or 2)."""
+    return load_config(path).share_precision
 
 
 def ensure_directories(

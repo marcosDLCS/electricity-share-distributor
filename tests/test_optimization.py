@@ -149,3 +149,34 @@ def test_optimizer_empty_cups_raises_error() -> None:
     gen = np.zeros(10)
     with pytest.raises(OptimizationError, match="No CUPS provided"):
         DistributionOptimizer.calculate_betas(cons, gen)
+
+
+def test_round_betas_hare_niemeyer_exact_100_percent() -> None:
+    """Test Hare-Niemeyer largest remainder rounding guarantees exact 100.0% sum across precisions."""
+    # Test on arbitrary non-round numbers across 7 CUPS
+    raw_weights = np.array([33.33333, 16.66666, 16.66666, 11.11111, 9.99999, 7.77777, 4.44448])
+    raw_betas = raw_weights / np.sum(raw_weights)
+
+    # Precision 0 (integer percentages)
+    b0 = DistributionOptimizer._round_betas(raw_betas, precision=0)
+    pcts0 = [round(b * 100, 0) for b in b0]
+    assert sum(pcts0) == 100
+    assert np.isclose(np.sum(b0), 1.0)
+    assert all(b >= 0.0 for b in b0)
+    # Check each element is an integer percentage
+    for b in b0:
+        assert np.isclose(b * 100, round(b * 100))
+
+    # Precision 1 (tenths of percent)
+    b1 = DistributionOptimizer._round_betas(raw_betas, precision=1)
+    pcts1 = [round(b * 100, 1) for b in b1]
+    assert np.isclose(sum(pcts1), 100.0)
+    assert np.isclose(np.sum(b1), 1.0)
+    assert all(b >= 0.0 for b in b1)
+
+    # Precision 2 (hundredths of percent)
+    b2 = DistributionOptimizer._round_betas(raw_betas, precision=2)
+    pcts2 = [round(b * 100, 2) for b in b2]
+    assert np.isclose(sum(pcts2), 100.00)
+    assert np.isclose(np.sum(b2), 1.0)
+    assert all(b >= 0.0 for b in b2)
