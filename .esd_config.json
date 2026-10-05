@@ -1,0 +1,9 @@
+{
+  "language": "es",
+  "input_dir": ".input",
+  "consumption_dir": ".input/consumption",
+  "generation_dir": ".input/generation",
+  "output_dir": ".output",
+  "initialized_at": "2026-10-05T17:07:43.740272",
+  "version": "2026.10.001"
+}
