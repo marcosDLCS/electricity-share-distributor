@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "electricity-share-distributor"
-version = "2026.10.008"
+version = "2026.10.009"
 description = "CLI tool to optimize electricity distribution coefficients for collective PV self-consumption under Spanish RD 244/2019"
 readme = "README.md"
 requires-python = ">=3.11"

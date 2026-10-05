@@ -97,7 +97,7 @@ electricity-share-distributor/
 
 ## 5. 🤖 Directives for Autonomous AI Agents
 
-- **🛡️ Directive 1: Anonymization is Absolute.** Never commit or log real DATADIS CUPS, contract numbers, or real residential datasets. Use synthetic mock identifiers (`ES0021000000000001AA`, `ES0021000000000002BB`).
+- **🛡️ Directive 1: Anonymization & Data Privacy is Absolute.** Universal Supply Point Codes (CUPS) are legally protected identifiers under GDPR and Spanish Organic Law 3/2018 (LOPDGDD). Never commit, log, or include real DATADIS CUPS, contract numbers, residential addresses, or real customer datasets in the codebase, tests, documentation, or commit messages. Always use synthetic mock identifiers (`ES0021000000000001AA`, `ES0021000000000002BB`, etc.). Enforce this with the pre-commit harness: `python3 -m src.security` (or via `pre-commit run privacy-cups-checker`).
 - **🌐 Directive 2: Universal English Codebase.** Write all code, comments, docstrings, test names, CLI messages, and commit messages entirely in **English**.
 - **🎯 Directive 3: Strict Modern Typing.** Use strict type hints (`typing`, native union syntax `X | Y`) on all function signatures, dataclasses, and class methods. Avoid bare `Any`.
 - **🚨 Directive 4: Domain Exceptions.** Use custom domain exceptions (`EsdError`, `IngestionError`, `OptimizationError`). Handle errors gracefully without uncaught stack traces.
