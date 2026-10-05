@@ -109,14 +109,35 @@ def test_export_json(tmp_path: Path) -> None:
     assert data["monthly_results"][0]["month"] == "2026-05"
 
 
-def test_export_markdown(tmp_path: Path) -> None:
+def test_export_markdown_english(tmp_path: Path) -> None:
     opt_result, meta = create_dummy_optimization_result()
-    md_path = export_summary_markdown(opt_result, meta, tmp_path, timestamp="20260531_120000")
+    md_path = export_summary_markdown(
+        opt_result, meta, tmp_path, lang="en", timestamp="20260531_120000"
+    )
     assert md_path.exists()
 
     content = md_path.read_text(encoding="utf-8")
     assert "Electricity Share Distributor" in content
-    assert "Real Decreto 244/2019" in content
+    assert "Collective Community Overview" in content
+    assert "Month-by-Month Energy Trajectory" in content
+    assert "Proposed Monthly Distribution Coefficients" in content
+    assert "Participating CUPS" in content
+    assert "ES0021000000000001AA" in content
+
+
+def test_export_markdown_spanish(tmp_path: Path) -> None:
+    opt_result, meta = create_dummy_optimization_result()
+    md_path = export_summary_markdown(
+        opt_result, meta, tmp_path, lang="es", timestamp="20260531_120000"
+    )
+    assert md_path.exists()
+
+    content = md_path.read_text(encoding="utf-8")
+    assert "Distribuidor de Energía Compartida" in content
+    assert "Resumen de la Comunidad de Autoconsumo Colectivo" in content
+    assert "Trayectoria Energética Mensual" in content
+    assert "Propuesta de Coeficientes de Reparto Mensuales" in content
+    assert "Puntos de Suministro (CUPS)" in content
     assert "ES0021000000000001AA" in content
 
 

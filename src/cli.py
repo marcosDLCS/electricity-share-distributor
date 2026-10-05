@@ -82,7 +82,7 @@ def help_command(
 @app.command(name="version")
 def version_command() -> None:
     """Display active CalVer application version and system info."""
-    render_version()
+    render_version(lang=get_language())
 
 
 @app.command(name="init")
@@ -435,7 +435,7 @@ def config_command(
 
     if modified:
         save_config(cfg)
-        console.print("[bold green]✓ Configuration updated successfully.[/bold green]")
+        console.print(f"[bold green]{t('msg_config_updated', lang=cfg.language)}[/bold green]")
 
     render_config_view(cfg, lang=cfg.language)
 
@@ -472,11 +472,11 @@ def cleanup_command(
 
     if not force:
         confirm = typer.confirm(
-            f"Are you sure you want to delete {len(files)} files in {out_dir}?",
+            t("prompt_cleanup_confirm", lang=active_lang, count=len(files), dir=str(out_dir)),
             default=False,
         )
         if not confirm:
-            console.print("[yellow]Cleanup aborted by user.[/yellow]")
+            console.print(f"[yellow]{t('cleanup_aborted', lang=active_lang)}[/yellow]")
             return
 
     count = 0
