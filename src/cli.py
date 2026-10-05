@@ -38,6 +38,7 @@ from src.presentation.console import console
 from src.presentation.export import export_all
 from src.presentation.views import (
     render_cleanup_result,
+    render_coefficients_matrix_table,
     render_community_summary,
     render_config_view,
     render_doctor_report,
@@ -251,7 +252,7 @@ def calculate_command(
         "summary",
         "--view",
         "-v",
-        help="Display view mode: 'summary' (overview + comparison + coefficients), 'trajectory', or 'all'.",
+        help="Display view mode: 'summary' (overview + matrix + details), 'matrix' (CUPS/months share matrix), 'trajectory', or 'all'.",
     ),
     export_format: str = typer.Option(
         "all",
@@ -333,6 +334,9 @@ def calculate_command(
             render_community_summary(aligned.metadata, opt_result.total_summary, lang=active_lang)
             render_monthly_trajectory_table(opt_result, lang=active_lang)
             render_strategy_comparison_table(opt_result, lang=active_lang)
+            render_coefficients_matrix_table(
+                opt_result, lang=active_lang, precision=active_precision
+            )
             if month is not None or view_mode == "all":
                 for m in opt_result.monthly_results:
                     render_monthly_coefficients_table(
@@ -343,6 +347,10 @@ def calculate_command(
                 render_monthly_coefficients_table(
                     latest_month, lang=active_lang, precision=active_precision
                 )
+        elif view_mode == "matrix":
+            render_coefficients_matrix_table(
+                opt_result, lang=active_lang, precision=active_precision
+            )
         elif view_mode == "trajectory":
             render_monthly_trajectory_table(opt_result, lang=active_lang)
         elif view_mode == "coefficients":

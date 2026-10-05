@@ -147,6 +147,27 @@ def test_cli_calculate_views() -> None:
     assert result_traj.exit_code == 0
     assert "Month-by-Month Community Energy Trajectory" in result_traj.output
 
+    # Test matrix view
+    result_matrix = runner.invoke(
+        app,
+        [
+            "calculate",
+            "-y",
+            "2026",
+            "-m",
+            "5",
+            "--view",
+            "matrix",
+            "--format",
+            "none",
+            "--lang",
+            "en",
+        ],
+    )
+    assert result_matrix.exit_code == 0
+    assert "Distribution Share" in result_matrix.output
+    assert "TOTAL (RD 244/2019)" in result_matrix.output
+
     # Test summary view
     result_sum = runner.invoke(
         app,
@@ -166,6 +187,7 @@ def test_cli_calculate_views() -> None:
     )
     assert result_sum.exit_code == 0
     assert "COLLECTIVE SELF-CONSUMPTION COMMUNITY SUMMARY" in result_sum.output
+    assert "Distribution Share" in result_sum.output
 
 
 def test_cli_calculate_strategies() -> None:
@@ -198,9 +220,13 @@ def test_cli_calculate_export_formats(tmp_path) -> None:
     csv_files = list(out_dir.glob("*.csv"))
     json_files = list(out_dir.glob("*.json"))
     md_files = list(out_dir.glob("*.md"))
-    assert len(csv_files) == 1
+    # Two CSVs exported: detailed metrics and consolidated matrix
+    assert len(csv_files) == 2
     assert len(json_files) == 1
     assert len(md_files) == 1
+    csv_names = [f.name for f in csv_files]
+    assert any("_esd_coefficients.csv" in n for n in csv_names)
+    assert any("_esd_coefficients_matrix.csv" in n for n in csv_names)
 
 
 def test_cli_calculate_missing_directory(tmp_path) -> None:

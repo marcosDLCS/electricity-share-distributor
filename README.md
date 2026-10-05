@@ -3,7 +3,7 @@
 > Optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic self-consumption (*autoconsumo colectivo*) in Spain under **Real Decreto 244/2019**.
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.10.011-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.10.012-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-SciPy%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -22,6 +22,7 @@ It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/da
 - **📥 Dual Time-Series Ingestion:** Ingests hourly consumption curves from DATADIS CSV exports (per CUPS) and photovoltaic generation curves from Huawei FusionSolar Excel workbooks (`.xlsx`).
 - **⏱️ Robust Time-Series Synchronization:** Automatic alignment across differing timestamp conventions, leap years, missing intervals, and European Daylight Saving Time (DST) switches (23-hour March spring transition, 25-hour October autumn transition).
 - **🧮 Regulatory Optimization Engine:** Solves monthly linear programming (LP) models under **Real Decreto 244/2019** using `scipy.optimize.linprog(method='highs')`, finding optimal $\beta_i$ coefficients ($\sum \beta_i \le 1.0$ or $100.00\%$) that maximize collective self-consumption and minimize spilled solar surplus.
+- **📋 Consolidated Distribution Share Matrix:** Computes and formats monthly shares per CUPS into an official schedule grid (CUPS on Y, Months on X) summing strictly to $\le 100\%$ with configured precision (0, 1, or 2 decimals) using Hare-Niemeyer exact remainder rounding.
 - **⚖️ Multi-Strategy Efficiency Benchmarking:** Benchmarks optimal coefficients against standard baselines:
   - `optimal`: Linear programming maximizing collective self-consumption.
   - `consumption_share`: Proportional to each CUPS's share of total community demand.
@@ -110,6 +111,18 @@ flowchart TD
 │   equal                │   1,758.0 │ 16,221.4 │    9.8% │           Baseline │
 ╰────────────────────────┴───────────┴──────────┴─────────┴────────────────────╯
 
+               📅 Suggested Electricity Distribution Share Matrix (β_i %)
+    Regulatory allocation schedule (RD 244/2019) • Sum per month: 100%
+╭──────────────────────┬─────────┬─────────┬─────────┬─────────┬────────────╮
+│ CUPS                 │ 2025-12 │ 2026-01 │ 2026-02 │ 2026-03 │ Annual Avg │
+├──────────────────────┼─────────┼─────────┼─────────┼─────────┼────────────┤
+│ ES0021000000000001AA │   45.2% │   48.1% │   52.0% │   50.3% │      48.9% │
+│ ES0021000000000002BB │   30.8% │   28.5% │   25.0% │   27.2% │      27.9% │
+│ ES0021000000000003CC │   24.0% │   23.4% │   23.0% │   22.5% │      23.2% │
+├──────────────────────┼─────────┼─────────┼─────────┼─────────┼────────────┤
+│ TOTAL (RD 244/2019)  │  100.0% │  100.0% │  100.0% │  100.0% │     100.0% │
+╰──────────────────────┴─────────┴─────────┴─────────┴─────────┴────────────╯
+
 📅 Monthly Coefficient Proposals (β_i): 2026-05 (Gen: 17,979.4 kWh, Dem: 7,661.8 kWh)
 ╭────┬──────────────────────┬────────┬──────────┬─────────┬──────────┬─────────╮
 │ R… │ CUPS                 │ Beta … │ Share    │ Demand… │ Self-Co… │ Surplu… │
@@ -188,7 +201,7 @@ esd calculate [OPTIONS]
 | `--strategy` | `-s` | Allocation method: `optimal`, `consumption_share`, or `equal` | `optimal` |
 | `--year` | `-y` | Filter calculation to a specific calendar year | `None` (all) |
 | `--month` | `-m` | Filter calculation to a specific month (1–12) | `None` (all) |
-| `--view` | `-v` | Terminal view mode: `summary`, `trajectory`, `coefficients`, `comparison`, or `all` | `summary` |
+| `--view` | `-v` | Terminal view mode: `summary` (overview + matrix + details), `matrix` (share matrix), `trajectory`, `coefficients`, `comparison`, or `all` | `summary` |
 | `--format` | `-f` | Report export format: `all`, `csv`, `json`, `markdown`, `table` / `none` | `all` |
 | `--output-dir` | `-o` | Custom report destination directory | `.output` |
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |

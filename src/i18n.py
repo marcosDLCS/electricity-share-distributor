@@ -91,6 +91,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "col_cov_rate": "Coverage %",
         "col_strategy": "Strategy",
         "col_gain_vs_equal": "Self-Cons Gain",
+        "col_annual_avg": "Annual Avg",
+        "title_coefficients_matrix": "📅 Suggested Electricity Distribution Share Matrix (β_i %)",
+        "desc_coefficients_matrix": "Regulatory allocation schedule (RD 244/2019) • Sum per month: 100%",
+        "lbl_total_rd244": "TOTAL (RD 244/2019)",
         "export_success_title": "✓ Exports Generated Successfully",
         # Init View Strings
         "init_title_success": "✓ Initialized Successfully",
@@ -172,6 +176,31 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "md_month_header": "### Month: `{month}` (Solar Gen: {gen:,.1f} kWh)",
         "md_coeff_header": "| CUPS | Beta (β) | Share % | Demand (kWh) | Allocated Solar (kWh) | Self-Consumed (kWh) | Surplus (kWh) | Grid (kWh) |",
         "md_lbl_optimal_strat": "**Optimal (RD 244/2019 LP)**",
+        # Matrix & Insights in Markdown
+        "md_sec_coeff_matrix": "## 📋 Regulatory Distribution Coefficients Matrix (RD 244/2019)",
+        "md_desc_coeff_matrix": (
+            "> **Real Decreto 244/2019 Schedule Annex:** Under Spanish regulations for *autoconsumo colectivo*, "
+            "participating supply points (CUPS) receive an hourly percentage share of solar generation that is legally fixed per month ($\\beta_{{i, m}}$). "
+            "The matrix below serves directly as the documentation schedule to be signed by all participants and submitted to the "
+            "distribution system operator (DSO / *distribuidora*). Each monthly column sums to $\\le 100.00\\%$."
+        ),
+        "md_sec_insights": "## 💡 Community Optimization Insights & Generation Dynamics",
+        "md_insight_diurnal_title": "### ☀️ Diurnal Alignment (Solar Peak Hours vs Demand Profiles)",
+        "md_insight_diurnal_desc": (
+            "Solar photovoltaic generation operates strictly during daylight hours (~08:00 to 20:00). "
+            "The linear programming engine dynamically prioritizes participants with active daytime consumption, "
+            "maximizing direct self-consumption and minimizing excess solar injection into the grid."
+        ),
+        "md_insight_zero_protection_title": "### 🛡️ Inactive Meter & Vacancy Protection",
+        "md_insight_zero_protection_desc": (
+            "Supply points with near-zero daytime demand receive a 0% coefficient during dormant periods. "
+            "This safeguards collective solar yield, redistributing valuable kWh to active neighbours rather than forfeiting them."
+        ),
+        "md_insight_seasonal_title": "### 🔄 Seasonal Dynamic Allocation",
+        "md_insight_seasonal_desc": (
+            "Monthly coefficients automatically adjust to seasonal habits (e.g. summer air conditioning, winter heating, vacation periods). "
+            "Compared to static annual shares, monthly dynamic allocation captures substantially more collective self-consumption."
+        ),
     },
     "es": {
         # App banner & overview
@@ -257,6 +286,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "col_cov_rate": "% Cob",
         "col_strategy": "Estrategia",
         "col_gain_vs_equal": "Ganancia Autoconsumo",
+        "col_annual_avg": "Media Anual",
+        "title_coefficients_matrix": "📅 Matriz Sugerida de Coeficientes de Reparto (β_i %)",
+        "desc_coefficients_matrix": "Acuerdo regulatorio de reparto (RD 244/2019) • Suma mensual: 100%",
+        "lbl_total_rd244": "TOTAL (RD 244/2019)",
         "export_success_title": "✓ Informes Generados Correctamente",
         # Init View Strings
         "init_title_success": "✓ Inicializado Correctamente",
@@ -338,6 +371,32 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "md_month_header": "### Mes: `{month}` (Gen Solar: {gen:,.1f} kWh)",
         "md_coeff_header": "| CUPS | Beta (β) | % Reparto | Demanda (kWh) | Solar Asignada (kWh) | Autoconsumo (kWh) | Excedentes (kWh) | Red (kWh) |",
         "md_lbl_optimal_strat": "**Óptimo (RD 244/2019 PL)**",
+        # Matrix & Insights in Markdown (es)
+        "md_sec_coeff_matrix": "## 📋 Matriz Regulatoria de Coeficientes de Reparto (RD 244/2019)",
+        "md_desc_coeff_matrix": (
+            "> **Anexo de Acuerdo de Reparto (RD 244/2019):** Según la normativa española de autoconsumo colectivo, "
+            "cada punto de suministro (CUPS) participante recibe un porcentaje de la generación solar que permanece legalmente fijo por mes ($\\beta_{{i, m}}$). "
+            "La siguiente matriz constituye directamente el anexo para el acuerdo de reparto a formalizar por los participantes y "
+            "presentar a la distribuidora. La suma de cada mes no supera el $100{,}00\\%$."
+        ),
+        "md_sec_insights": "## 💡 Análisis de Rendimiento y Dinámica de Generación",
+        "md_insight_diurnal_title": "### ☀️ Coincidencia Diurna (Horas Solares vs Curvas de Consumo)",
+        "md_insight_diurnal_desc": (
+            "La generación solar fotovoltaica se produce exclusivamente en horario diurno (~08:00 a 20:00). "
+            "El algoritmo de optimización asigna mayor porcentaje de reparto ($\\beta_i$) a aquellos CUPS cuyo consumo coincide de "
+            "forma natural con los picos solares, maximizando el aprovechamiento directo y minimizando los excedentes vertidos a red."
+        ),
+        "md_insight_zero_protection_title": "### 🛡️ Protección Frente a Contadores Inactivos o Segundas Residencias",
+        "md_insight_zero_protection_desc": (
+            "Los puntos de suministro sin consumo en horas solares reciben un 0% de reparto durante los meses de inactividad. "
+            "Esto protege la inversión colectiva asegurando que la energía solar se aproveche entre los vecinos activos en lugar de "
+            "desperdiciarse o ser compensada a precios desfavorables."
+        ),
+        "md_insight_seasonal_title": "### 🔄 Adaptación a la Estacionalidad Anual",
+        "md_insight_seasonal_desc": (
+            "Los coeficientes mensuales se adaptan de forma natural a los cambios estacionales (climatización estival, calefacción invernal, "
+            "periodos vacacionales), logrando un autoconsumo colectivo notablemente superior al reparto estático anual."
+        ),
     },
 }
 

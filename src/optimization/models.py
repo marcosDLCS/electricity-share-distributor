@@ -75,6 +75,51 @@ class CommunityMonthlyMetrics:
 
 
 @dataclass
+class CoefficientsMatrix:
+    """Consolidated matrix of distribution coefficients (CUPS in Y, Months in X).
+
+    Attributes:
+        cups_list: List of CUPS identifiers (rows).
+        months: List of month strings 'YYYY-MM' (columns).
+        matrix: Dictionary mapping cups -> {month: beta (0.0 to 1.0)}.
+        monthly_sums: Dictionary mapping month -> sum of betas (must equal 1.0).
+        annual_shares: Dictionary mapping cups -> annual weighted average beta.
+        annual_sum: Sum of annual shares (must equal 1.0).
+    """
+
+    cups_list: list[str]
+    months: list[str]
+    matrix: dict[str, dict[str, float]]
+    monthly_sums: dict[str, float]
+    annual_shares: dict[str, float]
+    annual_sum: float
+
+    def get_share_pct(self, cups: str, month: str) -> float:
+        """Get the percentage share for a given CUPS and month."""
+        return self.matrix.get(cups, {}).get(month, 0.0) * 100.0
+
+    def format_cell(self, cups: str, month: str, precision: int = 0) -> str:
+        """Format share percentage for a given CUPS and month with configured precision."""
+        val = self.get_share_pct(cups, month)
+        return f"{val:.{precision}f}%"
+
+    def format_annual(self, cups: str, precision: int = 0) -> str:
+        """Format annual weighted average share percentage with configured precision."""
+        val = self.annual_shares.get(cups, 0.0) * 100.0
+        return f"{val:.{precision}f}%"
+
+    def format_month_sum(self, month: str, precision: int = 0) -> str:
+        """Format the total sum of shares for a month with configured precision."""
+        val = self.monthly_sums.get(month, 0.0) * 100.0
+        return f"{val:.{precision}f}%"
+
+    def format_annual_sum(self, precision: int = 0) -> str:
+        """Format the total sum of annual weighted shares with configured precision."""
+        val = self.annual_sum * 100.0
+        return f"{val:.{precision}f}%"
+
+
+@dataclass
 class OptimizationResult:
     """Full optimization results across all evaluated months.
 
@@ -89,3 +134,45 @@ class OptimizationResult:
     monthly_results: list[CommunityMonthlyMetrics]
     total_summary: CommunityMonthlyMetrics
     baselines: dict[str, OptimizationResult] = field(default_factory=dict)
+
+    def build_matrix(self) -> CoefficientsMatrix:
+        """Construct the coefficients matrix with CUPS on Y and months on X."""
+        if not self.monthly_results:
+            return CoefficientsMatrix(
+                cups_list=[],
+                months=[],
+                matrix={},
+                monthly_sums={},
+                annual_shares={},
+                annual_sum=0.0,
+            )
+
+        months = [m.month for m in self.monthly_results]
+        cups_order = [c.cups for c in self.total_summary.cups_metrics]
+        if not cups_order and self.monthly_results:
+            cups_order = [c.cups for c in self.monthly_results[0].cups_metrics]
+
+        matrix: dict[str, dict[str, float]] = {c: {} for c in cups_order}
+        monthly_sums: dict[str, float] = {}
+
+        for m in self.monthly_results:
+            m_sum = 0.0
+            for cm in m.cups_metrics:
+                matrix.setdefault(cm.cups, {})[m.month] = cm.beta
+                m_sum += cm.beta
+            monthly_sums[m.month] = round(m_sum, 6)
+
+        annual_shares: dict[str, float] = {}
+        annual_sum = 0.0
+        for cm in self.total_summary.cups_metrics:
+            annual_shares[cm.cups] = cm.beta
+            annual_sum += cm.beta
+
+        return CoefficientsMatrix(
+            cups_list=cups_order,
+            months=months,
+            matrix=matrix,
+            monthly_sums=monthly_sums,
+            annual_shares=annual_shares,
+            annual_sum=round(annual_sum, 6),
+        )
