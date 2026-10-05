@@ -19,12 +19,25 @@ from src.config import (
     normalize_language_code,
     set_language,
 )
+from src.ingestion import (
+    DatadisConsumptionLoader,
+    EsdError,
+    HuaweiGenerationLoader,
+    TimeSeriesAligner,
+)
+from src.optimization import DistributionOptimizer, OptimizationStrategy
 from src.presentation.console import console
+from src.presentation.export import export_all
 from src.presentation.views import (
     render_cleanup_result,
+    render_community_summary,
+    render_export_success,
     render_help,
     render_init_success,
+    render_monthly_coefficients_table,
+    render_monthly_trajectory_table,
     render_not_initialized_warning,
+    render_strategy_comparison_table,
     render_version,
 )
 from src.version import get_version
@@ -121,11 +134,23 @@ def calculate_command(
         "-m",
         help="Optional month filter (1-12).",
     ),
+    strategy: str = typer.Option(
+        "optimal",
+        "--strategy",
+        "-s",
+        help="Allocation strategy: 'optimal' (RD 244/2019 LP), 'consumption_share', or 'equal'.",
+    ),
+    view: str = typer.Option(
+        "summary",
+        "--view",
+        "-v",
+        help="Display view mode: 'summary' (overview + comparison + coefficients), 'trajectory', or 'all'.",
+    ),
     export_format: str = typer.Option(
         "all",
         "--format",
         "-f",
-        help="Export format: 'table', 'csv', 'json', 'markdown', or 'all'.",
+        help="Export format: 'all', 'table' (no file export), 'csv', 'json', or 'markdown'.",
     ),
     lang: str | None = typer.Option(
         None,
@@ -140,15 +165,86 @@ def calculate_command(
     if not is_initialized():
         render_not_initialized_warning(lang=active_lang)
 
-    console.print(
-        f"[bold cyan]esd calculate[/bold cyan] [dim](v{get_version()})[/dim]\n"
-        f"Consumption dir: [yellow]{consumption_dir}[/yellow]\n"
-        f"Generation dir:  [yellow]{generation_dir}[/yellow]\n"
-        f"Output dir:      [yellow]{output_dir}[/yellow]\n"
-    )
-    console.print(
-        "[dim]Data ingestion and optimization engine will run here in Phases 2-4.[/dim]\n"
-    )
+    # Normalize strategy
+    strat_key = strategy.lower().strip()
+    try:
+        opt_strat = OptimizationStrategy(strat_key)
+    except ValueError:
+        valid_strats = ", ".join(f"'{s.value}'" for s in OptimizationStrategy)
+        console.print(
+            f"[bold red]Error:[/bold red] Invalid strategy '{strategy}'. Valid options: {valid_strats}"
+        )
+        sys.exit(1)
+
+    try:
+        with console.status(
+            f"[bold cyan]Ingesting and synchronizing curves from {consumption_dir} and {generation_dir}...[/bold cyan]"
+        ):
+            c_loader = DatadisConsumptionLoader(consumption_dir)
+            g_loader = HuaweiGenerationLoader(generation_dir)
+
+            c_df = c_loader.load_all()
+            g_df = g_loader.load_all()
+
+            c_files_count = len(c_loader.discover_files())
+            g_files_count = len(g_loader.discover_files())
+
+            aligner = TimeSeriesAligner(
+                c_df,
+                g_df,
+                consumption_files_loaded=c_files_count,
+                generation_files_loaded=g_files_count,
+            )
+            aligned = aligner.align(year=year, month=month)
+
+        with console.status(
+            "[bold green]Solving RD 244/2019 optimization linear programs...[/bold green]"
+        ):
+            opt_result = DistributionOptimizer.optimize_dataset(
+                aligned,
+                strategy=opt_strat,
+                include_baselines=True,
+            )
+
+        # Presentation Views
+        view_mode = view.lower().strip()
+
+        if view_mode in ("summary", "all"):
+            render_community_summary(aligned.metadata, opt_result.total_summary, lang=active_lang)
+            render_monthly_trajectory_table(opt_result, lang=active_lang)
+            render_strategy_comparison_table(opt_result, lang=active_lang)
+            if month is not None or view_mode == "all":
+                for m in opt_result.monthly_results:
+                    render_monthly_coefficients_table(m, lang=active_lang)
+            else:
+                latest_month = opt_result.monthly_results[-1]
+                render_monthly_coefficients_table(latest_month, lang=active_lang)
+        elif view_mode == "trajectory":
+            render_monthly_trajectory_table(opt_result, lang=active_lang)
+        elif view_mode == "coefficients":
+            for m in opt_result.monthly_results:
+                render_monthly_coefficients_table(m, lang=active_lang)
+        elif view_mode == "comparison":
+            render_strategy_comparison_table(opt_result, lang=active_lang)
+
+        # File Exports
+        fmt_clean = export_format.lower().strip()
+        if fmt_clean not in ("table", "none"):
+            exported_paths = export_all(
+                opt_result,
+                aligned.metadata,
+                output_dir=output_dir,
+                formats=fmt_clean,
+                lang=active_lang,
+            )
+            render_export_success(exported_paths, lang=active_lang)
+
+    except EsdError as err:
+        console.print(f"\n[bold red]Error:[/bold red] {err}\n")
+        sys.exit(1)
+    except Exception as exc:
+        console.print(f"\n[bold red]Unexpected error:[/bold red] {exc}\n")
+        sys.exit(1)
 
 
 @app.command(name="cleanup")
