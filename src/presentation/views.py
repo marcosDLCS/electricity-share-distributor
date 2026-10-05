@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from src.config import AppConfig
+    from src.ingestion.doctor import DoctorReport, GapInterval
     from src.ingestion.schema import IngestionSummary
     from src.optimization.models import CommunityMonthlyMetrics, OptimizationResult
 
@@ -60,6 +61,10 @@ def render_help(lang: str | None = None) -> None:
     cmd_table.add_row(
         "calculate",
         t("cmd_calculate_desc", lang=lang),
+    )
+    cmd_table.add_row(
+        "doctor",
+        t("cmd_doctor_desc", lang=lang),
     )
     cmd_table.add_row(
         "init",
@@ -446,4 +451,199 @@ def render_config_view(cfg: AppConfig, lang: str | None = None) -> None:
 
     console.print()
     console.print(table)
+    console.print()
+
+
+def render_doctor_report(
+    report: DoctorReport,
+    verbose: bool = False,
+    lang: str | None = None,
+) -> None:
+    """Render comprehensive diagnostic health report for the doctor command."""
+    # 1. Overall Status Banner
+    if report.overall_status == "ok":
+        badge = "[bold green]✓ ALL DATA HEALTHY & SYNCHRONIZED[/bold green]"
+        border_col = "green"
+    elif report.overall_status == "warning":
+        badge = "[bold yellow]⚠ DATA USABLE WITH DIAGNOSTIC WARNINGS[/bold yellow]"
+        border_col = "yellow"
+    else:
+        badge = "[bold red]✗ CRITICAL DATA ISSUES DETECTED[/bold red]"
+        border_col = "red"
+
+    ov = report.overlap
+    banner_grid = Table.grid(padding=(0, 2))
+    banner_grid.add_column(style="bold white", width=22)
+    banner_grid.add_column(style="cyan", width=20)
+    banner_grid.add_column(style="bold white", width=18)
+    banner_grid.add_column(style="green", width=16)
+
+    banner_grid.add_row(
+        "Participating CUPS:",
+        f"{ov.cups_count} supply points",
+        "Common Hours:",
+        f"{ov.common_hours:,} hours",
+    )
+    banner_grid.add_row(
+        "Overlap Date Range:",
+        f"{ov.common_start[:10] if ov.common_start else '—'} ➔ {ov.common_end[:10] if ov.common_end else '—'}",
+        "Ready to Calculate:",
+        "[bold green]Yes[/bold green]" if report.can_calculate else "[bold red]No[/bold red]",
+    )
+
+    console.print()
+    console.print(
+        Panel(
+            banner_grid,
+            title=f"🩺 ESD DATA DOCTOR DIAGNOSTIC REPORT — {badge}",
+            border_style=border_col,
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
+    )
+
+    # 2. Consumption Files & CUPS Health Table
+    if report.consumption_results:
+        c_table = Table(
+            title="📥 Consumption Data Health per CUPS (DATADIS)",
+            box=box.ROUNDED,
+            padding=(0, 1),
+            show_lines=False,
+        )
+        c_table.add_column("CUPS", style="bold cyan", width=22, no_wrap=True)
+        c_table.add_column("Readings", justify="right", style="white", width=9, no_wrap=True)
+        c_table.add_column("Zero %", justify="right", style="dim", width=7, no_wrap=True)
+        c_table.add_column("Gaps", justify="right", style="yellow", width=5, no_wrap=True)
+        c_table.add_column("Status", justify="center", width=9, no_wrap=True)
+        c_table.add_column("Diagnosis Notes", style="dim", width=22, no_wrap=True)
+
+        for c in report.consumption_results:
+            if c.status == "ok":
+                st_badge = "[green]✓ OK[/green]"
+            elif c.status == "warning":
+                st_badge = "[yellow]⚠ WARN[/yellow]"
+            else:
+                st_badge = "[red]✗ FAIL[/red]"
+
+            note_str = c.notes[0] if c.notes else "Healthy"
+            if len(note_str) > 22:
+                note_str = note_str[:20] + "…"
+
+            c_table.add_row(
+                c.identifier,
+                f"{c.total_records:,}",
+                f"{c.zero_ratio_pct:.1f}%",
+                str(c.missing_hours),
+                st_badge,
+                note_str,
+            )
+
+        console.print(c_table)
+        console.print()
+
+    # 3. Generation File Health Table
+    if report.generation_result:
+        g = report.generation_result
+        g_table = Table(
+            title="☀️ Solar PV Generation Health (Huawei FusionSolar)",
+            box=box.ROUNDED,
+            padding=(0, 1),
+            show_lines=False,
+        )
+        g_table.add_column("Source", style="bold yellow", width=24, no_wrap=True)
+        g_table.add_column("Files", justify="right", style="white", width=7, no_wrap=True)
+        g_table.add_column("Readings", justify="right", style="white", width=9, no_wrap=True)
+        g_table.add_column("Gaps", justify="right", style="yellow", width=5, no_wrap=True)
+        g_table.add_column("Status", justify="center", width=9, no_wrap=True)
+        g_table.add_column("Diagnosis Notes", style="dim", width=20, no_wrap=True)
+
+        g_badge = "[green]✓ OK[/green]" if g.status == "ok" else "[yellow]⚠ WARN[/yellow]"
+        g_note = g.notes[0] if g.notes else "Healthy"
+        if len(g_note) > 20:
+            g_note = g_note[:18] + "…"
+
+        g_table.add_row(
+            "Huawei PV Generation",
+            str(g.files_count),
+            f"{g.total_records:,}",
+            str(g.missing_hours),
+            g_badge,
+            g_note,
+        )
+        console.print(g_table)
+        console.print()
+
+    # 4. Detailed Gap Breakdown (if gaps exist or verbose)
+    all_gaps: list[tuple[str, GapInterval]] = []
+    for c in report.consumption_results:
+        for gap in c.gaps:
+            all_gaps.append((c.identifier, gap))
+    if report.generation_result:
+        for gap in report.generation_result.gaps:
+            all_gaps.append(("Huawei Generation", gap))
+
+    if all_gaps:
+        gap_table = Table(
+            title="⚠️ Detected Missing Interval Gaps",
+            box=box.ROUNDED,
+            padding=(0, 1),
+        )
+        gap_table.add_column("Series", style="bold cyan", width=22, no_wrap=True)
+        gap_table.add_column("Gap Start", style="yellow", width=17, no_wrap=True)
+        gap_table.add_column("Gap End", style="yellow", width=17, no_wrap=True)
+        gap_table.add_column("Missing", justify="right", style="bold red", width=9, no_wrap=True)
+
+        show_gaps = all_gaps if verbose else all_gaps[:10]
+        for series_id, gap in show_gaps:
+            gap_table.add_row(
+                series_id,
+                gap.start_time,
+                gap.end_time,
+                f"{gap.missing_hours} h",
+            )
+        if len(all_gaps) > 10 and not verbose:
+            gap_table.add_row(
+                "...",
+                f"+{len(all_gaps) - 10} more gaps",
+                "Use --verbose to view all",
+                "",
+            )
+
+        console.print(gap_table)
+        console.print()
+
+    # 5. Diagnostic Findings & Actionable Advice
+    advice_items: list[str] = []
+    for c in report.consumption_results:
+        if c.zero_ratio_pct >= 99.0:
+            advice_items.append(
+                f"[yellow]• Inactive Meter:[/yellow] {c.identifier} has {c.zero_ratio_pct}% zero readings. In optimization, its β coefficient will be 0.00% to protect community solar energy."
+            )
+        if c.missing_hours > 0:
+            advice_items.append(
+                f"[yellow]• Consumption Gaps:[/yellow] {c.identifier} has {c.missing_hours} missing hours. Download updated DATADIS CSV for complete billing periods."
+            )
+    if report.generation_result and report.generation_result.missing_hours > 0:
+        advice_items.append(
+            f"[yellow]• Generation Gaps:[/yellow] Huawei solar series has {report.generation_result.missing_hours} missing hours. Check inverter log exports."
+        )
+
+    if not advice_items:
+        advice_items.append(
+            "[green]• Dataset is clean and ready. You can safely run 'esd calculate'.[/green]"
+        )
+
+    advice_text = Text()
+    for item in advice_items:
+        advice_text.append(f" {item}\n")
+
+    console.print(
+        Panel(
+            advice_text,
+            title="💡 Doctor Findings & Recommendations",
+            border_style="cyan",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
+    )
     console.print()

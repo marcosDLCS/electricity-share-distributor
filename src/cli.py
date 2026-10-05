@@ -22,6 +22,7 @@ from src.config import (
 )
 from src.ingestion import (
     DatadisConsumptionLoader,
+    DataDoctor,
     EsdError,
     HuaweiGenerationLoader,
     TimeSeriesAligner,
@@ -33,6 +34,7 @@ from src.presentation.views import (
     render_cleanup_result,
     render_community_summary,
     render_config_view,
+    render_doctor_report,
     render_export_success,
     render_help,
     render_init_success,
@@ -102,6 +104,48 @@ def init_command(
     ts = mark_initialized(version=get_version())
 
     render_init_success(lang=norm_lang, initialized_at=old_ts or ts, was_already=was_already)
+
+
+@app.command(name="doctor")
+def doctor_command(
+    consumption_dir: Path = typer.Option(
+        DEFAULT_CONSUMPTION_DIR,
+        "--consumption-dir",
+        "-c",
+        help="Path to folder containing DATADIS hourly consumption CSV files.",
+    ),
+    generation_dir: Path = typer.Option(
+        DEFAULT_GENERATION_DIR,
+        "--generation-dir",
+        "-g",
+        help="Path to folder containing Huawei FusionSolar generation Excel files.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show complete list of all detected missing intervals and timestamps.",
+    ),
+    lang: str | None = typer.Option(
+        None,
+        "--lang",
+        "-l",
+        help="Language override for messages ('en' or 'es').",
+    ),
+) -> None:
+    """Audit input data files to detect gaps, missing hourly intervals, and inconsistencies."""
+    active_lang = normalize_language_code(lang) if lang else get_language()
+
+    with console.status(
+        "[bold cyan]Running data diagnostics across consumption and generation files...[/bold cyan]"
+    ):
+        doc = DataDoctor(consumption_dir=consumption_dir, generation_dir=generation_dir)
+        report = doc.diagnose()
+
+    render_doctor_report(report, verbose=verbose, lang=active_lang)
+
+    if not report.can_calculate:
+        sys.exit(1)
 
 
 @app.command(name="calculate")
