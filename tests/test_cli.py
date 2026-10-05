@@ -157,3 +157,30 @@ def test_cli_calculate_missing_directory(tmp_path) -> None:
     empty_dir = tmp_path / "nonexistent"
     res = runner.invoke(app, ["calculate", "--consumption-dir", str(empty_dir)])
     assert res.exit_code != 0
+
+
+def test_cli_config_display() -> None:
+    res = runner.invoke(app, ["config"])
+    assert res.exit_code == 0
+    assert "Active Configuration" in res.output or "Configuración Activa" in res.output
+
+
+def test_cli_config_modify_lang() -> None:
+    res = runner.invoke(app, ["config", "--lang", "es"])
+    assert res.exit_code == 0
+    assert "es" in res.output
+
+    # Reset back to en
+    res_en = runner.invoke(app, ["config", "--lang", "en"])
+    assert res_en.exit_code == 0
+
+
+def test_cli_cleanup_force(tmp_path) -> None:
+    # Create fake files in dummy output dir
+    dummy_out = tmp_path / "dummy_out"
+    dummy_out.mkdir()
+    (dummy_out / "test.csv").write_text("dummy")
+
+    # Override config or pass custom
+    res = runner.invoke(app, ["cleanup", "--force"])
+    assert res.exit_code == 0
