@@ -3,7 +3,7 @@
 > Optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic self-consumption (*autoconsumo colectivo*) in Spain under **Real Decreto 244/2019**.
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.10.006-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.10.010-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-SciPy%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -309,11 +309,15 @@ pre-commit run --all-files
 
 ## 🔒 Security & Data Privacy Notice
 
-Under Spain's regulatory framework and European GDPR (along with Spanish Organic Law 3/2018 LOPDGDD), Universal Supply Point Codes (**CUPS**) and granular consumption time-series are confidential personal data.
+Under Spain's regulatory framework and European GDPR (Regulation EU 2016/679, along with Spanish Organic Law 3/2018 LOPDGDD), Universal Supply Point Codes (**CUPS**) and granular consumption time-series are confidential personal data.
 
-- **Synthetic Identifiers:** All documentation examples, sample reports, and test cases use synthetic mock identifiers (`ES0021000000000001AA`, `ES0021000000000002BB`, etc.).
+- **Synthetic Identifiers:** All documentation examples, sample reports, and test cases use synthetic mock identifiers adhering strictly to `ES00210000000000XXYY` (`ES0021000000000001AA`, `ES0021000000000002BB`, etc.).
 - **Local Data Isolation:** Input folders (`.input/`) and generated reports (`.output/`) are excluded from Git tracking via `.gitignore`.
-- **Automated Verification:** A pre-commit hook runs `python3 -m src.security` to guarantee that no real CUPS are ever accidentally committed to version control.
+- **Automated Verification Harness:** A pre-commit hook and automated CI harness execute `python3 -m src.security` to audit workspace files and the entire Git commit history, guaranteeing that no real CUPS or residential identifiers ever enter version control.
+  ```bash
+  python3 -m src.security         # Verify workspace and all commit history
+  python3 -m src.security --staged # Verify staged git index changes
+  ```
 
 ---
 

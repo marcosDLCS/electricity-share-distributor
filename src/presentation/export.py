@@ -94,8 +94,10 @@ def export_summary_markdown(
     timestamp: str | None = None,
 ) -> Path:
     """Export complete human-readable optimization and coefficient report in Markdown."""
-    from src.config import get_precision
+    from src.config import get_language, get_precision
+    from src.i18n import t
 
+    target_lang = lang or get_language()
     prec = get_precision() if precision is None else precision
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -105,30 +107,44 @@ def export_summary_markdown(
     tot = opt_result.total_summary
 
     lines = [
-        f"# ☀️ Electricity Share Distributor (esd v{get_version()})",
+        t("md_report_title", lang=target_lang, version=get_version()),
         "",
-        f"> **Generated at:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  ",
-        "> **Regulatory Basis:** Real Decreto 244/2019 (*Autoconsumo Colectivo*, Spain)  ",
-        f"> **Strategy:** `{opt_result.strategy}` (Linear Programming Max Collective Self-Consumption)  ",
-        "",
-        "---",
-        "",
-        "## 📊 Collective Community Overview",
-        "",
-        f"- **Participating CUPS:** {ingestion_summary.cups_count}",
-        f"- **Date Range:** `{ingestion_summary.start_time}` ➔ `{ingestion_summary.end_time}`",
-        f"- **Total Time Steps:** {ingestion_summary.total_hours:,} hours",
-        f"- **Total Solar PV Generation:** **{tot.total_generation_kwh:,.2f} kWh**",
-        f"- **Total Community Demand:** **{tot.total_consumption_kwh:,.2f} kWh**",
-        f"- **Total Self-Consumed Energy:** **{tot.total_self_consumed_kwh:,.2f} kWh** ({tot.self_consumption_rate:.1f}% efficiency)",
-        f"- **Total Solar Surplus Spilled:** **{tot.total_surplus_kwh:,.2f} kWh**",
-        f"- **Solar Demand Coverage:** **{tot.solar_coverage_rate:.1f}%**",
+        t(
+            "md_meta_generated_at",
+            lang=target_lang,
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ),
+        t("md_meta_regulatory", lang=target_lang),
+        t("md_meta_strategy", lang=target_lang, strategy=opt_result.strategy),
         "",
         "---",
         "",
-        "## 📈 Month-by-Month Energy Trajectory",
+        t("md_sec_community_overview", lang=target_lang),
         "",
-        "| Month | Solar Gen (kWh) | Demand (kWh) | Self-Consumed (kWh) | Surplus (kWh) | Grid (kWh) | Self-Cons % | Coverage % |",
+        t("md_lbl_participating_cups", lang=target_lang, count=ingestion_summary.cups_count),
+        t(
+            "md_lbl_date_range",
+            lang=target_lang,
+            start=ingestion_summary.start_time,
+            end=ingestion_summary.end_time,
+        ),
+        t("md_lbl_total_hours", lang=target_lang, hours=ingestion_summary.total_hours),
+        t("md_lbl_total_gen", lang=target_lang, gen=tot.total_generation_kwh),
+        t("md_lbl_total_dem", lang=target_lang, dem=tot.total_consumption_kwh),
+        t(
+            "md_lbl_total_sc",
+            lang=target_lang,
+            sc=tot.total_self_consumed_kwh,
+            rate=tot.self_consumption_rate,
+        ),
+        t("md_lbl_total_surplus", lang=target_lang, surplus=tot.total_surplus_kwh),
+        t("md_lbl_solar_coverage", lang=target_lang, cov=tot.solar_coverage_rate),
+        "",
+        "---",
+        "",
+        t("md_sec_trajectory", lang=target_lang),
+        "",
+        t("md_traj_header", lang=target_lang),
         "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
     ]
 
@@ -141,7 +157,7 @@ def export_summary_markdown(
 
     lines.extend(
         [
-            f"| **Total** | **{tot.total_generation_kwh:,.1f}** | **{tot.total_consumption_kwh:,.1f}** | "
+            f"| **{t('lbl_total', lang=target_lang)}** | **{tot.total_generation_kwh:,.1f}** | **{tot.total_consumption_kwh:,.1f}** | "
             f"**{tot.total_self_consumed_kwh:,.1f}** | **{tot.total_surplus_kwh:,.1f}** | **{tot.total_grid_demand_kwh:,.1f}** | "
             f"**{tot.self_consumption_rate:.1f}%** | **{tot.solar_coverage_rate:.1f}%** |",
             "",
@@ -154,9 +170,9 @@ def export_summary_markdown(
     if opt_result.baselines:
         lines.extend(
             [
-                "## ⚖️ Allocation Strategy Comparison",
+                t("md_sec_strategy_comp", lang=target_lang),
                 "",
-                "| Strategy | Self-Consumed (kWh) | Solar Surplus (kWh) | Efficiency % | vs Equal Gain |",
+                t("md_comp_header", lang=target_lang),
                 "| :--- | :---: | :---: | :---: | :---: |",
             ]
         )
@@ -170,7 +186,7 @@ def export_summary_markdown(
         gain = tot.total_self_consumed_kwh - eq_sc
         gain_str = f"+{gain:,.1f} kWh" if gain > 0 else "0.0 kWh"
         lines.append(
-            f"| **Optimal (RD 244/2019 LP)** | **{tot.total_self_consumed_kwh:,.1f}** | "
+            f"| {t('md_lbl_optimal_strat', lang=target_lang)} | **{tot.total_self_consumed_kwh:,.1f}** | "
             f"{tot.total_surplus_kwh:,.1f} | **{tot.self_consumption_rate:.1f}%** | **{gain_str}** |"
         )
 
@@ -185,15 +201,20 @@ def export_summary_markdown(
         lines.extend(["", "---", ""])
 
     # Monthly breakdown tables
-    lines.append("## 📅 Proposed Monthly Distribution Coefficients (β_i)")
+    lines.append(t("md_sec_monthly_coeffs", lang=target_lang))
     lines.append("")
 
     for m in opt_result.monthly_results:
-        lines.append(f"### Month: `{m.month}` (Solar Gen: {m.total_generation_kwh:,.1f} kWh)")
-        lines.append("")
         lines.append(
-            "| CUPS | Beta (β) | Share % | Demand (kWh) | Allocated Solar (kWh) | Self-Consumed (kWh) | Surplus (kWh) | Grid (kWh) |",
+            t(
+                "md_month_header",
+                lang=target_lang,
+                month=m.month,
+                gen=m.total_generation_kwh,
+            )
         )
+        lines.append("")
+        lines.append(t("md_coeff_header", lang=target_lang))
         lines.append(
             "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
         )
