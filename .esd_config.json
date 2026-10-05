@@ -5,6 +5,6 @@
   "consumption_dir": ".input/consumption",
   "generation_dir": ".input/generation",
   "output_dir": ".output",
-  "initialized_at": "2026-10-05T18:17:06.296025",
-  "version": "2026.10.007"
+  "initialized_at": "2026-10-05T20:30:03.510014",
+  "version": "2026.10.008"
 }

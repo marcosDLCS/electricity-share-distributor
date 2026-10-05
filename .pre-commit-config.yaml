@@ -21,6 +21,11 @@ repos:
 
   - repo: local
     hooks:
+      - id: privacy-cups-checker
+        name: CUPS Privacy & Anonymization Enforcer
+        entry: python3 -m src.security
+        language: system
+        pass_filenames: false
       - id: calver-version
         name: CalVer Version Enforcer
         entry: python3 -m src.version hook

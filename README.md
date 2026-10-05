@@ -307,6 +307,16 @@ pre-commit run --all-files
 
 ---
 
+## 🔒 Security & Data Privacy Notice
+
+Under Spain's regulatory framework and European GDPR (along with Spanish Organic Law 3/2018 LOPDGDD), Universal Supply Point Codes (**CUPS**) and granular consumption time-series are confidential personal data.
+
+- **Synthetic Identifiers:** All documentation examples, sample reports, and test cases use synthetic mock identifiers (`ES0021000000000001AA`, `ES0021000000000002BB`, etc.).
+- **Local Data Isolation:** Input folders (`.input/`) and generated reports (`.output/`) are excluded from Git tracking via `.gitignore`.
+- **Automated Verification:** A pre-commit hook runs `python3 -m src.security` to guarantee that no real CUPS are ever accidentally committed to version control.
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, development setup, and the Conventional Commits specification.

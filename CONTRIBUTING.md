@@ -22,6 +22,16 @@ Thank you for your interest in contributing to `electricity-share-distributor`!
   - `docs: ...` for documentation
   - `test: ...` for tests
 
+## 🔒 Privacy, Anonymization & Security Standards
+
+- **CUPS Confidentiality:** Universal Supply Point Codes (CUPS) are legally protected identifiers under European GDPR and Spanish Organic Law 3/2018 (LOPDGDD).
+- **Prohibited Data:** Never commit, log, or push real residential CUPS, customer names, contract IDs, or real metering data.
+- **Permitted Mock Data:** Use exclusively synthetic mock identifiers following the standard prefix format: `ES0021000000000001AA`, `ES0021000000000002BB`, etc.
+- **Automated Verification:** The repository enforces this invariant via a pre-commit hook and automated test suite. You can manually run the privacy verification harness at any time:
+  ```bash
+  python3 -m src.security
+  ```
+
 ## Versioning (CalVer)
 
 This project strictly follows Calendar Versioning (`YYYY.MM.NNN`).
