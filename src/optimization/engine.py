@@ -48,29 +48,47 @@ class DistributionOptimizer:
         n_sun = len(sun_indices)
 
         if n_sun == 0 or np.sum(generation) <= 0:
-            # No solar generation in this period: return equal or zero distribution
+            # No solar generation in this period: return uniform distribution
             return np.full(n_cups, 1.0 / n_cups)
 
-        # Variables: [beta_0, ..., beta_{N-1}, s_{0, 0}, ..., s_{N-1, n_sun-1}]
+        # -------------------------------------------------------------------------
+        # Linear Programming Epigraph Formulation (RD 244/2019):
+        # We want to solve:
+        #   max sum_{i, k} min(C_{i, k}, beta_i * G_k)
+        #
+        # Because min(A, B) is non-linear, we introduce auxiliary variables s_{i, k}:
+        #   s_{i, k} represents the self-consumed energy by CUPS i in hour k.
+        #
+        # For each hour k and CUPS i:
+        #   s_{i, k} <= C_{i, k}          (upper bounded by demand)
+        #   s_{i, k} <= beta_i * G_k      (upper bounded by allocated generation)
+        #
+        # Rewriting the second inequality as a standard form constraint:
+        #   s_{i, k} - beta_i * G_k <= 0
+        #
+        # Decision Variables Vector:
+        #   [beta_0, ..., beta_{N-1}, s_{0, 0}, ..., s_{N-1, n_sun-1}]
+        #   Length: n_cups (the share coefficients) + n_cups * n_sun (hourly self-consumption)
+        # -------------------------------------------------------------------------
         n_vars = n_cups + n_cups * n_sun
 
-        # Objective: Maximize sum(s_{i, k}) -> Minimize -sum(s_{i, k})
+        # Objective: Maximize sum(s_{i, k}) -> Minimize -sum(s_{i, k}) in standard solver form
         c = np.zeros(n_vars)
         c[n_cups:] = -1.0
 
-        # Constraints:
-        # 1) sum(beta_i) <= 1.0 (1 row)
-        # 2) s_{i, k} - beta_i * G_k <= 0 (n_cups * n_sun rows)
+        # Constraints Matrix (A_ub * x <= b_ub):
+        # Constraint 1: sum(beta_i) <= 1.0 (Regulatory constraint: total share cannot exceed 100%)
+        # Constraint 2..M: s_{i, k} - beta_i * G_k <= 0 (Self-consumption cannot exceed allocated generation)
         n_constraints = 1 + n_cups * n_sun
         a_ub = dok_matrix((n_constraints, n_vars))
         b_ub = np.zeros(n_constraints)
 
-        # sum(beta_i) <= 1.0
+        # Constraint 1: sum(beta_i) <= 1.0
         for i in range(n_cups):
             a_ub[0, i] = 1.0
         b_ub[0] = 1.0
 
-        # s_{i, k} - beta_i * G_{sun[k]} <= 0
+        # Constraints 2..M: s_{i, k} - beta_i * G_{sun[k]} <= 0
         row = 1
         for k, t_idx in enumerate(sun_indices):
             g_k = float(generation[t_idx])
@@ -80,14 +98,16 @@ class DistributionOptimizer:
                 a_ub[row, i] = -g_k
                 row += 1
 
-        # Bounds: beta_i in [0, 1]; s_{i, k} in [0, C_{k, i}]
+        # Variable Bounds:
+        # beta_i in [0.0, 1.0] (coefficient between 0% and 100%)
+        # s_{i, k} in [0.0, C_{i, k}] (cannot self-consume more than actual demand)
         bounds: list[tuple[float, float]] = [(0.0, 1.0) for _ in range(n_cups)]
         for i in range(n_cups):
             for t_idx in sun_indices:
                 c_val = float(consumption[t_idx, i])
                 bounds.append((0.0, max(0.0, c_val)))
 
-        # Solve LP using HiGHS
+        # Solve LP using SciPy HiGHS simplex/interior-point solver
         res = opt.linprog(
             c,
             A_ub=a_ub.tocsc(),

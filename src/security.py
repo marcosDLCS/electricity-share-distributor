@@ -21,6 +21,16 @@ SYNTHETIC_CUPS_PATTERN: re.Pattern[str] = re.compile(
     r"^ES00210000000000\d{2}[A-Za-z0-9]{2,4}$", re.IGNORECASE
 )
 
+# Truncated CUPS pattern (e.g. ellipsis followed by 6-14 characters)
+TRUNCATED_CUPS_PATTERN: re.Pattern[str] = re.compile(
+    r"(?:…|\.\.\.)([0-9A-Za-z]{6,14})\b", re.IGNORECASE
+)
+
+# Permitted synthetic truncated CUPS: must be 0-padded (e.g. '…00000001AA', '00000001AA')
+SYNTHETIC_TRUNCATED_PATTERN: re.Pattern[str] = re.compile(
+    r"^0{2,}\d{1,4}[A-Za-z0-9]{2,4}$", re.IGNORECASE
+)
+
 # File patterns or paths ignored from scanning (e.g. git internals, venv, caches, local inputs)
 IGNORED_DIRS: set[str] = {
     ".git",
@@ -51,6 +61,31 @@ IGNORED_EXTENSIONS: set[str] = {
     ".pdf",
 }
 
+_CACHED_PRIVATE_SIGNATURES: set[str] | None = None
+
+
+def get_known_private_signatures(repo_root: Path | str | None = None) -> set[str]:
+    """Discover real CUPS suffixes from local .input/consumption directory if present."""
+    global _CACHED_PRIVATE_SIGNATURES
+    if _CACHED_PRIVATE_SIGNATURES is not None:
+        return _CACHED_PRIVATE_SIGNATURES
+
+    base = Path(repo_root) if repo_root else Path.cwd()
+    input_dir = base / ".input" / "consumption"
+    signatures: set[str] = set()
+    if input_dir.exists():
+        for f in input_dir.glob("*.csv"):
+            cups_part = f.stem.split("_")[0].upper()
+            if cups_part.startswith("ES") and len(cups_part) >= 20:
+                if not is_synthetic_cups(cups_part):
+                    signatures.add(cups_part)
+                    suffix = cups_part[8:]
+                    if len(suffix) >= 6:
+                        signatures.add(suffix)
+
+    _CACHED_PRIVATE_SIGNATURES = signatures
+    return _CACHED_PRIVATE_SIGNATURES
+
 
 def is_synthetic_cups(cups: str) -> bool:
     """Check whether a given CUPS string matches the authorized synthetic mock pattern.
@@ -65,21 +100,36 @@ def is_synthetic_cups(cups: str) -> bool:
     return bool(SYNTHETIC_CUPS_PATTERN.match(clean))
 
 
-def find_cups_leaks(text: str) -> list[str]:
+def find_cups_leaks(text: str, private_signatures: set[str] | None = None) -> list[str]:
     """Scan text for any CUPS identifiers that are NOT synthetic mock CUPS.
 
     Args:
         text: Arbitrary text to scan.
+        private_signatures: Optional set of known private CUPS signatures to detect.
 
     Returns:
         List of prohibited (real) CUPS identifiers detected.
     """
-    matches = CUPS_PATTERN.findall(text)
     leaks: list[str] = []
-    for match in matches:
+
+    # 1. Full standard CUPS matches
+    for match in CUPS_PATTERN.findall(text):
         if not is_synthetic_cups(match):
             leaks.append(match)
-    return leaks
+
+    # 2. Truncated CUPS matches (e.g. …00000001AA)
+    for match in TRUNCATED_CUPS_PATTERN.findall(text):
+        if not SYNTHETIC_TRUNCATED_PATTERN.match(match):
+            leaks.append(f"…{match}")
+
+    # 3. Known private signatures from .input/
+    sigs = private_signatures if private_signatures is not None else get_known_private_signatures()
+    text_upper = text.upper()
+    for sig in sigs:
+        if sig in text_upper:
+            leaks.append(sig)
+
+    return list(dict.fromkeys(leaks))
 
 
 def scan_file(file_path: Path) -> list[tuple[int, str, str]]:

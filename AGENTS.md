@@ -42,6 +42,9 @@ electricity-share-distributor/
 ├── LICENSE                     # MIT License
 ├── README.md / AGENTS.md       # User guide and agent directives
 ├── CONTRIBUTING.md             # Contribution guidelines & Conventional Commits
+├── docs/                       # Technical & operational documentation guides
+│   ├── GUIDE_EN.md             # Comprehensive English technical guide
+│   └── GUIDE_ES.md             # Comprehensive Spanish technical guide
 ├── .pre-commit-config.yaml     # Git hook definitions (Ruff linter, formatter, CalVer)
 ├── .esd_config.json            # Persistent application configuration
 ├── .input/                     # Raw input data
@@ -115,3 +118,4 @@ electricity-share-distributor/
 - **🧹 Directive 7: Ruff & Pre-Commit Adherence.** Run `ruff check --fix .` and `ruff format .` before committing changes.
 - **📝 Directive 8: Conventional Commits.** Adhere strictly to Conventional Commits (`feat:`, `fix:`, `chore:`, etc.).
 - **🏷️ Directive 9: CalVer Increments on Every Commit.** Every commit must increment the CalVer sequence (`python -m src.version bump`).
+- **📚 Directive 10: Documentation Synchronization.** Whenever modifying data schemas, optimization algorithms, presentation views, or CLI commands, you must update both English and Spanish documentation guides (`docs/GUIDE_EN.md` and `docs/GUIDE_ES.md`) in tandem.

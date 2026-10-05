@@ -3,7 +3,7 @@
 > Optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic self-consumption (*autoconsumo colectivo*) in Spain under **Real Decreto 244/2019**.
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.10.013-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.10.014-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-SciPy%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -14,6 +14,10 @@
 `electricity-share-distributor` (`esd`) is a high-performance Python CLI utility designed to determine optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic installations (*autoconsumo colectivo*) in Spain.
 
 It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/datadis-analyzer).
+
+📚 **Guides & Documentation:**
+- [🇬🇧 Technical & Operational Guide (English)](docs/GUIDE_EN.md)
+- [🇪🇸 Guía Técnica y de Funcionamiento (Español)](docs/GUIDE_ES.md)
 
 ---
 
@@ -269,12 +273,16 @@ electricity-share-distributor/
 ├── LICENSE                     # MIT License
 ├── README.md / AGENTS.md       # User documentation & Agent directives
 ├── CONTRIBUTING.md             # Contribution guidelines & Conventional Commits
+├── docs/                       # Comprehensive documentation guides
+│   ├── GUIDE_EN.md             # Technical & operational guide (English)
+│   └── GUIDE_ES.md             # Technical & operational guide (Spanish)
 ├── .pre-commit-config.yaml     # Git hook definitions (Ruff linter, formatter, CalVer)
 ├── .esd_config.json            # Persistent application configuration
 ├── .input/                     # Raw input data
 │   ├── consumption/            # DATADIS hourly consumption CSV files
 │   └── generation/             # Huawei FusionSolar generation Excel files
 ├── .output/                    # Generated reports and exports
+│   ├── YYYYMMDD_HHMMSS_esd_coefficients_matrix.csv
 │   ├── YYYYMMDD_HHMMSS_esd_coefficients.csv
 │   ├── YYYYMMDD_HHMMSS_esd_results.json
 │   └── YYYYMMDD_HHMMSS_esd_optimization_summary.md
