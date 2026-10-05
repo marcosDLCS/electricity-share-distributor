@@ -138,34 +138,38 @@ def render_init_success(
     initialized_at: str,
     precision: int = 0,
     was_already: bool = False,
+    cleared_files: int = 0,
 ) -> None:
     """Render initialization result card."""
     title = (
         "[bold green]✓ Initialized Successfully[/bold green]"
         if not was_already
-        else "[bold cyan]ℹ Already Initialized[/bold cyan]"
+        else "[bold green]✓ Re-initialized Successfully[/bold green]"
     )
     lang_name = SUPPORTED_LANGUAGES.get(lang, lang)
     prec_example = "53%" if precision == 0 else ("52.8%" if precision == 1 else "52.86%")
-    msg = (
-        t("init_already", lang=lang, timestamp=initialized_at)
-        if was_already
-        else t("init_success", lang=lang, language=lang_name)
-    )
+    msg_key = "init_reinit" if was_already else "init_success"
+    msg = t(msg_key, lang=lang, language=lang_name)
 
-    content = (
-        f"{msg}\n"
-        f"[dim]• Language: [cyan]{lang_name}[/cyan] ({lang})[/dim]\n"
-        f"[dim]• Share Precision: [cyan]{precision} decimal(s)[/cyan] (e.g. {prec_example}, sums to 100%)[/dim]\n"
-        f"[dim]• Timestamp: {initialized_at}[/dim]"
-    )
+    lines = [
+        msg,
+        f"[dim]• Language: [cyan]{lang_name}[/cyan] ({lang})[/dim]",
+        f"[dim]• Share Precision: [cyan]{precision} decimal(s)[/cyan] (e.g. {prec_example}, sums to 100%)[/dim]",
+        f"[dim]• Timestamp: {initialized_at}[/dim]",
+    ]
+    if cleared_files > 0:
+        lines.append(
+            f"[dim]• Output Directory: [yellow]Cleared {cleared_files} file(s) from .output[/yellow][/dim]"
+        )
+    else:
+        lines.append("[dim]• Output Directory: [cyan]Ready & clean[/cyan][/dim]")
 
     console.print()
     console.print(
         Panel(
-            content,
+            "\n".join(lines),
             title=title,
-            border_style="green" if not was_already else "cyan",
+            border_style="green",
             box=box.ROUNDED,
             padding=(1, 2),
         )
