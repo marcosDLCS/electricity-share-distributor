@@ -3,7 +3,7 @@
 > Optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic self-consumption (*autoconsumo colectivo*) in Spain under **Real Decreto 244/2019**.
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.10.005-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.10.006-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-SciPy%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -191,6 +191,22 @@ esd calculate [OPTIONS]
 | `--view` | `-v` | Terminal view mode: `summary`, `trajectory`, `coefficients`, `comparison`, or `all` | `summary` |
 | `--format` | `-f` | Report export format: `all`, `csv`, `json`, `markdown`, `table` / `none` | `all` |
 | `--output-dir` | `-o` | Custom report destination directory | `.output` |
+| `--lang` | `-l` | Language override (`en` or `es`) | From config |
+
+### `esd doctor`
+Audits input data files to detect gaps, missing hourly intervals, inactive meters, and temporal alignment issues:
+
+```bash
+esd doctor
+# With detailed missing timestamps list:
+esd doctor --verbose
+```
+
+| Option | Flag | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--consumption-dir` | `-c` | Folder containing DATADIS hourly consumption CSVs | `.input/consumption` |
+| `--generation-dir` | `-g` | Folder containing Huawei FusionSolar generation Excel files | `.input/generation` |
+| `--verbose` | `-v` | Show complete list of all detected missing intervals | `False` |
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |
 
 ### `esd init`
