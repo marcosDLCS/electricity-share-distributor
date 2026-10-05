@@ -22,9 +22,13 @@ def get_export_timestamp() -> str:
 def export_coefficients_csv(
     opt_result: OptimizationResult,
     output_dir: Path | str,
+    precision: int | None = None,
     timestamp: str | None = None,
 ) -> Path:
     """Export monthly distribution coefficients and metrics per CUPS as CSV."""
+    from src.config import get_precision
+
+    prec = get_precision() if precision is None else precision
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = timestamp or get_export_timestamp()
@@ -38,6 +42,7 @@ def export_coefficients_csv(
                     "month": c.month,
                     "cups": c.cups,
                     "beta": f"{c.beta:.4f}",
+                    "share_pct": f"{c.beta * 100:.{prec}f}",
                     "consumption_kwh": round(c.consumption_kwh, 2),
                     "generation_allocated_kwh": round(c.generation_allocated_kwh, 2),
                     "self_consumed_kwh": round(c.self_consumed_kwh, 2),
@@ -85,9 +90,13 @@ def export_summary_markdown(
     ingestion_summary: IngestionSummary,
     output_dir: Path | str,
     lang: str | None = None,
+    precision: int | None = None,
     timestamp: str | None = None,
 ) -> Path:
     """Export complete human-readable optimization and coefficient report in Markdown."""
+    from src.config import get_precision
+
+    prec = get_precision() if precision is None else precision
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = timestamp or get_export_timestamp()
@@ -190,7 +199,7 @@ def export_summary_markdown(
         )
         for c in m.cups_metrics:
             lines.append(
-                f"| `{c.cups}` | **{c.beta:.4f}** | {c.beta * 100:5.2f}% | "
+                f"| `{c.cups}` | **{c.beta:.4f}** | {c.beta * 100:.{prec}f}% | "
                 f"{c.consumption_kwh:,.1f} | {c.generation_allocated_kwh:,.1f} | "
                 f"{c.self_consumed_kwh:,.1f} | {c.surplus_kwh:,.1f} | {c.grid_demand_kwh:,.1f} |"
             )
@@ -206,6 +215,7 @@ def export_all(
     output_dir: Path | str,
     formats: str = "all",
     lang: str | None = None,
+    precision: int | None = None,
 ) -> list[Path]:
     """Execute exports according to the specified format flag.
 
@@ -219,7 +229,11 @@ def export_all(
     exported: list[Path] = []
 
     if fmt in ("all", "csv"):
-        exported.append(export_coefficients_csv(opt_result, output_dir, timestamp=timestamp))
+        exported.append(
+            export_coefficients_csv(
+                opt_result, output_dir, precision=precision, timestamp=timestamp
+            )
+        )
 
     if fmt in ("all", "json"):
         exported.append(
@@ -238,6 +252,7 @@ def export_all(
                 ingestion_summary,
                 output_dir,
                 lang=lang,
+                precision=precision,
                 timestamp=timestamp,
             )
         )

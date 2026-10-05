@@ -34,10 +34,23 @@ def test_cli_init_english() -> None:
     assert "Initialized" in result.output or "Already Initialized" in result.output
 
 
+def test_cli_init_precision_valid() -> None:
+    result = runner.invoke(app, ["init", "--lang", "en", "--precision", "2"])
+    assert result.exit_code == 0
+    assert "2 decimal(s)" in result.output
+
+
+def test_cli_init_precision_invalid() -> None:
+    result = runner.invoke(app, ["init", "--precision", "5"])
+    assert result.exit_code != 0
+    assert "Invalid share precision" in result.output
+
+
 def test_cli_init_spanish() -> None:
-    result = runner.invoke(app, ["init", "--lang", "es"])
+    result = runner.invoke(app, ["init", "--lang", "es", "--precision", "1"])
     assert result.exit_code == 0
     assert "inicializado" in result.output.lower()
+    assert "1 decimal(s)" in result.output
 
 
 def test_cli_calculate_default() -> None:
@@ -173,6 +186,67 @@ def test_cli_config_modify_lang() -> None:
     # Reset back to en
     res_en = runner.invoke(app, ["config", "--lang", "en"])
     assert res_en.exit_code == 0
+
+
+def test_cli_config_modify_precision() -> None:
+    res = runner.invoke(app, ["config", "--precision", "2"])
+    assert res.exit_code == 0
+    assert "2 decimal(s)" in res.output
+
+    # Invalid precision
+    res_err = runner.invoke(app, ["config", "--precision", "4"])
+    assert res_err.exit_code != 0
+    assert "Invalid share precision" in res_err.output
+
+    # Reset back to 0
+    res_reset = runner.invoke(app, ["config", "--precision", "0"])
+    assert res_reset.exit_code == 0
+
+
+def test_cli_calculate_precision_flag() -> None:
+    res0 = runner.invoke(
+        app,
+        [
+            "calculate",
+            "-y",
+            "2026",
+            "-m",
+            "5",
+            "--precision",
+            "0",
+            "--view",
+            "coefficients",
+            "--format",
+            "none",
+            "--lang",
+            "en",
+        ],
+    )
+    assert res0.exit_code == 0
+
+    res2 = runner.invoke(
+        app,
+        [
+            "calculate",
+            "-y",
+            "2026",
+            "-m",
+            "5",
+            "--precision",
+            "2",
+            "--view",
+            "coefficients",
+            "--format",
+            "none",
+            "--lang",
+            "en",
+        ],
+    )
+    assert res2.exit_code == 0
+
+    res_inv = runner.invoke(app, ["calculate", "--precision", "9"])
+    assert res_inv.exit_code != 0
+    assert "Invalid share precision" in res_inv.output
 
 
 def test_cli_cleanup_force(tmp_path) -> None:

@@ -133,7 +133,12 @@ def render_version() -> None:
     console.print()
 
 
-def render_init_success(lang: str, initialized_at: str, was_already: bool = False) -> None:
+def render_init_success(
+    lang: str,
+    initialized_at: str,
+    precision: int = 0,
+    was_already: bool = False,
+) -> None:
     """Render initialization result card."""
     title = (
         "[bold green]✓ Initialized Successfully[/bold green]"
@@ -141,16 +146,24 @@ def render_init_success(lang: str, initialized_at: str, was_already: bool = Fals
         else "[bold cyan]ℹ Already Initialized[/bold cyan]"
     )
     lang_name = SUPPORTED_LANGUAGES.get(lang, lang)
+    prec_example = "53%" if precision == 0 else ("52.8%" if precision == 1 else "52.86%")
     msg = (
         t("init_already", lang=lang, timestamp=initialized_at)
         if was_already
         else t("init_success", lang=lang, language=lang_name)
     )
 
+    content = (
+        f"{msg}\n"
+        f"[dim]• Language: [cyan]{lang_name}[/cyan] ({lang})[/dim]\n"
+        f"[dim]• Share Precision: [cyan]{precision} decimal(s)[/cyan] (e.g. {prec_example}, sums to 100%)[/dim]\n"
+        f"[dim]• Timestamp: {initialized_at}[/dim]"
+    )
+
     console.print()
     console.print(
         Panel(
-            f"{msg}\n[dim]Timestamp: {initialized_at}[/dim]",
+            content,
             title=title,
             border_style="green" if not was_already else "cyan",
             box=box.ROUNDED,
@@ -227,6 +240,7 @@ def render_community_summary(
 def render_monthly_coefficients_table(
     month_metrics: CommunityMonthlyMetrics,
     lang: str | None = None,
+    precision: int | None = None,
 ) -> None:
     """Render 80-column compliant tabular view of monthly coefficient proposals per CUPS."""
     from src.presentation.console import make_percentage_bar
@@ -243,7 +257,7 @@ def render_monthly_coefficients_table(
     table.add_column(t("col_rank", lang=lang), justify="right", style="dim", width=2, no_wrap=True)
     table.add_column(t("col_cups", lang=lang), style="bold white", width=20, no_wrap=True)
     table.add_column(
-        t("col_beta", lang=lang), justify="right", style="bold green", width=6, no_wrap=True
+        t("col_beta", lang=lang), justify="right", style="bold green", width=7, no_wrap=True
     )
     table.add_column(t("col_share_bar", lang=lang), justify="left", width=8, no_wrap=True)
     table.add_column(
@@ -260,15 +274,17 @@ def render_monthly_coefficients_table(
         t("col_surplus", lang=lang), justify="right", style="dim yellow", width=8, no_wrap=True
     )
 
-    sorted_cups = sorted(month_metrics.cups_metrics, key=lambda c: c.beta, reverse=True)
+    from src.config import get_precision
 
+    prec = get_precision() if precision is None else precision
+    sorted_cups = sorted(month_metrics.cups_metrics, key=lambda c: c.beta, reverse=True)
     for rank, cm in enumerate(sorted_cups, 1):
         pct = cm.beta * 100.0
         bar = make_percentage_bar(pct, width=8)
         table.add_row(
             str(rank),
             cm.cups,
-            f"{pct:5.2f}%",
+            f"{pct:.{prec}f}%",
             bar,
             f"{cm.consumption_kwh:,.1f}",
             f"{cm.self_consumed_kwh:,.1f}",
@@ -443,6 +459,7 @@ def render_config_view(cfg: AppConfig, lang: str | None = None) -> None:
     table.add_column("Value", style="green")
 
     table.add_row("language", cfg.language)
+    table.add_row("share_precision", f"{cfg.share_precision} decimal(s)")
     table.add_row("consumption_dir", str(cfg.consumption_dir))
     table.add_row("generation_dir", str(cfg.generation_dir))
     table.add_row("output_dir", str(cfg.output_dir))

@@ -13,12 +13,15 @@ from src.config import (
     DEFAULT_OUTPUT_DIR,
     ensure_directories,
     get_language,
+    get_precision,
     is_initialized,
     load_config,
     mark_initialized,
     normalize_language_code,
     save_config,
     set_language,
+    set_precision,
+    validate_share_precision,
 )
 from src.ingestion import (
     DatadisConsumptionLoader,
@@ -87,10 +90,22 @@ def init_command(
         "-l",
         help="Language preference: 'en' (English) or 'es' (Español).",
     ),
+    precision: int = typer.Option(
+        0,
+        "--precision",
+        "-p",
+        help="Share percentage precision: 0 (e.g. 53%), 1 (e.g. 52.8%), or 2 (e.g. 52.86%).",
+    ),
 ) -> None:
-    """Initialize workspace directories, configure language preference, and save settings."""
+    """Initialize workspace directories, configure language preference, precision, and save settings."""
     try:
         norm_lang = normalize_language_code(lang)
+    except ValueError as err:
+        console.print(f"[bold red]Error:[/bold red] {err}")
+        sys.exit(1)
+
+    try:
+        valid_precision = validate_share_precision(precision)
     except ValueError as err:
         console.print(f"[bold red]Error:[/bold red] {err}")
         sys.exit(1)
@@ -100,10 +115,16 @@ def init_command(
     old_ts = cfg.initialized_at
 
     set_language(norm_lang)
+    set_precision(valid_precision)
     ensure_directories()
     ts = mark_initialized(version=get_version())
 
-    render_init_success(lang=norm_lang, initialized_at=old_ts or ts, was_already=was_already)
+    render_init_success(
+        lang=norm_lang,
+        initialized_at=old_ts or ts,
+        precision=valid_precision,
+        was_already=was_already,
+    )
 
 
 @app.command(name="doctor")
@@ -198,6 +219,12 @@ def calculate_command(
         "-f",
         help="Export format: 'all', 'table' (no file export), 'csv', 'json', or 'markdown'.",
     ),
+    precision: int | None = typer.Option(
+        None,
+        "--precision",
+        "-p",
+        help="Share percentage precision: 0 (e.g. 53%), 1 (e.g. 52.8%), or 2 (e.g. 52.86%).",
+    ),
     lang: str | None = typer.Option(
         None,
         "--lang",
@@ -207,6 +234,14 @@ def calculate_command(
 ) -> None:
     """Calculate optimal electricity distribution coefficients (beta_i) for collective PV installation."""
     active_lang = normalize_language_code(lang) if lang else get_language()
+
+    try:
+        active_precision = (
+            get_precision() if precision is None else validate_share_precision(precision)
+        )
+    except ValueError as err:
+        console.print(f"[bold red]Error:[/bold red] {err}")
+        sys.exit(1)
 
     if not is_initialized():
         render_not_initialized_warning(lang=active_lang)
@@ -250,6 +285,7 @@ def calculate_command(
                 aligned,
                 strategy=opt_strat,
                 include_baselines=True,
+                precision=active_precision,
             )
 
         # Presentation Views
@@ -261,15 +297,19 @@ def calculate_command(
             render_strategy_comparison_table(opt_result, lang=active_lang)
             if month is not None or view_mode == "all":
                 for m in opt_result.monthly_results:
-                    render_monthly_coefficients_table(m, lang=active_lang)
+                    render_monthly_coefficients_table(
+                        m, lang=active_lang, precision=active_precision
+                    )
             else:
                 latest_month = opt_result.monthly_results[-1]
-                render_monthly_coefficients_table(latest_month, lang=active_lang)
+                render_monthly_coefficients_table(
+                    latest_month, lang=active_lang, precision=active_precision
+                )
         elif view_mode == "trajectory":
             render_monthly_trajectory_table(opt_result, lang=active_lang)
         elif view_mode == "coefficients":
             for m in opt_result.monthly_results:
-                render_monthly_coefficients_table(m, lang=active_lang)
+                render_monthly_coefficients_table(m, lang=active_lang, precision=active_precision)
         elif view_mode == "comparison":
             render_strategy_comparison_table(opt_result, lang=active_lang)
 
@@ -282,6 +322,7 @@ def calculate_command(
                 output_dir=output_dir,
                 formats=fmt_clean,
                 lang=active_lang,
+                precision=active_precision,
             )
             render_export_success(exported_paths, lang=active_lang)
 
@@ -300,6 +341,12 @@ def config_command(
         "--lang",
         "-l",
         help="Update default language ('en' or 'es').",
+    ),
+    precision: int | None = typer.Option(
+        None,
+        "--precision",
+        "-p",
+        help="Update share percentage precision (0, 1, or 2 decimals).",
     ),
     consumption_dir: Path | None = typer.Option(
         None,
@@ -325,8 +372,19 @@ def config_command(
     modified = False
 
     if lang is not None:
-        cfg.language = normalize_language_code(lang)
-        modified = True
+        try:
+            cfg.language = normalize_language_code(lang)
+            modified = True
+        except ValueError as err:
+            console.print(f"[bold red]Error:[/bold red] {err}")
+            sys.exit(1)
+    if precision is not None:
+        try:
+            cfg.share_precision = validate_share_precision(precision)
+            modified = True
+        except ValueError as err:
+            console.print(f"[bold red]Error:[/bold red] {err}")
+            sys.exit(1)
     if consumption_dir is not None:
         cfg.consumption_dir = str(consumption_dir)
         modified = True
