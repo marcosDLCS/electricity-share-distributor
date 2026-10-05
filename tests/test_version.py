@@ -49,3 +49,30 @@ def test_check_version_consistency(tmp_path: Path) -> None:
     valid, msg = check_version_consistency()
     assert valid is True
     assert "is valid and consistent" in msg
+
+
+def test_documentation_guides_exist_and_synchronized() -> None:
+    """Verify that both English and Spanish documentation guides exist with maintenance harnesses."""
+    root_dir = Path(__file__).resolve().parent.parent
+    guide_en = root_dir / "docs" / "GUIDE_EN.md"
+    guide_es = root_dir / "docs" / "GUIDE_ES.md"
+
+    assert guide_en.exists(), "docs/GUIDE_EN.md must exist"
+    assert guide_es.exists(), "docs/GUIDE_ES.md must exist"
+
+    content_en = guide_en.read_text(encoding="utf-8")
+    content_es = guide_es.read_text(encoding="utf-8")
+
+    # English guide checks
+    assert "Maintenance & Synchronization Harness" in content_en
+    assert "Real Decreto 244/2019" in content_en
+    assert "DistributionOptimizer" in content_en
+    assert "Hare-Niemeyer" in content_en
+    assert "CoefficientsMatrix" in content_en
+
+    # Spanish guide checks
+    assert "Arnés de Mantenimiento" in content_es
+    assert "Real Decreto 244/2019" in content_es
+    assert "DistributionOptimizer" in content_es
+    assert "Hare-Niemeyer" in content_es
+    assert "CoefficientsMatrix" in content_es
