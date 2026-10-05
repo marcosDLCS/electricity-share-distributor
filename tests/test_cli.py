@@ -31,7 +31,16 @@ def test_cli_help() -> None:
 def test_cli_init_english() -> None:
     result = runner.invoke(app, ["init", "--lang", "en"])
     assert result.exit_code == 0
-    assert "Initialized" in result.output or "Already Initialized" in result.output
+    # Matches both "✓ Initialized Successfully" and "✓ Re-initialized Successfully"
+    assert "nitialized Successfully" in result.output
+    assert "Output Directory" in result.output
+
+
+def test_cli_init_no_flags_uses_defaults() -> None:
+    """init with no flags should succeed, using stored config values."""
+    result = runner.invoke(app, ["init"])
+    assert result.exit_code == 0
+    assert "nitialized Successfully" in result.output
 
 
 def test_cli_init_precision_valid() -> None:
@@ -51,6 +60,34 @@ def test_cli_init_spanish() -> None:
     assert result.exit_code == 0
     assert "inicializado" in result.output.lower()
     assert "1 decimal(s)" in result.output
+
+
+def test_cli_init_clears_output(tmp_path) -> None:
+    """init should always clear the .output directory contents."""
+    import json
+
+    # Create a minimal config pointing output to tmp_path
+    cfg_file = tmp_path / ".esd_config.json"
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    (out_dir / "old_report.csv").write_text("data")
+    (out_dir / "another.json").write_text("{}")
+
+    cfg_data = {
+        "language": "en",
+        "share_precision": 0,
+        "input_dir": str(tmp_path / ".input"),
+        "consumption_dir": str(tmp_path / ".input/consumption"),
+        "generation_dir": str(tmp_path / ".input/generation"),
+        "output_dir": str(out_dir),
+    }
+    cfg_file.write_text(json.dumps(cfg_data))
+
+    from src.config import clear_output_directory
+
+    cleared = clear_output_directory(out_dir)
+    assert cleared == 2
+    assert not [p for p in out_dir.iterdir() if not p.name.startswith(".")]
 
 
 def test_cli_calculate_default() -> None:

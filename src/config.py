@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Final
@@ -243,3 +244,34 @@ def ensure_directories(
     output_path.mkdir(parents=True, exist_ok=True)
 
     return input_path, consumption_path, generation_path, output_path
+
+
+def clear_output_directory(output_dir: Path | str = DEFAULT_OUTPUT_DIR) -> int:
+    """Clear all generated report files and subdirectories from the output directory if it exists.
+
+    Args:
+        output_dir: Path to output directory to clear.
+
+    Returns:
+        Number of items successfully removed.
+    """
+    out_path = Path(output_dir)
+    if not out_path.exists():
+        return 0
+
+    count = 0
+    for item in out_path.iterdir():
+        if item.name.startswith(".") and item.name != ".gitkeep":
+            continue
+        if item.name == ".gitkeep":
+            continue
+        try:
+            if item.is_file() or item.is_symlink():
+                item.unlink()
+                count += 1
+            elif item.is_dir():
+                shutil.rmtree(item)
+                count += 1
+        except Exception:
+            pass
+    return count

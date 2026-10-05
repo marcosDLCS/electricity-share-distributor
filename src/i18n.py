@@ -43,6 +43,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "opt_force": "Execute cleanup without interactive confirmation.",
         # Messages
         "init_success": "Workspace successfully initialized with language '{language}'.",
+        "init_reinit": "Workspace successfully re-initialized with language '{language}'.",
         "init_already": "Workspace was already initialized at {timestamp}.",
         "not_initialized_warning": (
             "[yellow]Warning: Workspace has not been initialized yet. Run 'esd init' to configure settings.[/yellow]"
@@ -119,6 +120,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "opt_force": "Ejecutar limpieza sin confirmación interactiva.",
         # Messages
         "init_success": "Espacio de trabajo inicializado correctamente con idioma '{language}'.",
+        "init_reinit": "Espacio de trabajo reinicializado correctamente con idioma '{language}'.",
         "init_already": "El espacio de trabajo ya estaba inicializado en {timestamp}.",
         "not_initialized_warning": (
             "[yellow]Aviso: El espacio de trabajo aún no ha sido inicializado. Ejecute 'esd init' para configurarlo.[/yellow]"

@@ -11,6 +11,8 @@ from src.config import (
     DEFAULT_CONSUMPTION_DIR,
     DEFAULT_GENERATION_DIR,
     DEFAULT_OUTPUT_DIR,
+    DEFAULT_SHARE_PRECISION,
+    clear_output_directory,
     ensure_directories,
     get_language,
     get_precision,
@@ -84,46 +86,64 @@ def version_command() -> None:
 
 @app.command(name="init")
 def init_command(
-    lang: str = typer.Option(
-        "en",
+    lang: str | None = typer.Option(
+        None,
         "--lang",
         "-l",
-        help="Language preference: 'en' (English) or 'es' (Español).",
+        help="Language preference: 'en' (English) or 'es' (Español). Defaults to current setting or 'en'.",
     ),
-    precision: int = typer.Option(
-        0,
+    precision: int | None = typer.Option(
+        None,
         "--precision",
         "-p",
-        help="Share percentage precision: 0 (e.g. 53%), 1 (e.g. 52.8%), or 2 (e.g. 52.86%).",
+        help="Share percentage precision: 0 (e.g. 53%), 1 (e.g. 52.8%), or 2 (e.g. 52.86%). Defaults to current setting or 0.",
     ),
 ) -> None:
-    """Initialize workspace directories, configure language preference, precision, and save settings."""
-    try:
-        norm_lang = normalize_language_code(lang)
-    except ValueError as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
+    """Initialize workspace: create dirs, clear .output, configure language and precision.
 
-    try:
-        valid_precision = validate_share_precision(precision)
-    except ValueError as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
-
+    Safe to call multiple times — always re-applies settings, clears .output, and creates
+    missing directories. Language and precision default to already-configured values if omitted.
+    """
     cfg = load_config()
     was_already = is_initialized()
-    old_ts = cfg.initialized_at
 
-    set_language(norm_lang)
-    set_precision(valid_precision)
-    ensure_directories()
+    # Resolve language: flag > current config > factory default
+    raw_lang = lang if lang is not None else (cfg.language or "en")
+    try:
+        target_lang = normalize_language_code(raw_lang)
+    except ValueError as err:
+        console.print(f"[bold red]Error:[/bold red] {err}")
+        sys.exit(1)
+
+    # Resolve precision: flag > current config > factory default
+    raw_precision = (
+        precision
+        if precision is not None
+        else (cfg.share_precision if cfg.share_precision is not None else DEFAULT_SHARE_PRECISION)
+    )
+    try:
+        target_precision = validate_share_precision(raw_precision)
+    except ValueError as err:
+        console.print(f"[bold red]Error:[/bold red] {err}")
+        sys.exit(1)
+
+    # 1. Clear .output (always on init / re-init)
+    cleared_count = clear_output_directory(Path(cfg.output_dir))
+
+    # 2. Ensure all workspace directories exist
+    ensure_directories(config=cfg)
+
+    # 3. Persist settings and record initialization timestamp
+    set_language(target_lang)
+    set_precision(target_precision)
     ts = mark_initialized(version=get_version())
 
     render_init_success(
-        lang=norm_lang,
-        initialized_at=old_ts or ts,
-        precision=valid_precision,
+        lang=target_lang,
+        initialized_at=ts,
+        precision=target_precision,
         was_already=was_already,
+        cleared_files=cleared_count,
     )
 
 
