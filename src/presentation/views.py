@@ -20,6 +20,7 @@ from src.version import get_version
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from src.config import AppConfig
     from src.ingestion.schema import IngestionSummary
     from src.optimization.models import CommunityMonthlyMetrics, OptimizationResult
 
@@ -63,6 +64,10 @@ def render_help(lang: str | None = None) -> None:
     cmd_table.add_row(
         "init",
         t("cmd_init_desc", lang=lang),
+    )
+    cmd_table.add_row(
+        "config",
+        t("cmd_config_desc", lang=lang),
     )
     cmd_table.add_row(
         "cleanup",
@@ -419,4 +424,26 @@ def render_export_success(exported_paths: list[Path], lang: str | None = None) -
             padding=(1, 2),
         )
     )
+    console.print()
+
+
+def render_config_view(cfg: AppConfig, lang: str | None = None) -> None:
+    """Render active configuration parameters table."""
+    table = Table(
+        title="⚙️ Active Configuration",
+        box=box.ROUNDED,
+        padding=(0, 1),
+    )
+    table.add_column("Setting", style="bold cyan")
+    table.add_column("Value", style="green")
+
+    table.add_row("language", cfg.language)
+    table.add_row("consumption_dir", str(cfg.consumption_dir))
+    table.add_row("generation_dir", str(cfg.generation_dir))
+    table.add_row("output_dir", str(cfg.output_dir))
+    table.add_row("initialized_at", str(cfg.initialized_at or "—"))
+    table.add_row("version", str(cfg.version or "—"))
+
+    console.print()
+    console.print(table)
     console.print()

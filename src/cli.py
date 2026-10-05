@@ -17,6 +17,7 @@ from src.config import (
     load_config,
     mark_initialized,
     normalize_language_code,
+    save_config,
     set_language,
 )
 from src.ingestion import (
@@ -31,6 +32,7 @@ from src.presentation.export import export_all
 from src.presentation.views import (
     render_cleanup_result,
     render_community_summary,
+    render_config_view,
     render_export_success,
     render_help,
     render_init_success,
@@ -245,6 +247,57 @@ def calculate_command(
     except Exception as exc:
         console.print(f"\n[bold red]Unexpected error:[/bold red] {exc}\n")
         sys.exit(1)
+
+
+@app.command(name="config")
+def config_command(
+    lang: str | None = typer.Option(
+        None,
+        "--lang",
+        "-l",
+        help="Update default language ('en' or 'es').",
+    ),
+    consumption_dir: Path | None = typer.Option(
+        None,
+        "--consumption-dir",
+        "-c",
+        help="Update default consumption directory path.",
+    ),
+    generation_dir: Path | None = typer.Option(
+        None,
+        "--generation-dir",
+        "-g",
+        help="Update default generation directory path.",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        help="Update default output directory path.",
+    ),
+) -> None:
+    """View or update persistent application configuration."""
+    cfg = load_config()
+    modified = False
+
+    if lang is not None:
+        cfg.language = normalize_language_code(lang)
+        modified = True
+    if consumption_dir is not None:
+        cfg.consumption_dir = str(consumption_dir)
+        modified = True
+    if generation_dir is not None:
+        cfg.generation_dir = str(generation_dir)
+        modified = True
+    if output_dir is not None:
+        cfg.output_dir = str(output_dir)
+        modified = True
+
+    if modified:
+        save_config(cfg)
+        console.print("[bold green]✓ Configuration updated successfully.[/bold green]")
+
+    render_config_view(cfg, lang=cfg.language)
 
 
 @app.command(name="cleanup")
