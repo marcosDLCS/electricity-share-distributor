@@ -25,6 +25,7 @@ from src.config import (
     set_precision,
     validate_share_precision,
 )
+from src.i18n import t
 from src.ingestion import (
     DatadisConsumptionLoader,
     DataDoctor,
@@ -107,33 +108,54 @@ def init_command(
     cfg = load_config()
     was_already = is_initialized()
 
-    # Resolve language: flag > current config > factory default
-    raw_lang = lang if lang is not None else (cfg.language or "en")
+    # 1. Clear .output (always on init / re-init)
+    cleared_count = clear_output_directory(Path(cfg.output_dir))
+
+    # 2. Ask user for desired language if not explicitly provided
+    if lang is None:
+        try:
+            raw_lang = typer.prompt(
+                "Select desired language ('en' for English, 'es' for Spanish)",
+                default=cfg.language or "en",
+            )
+        except (typer.exceptions.Abort, EOFError):
+            raw_lang = cfg.language or "en"
+    else:
+        raw_lang = lang
+
     try:
         target_lang = normalize_language_code(raw_lang)
     except ValueError as err:
         console.print(f"[bold red]Error:[/bold red] {err}")
         sys.exit(1)
 
-    # Resolve precision: flag > current config > factory default
-    raw_precision = (
-        precision
-        if precision is not None
-        else (cfg.share_precision if cfg.share_precision is not None else DEFAULT_SHARE_PRECISION)
-    )
+    # 3. Ask user for desired precision if not explicitly provided
+    if precision is None:
+        try:
+            raw_precision = typer.prompt(
+                "Select desired share precision (0, 1, or 2 decimal places)",
+                default=cfg.share_precision
+                if cfg.share_precision is not None
+                else DEFAULT_SHARE_PRECISION,
+                type=int,
+            )
+        except (typer.exceptions.Abort, EOFError):
+            raw_precision = (
+                cfg.share_precision if cfg.share_precision is not None else DEFAULT_SHARE_PRECISION
+            )
+    else:
+        raw_precision = precision
+
     try:
         target_precision = validate_share_precision(raw_precision)
     except ValueError as err:
         console.print(f"[bold red]Error:[/bold red] {err}")
         sys.exit(1)
 
-    # 1. Clear .output (always on init / re-init)
-    cleared_count = clear_output_directory(Path(cfg.output_dir))
-
-    # 2. Ensure all workspace directories exist
+    # 4. Ensure all workspace directories exist
     ensure_directories(config=cfg)
 
-    # 3. Persist settings and record initialization timestamp
+    # 5. Persist settings and record initialization timestamp
     set_language(target_lang)
     set_precision(target_precision)
     ts = mark_initialized(version=get_version())
@@ -177,9 +199,7 @@ def doctor_command(
     """Audit input data files to detect gaps, missing hourly intervals, and inconsistencies."""
     active_lang = normalize_language_code(lang) if lang else get_language()
 
-    with console.status(
-        "[bold cyan]Running data diagnostics across consumption and generation files...[/bold cyan]"
-    ):
+    with console.status(f"[bold cyan]{t('status_doctor', lang=active_lang)}[/bold cyan]"):
         doc = DataDoctor(consumption_dir=consumption_dir, generation_dir=generation_dir)
         report = doc.diagnose()
 
@@ -279,7 +299,7 @@ def calculate_command(
 
     try:
         with console.status(
-            f"[bold cyan]Ingesting and synchronizing curves from {consumption_dir} and {generation_dir}...[/bold cyan]"
+            f"[bold cyan]{t('status_ingesting', lang=active_lang, consumption_dir=consumption_dir, generation_dir=generation_dir)}[/bold cyan]"
         ):
             c_loader = DatadisConsumptionLoader(consumption_dir)
             g_loader = HuaweiGenerationLoader(generation_dir)
@@ -298,9 +318,7 @@ def calculate_command(
             )
             aligned = aligner.align(year=year, month=month)
 
-        with console.status(
-            "[bold green]Solving RD 244/2019 optimization linear programs...[/bold green]"
-        ):
+        with console.status(f"[bold green]{t('status_optimizing', lang=active_lang)}[/bold green]"):
             opt_result = DistributionOptimizer.optimize_dataset(
                 aligned,
                 strategy=opt_strat,

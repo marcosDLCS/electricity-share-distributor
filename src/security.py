@@ -7,6 +7,7 @@ identifiable energy data are committed or included in tracked repository files.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -133,27 +134,171 @@ def scan_directory(root_dir: Path | str) -> dict[Path, list[tuple[int, str, str]
     return results
 
 
-def check_privacy() -> int:
-    """Pre-commit hook entry point to verify repository data privacy."""
-    repo_root = Path.cwd()
-    findings = scan_directory(repo_root)
+def scan_git_history(repo_root: Path | str | None = None) -> list[tuple[str, str, str]]:
+    """Scan all git commits in repository history for prohibited real CUPS identifiers.
 
-    if not findings:
+    Args:
+        repo_root: Optional repository root path. Defaults to current working directory.
+
+    Returns:
+        List of tuples: (commit_hash, location_preview, prohibited_cups).
+    """
+    root = Path(repo_root) if repo_root else Path.cwd()
+    findings: list[tuple[str, str, str]] = []
+
+    try:
+        res = subprocess.run(
+            ["git", "rev-list", "--all"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        commits = res.stdout.strip().split()
+    except Exception:
+        # Not a git repository or git command unavailable
+        return findings
+
+    for commit in commits:
+        # 1. Scan commit message
+        msg_res = subprocess.run(
+            ["git", "log", "-1", "--format=%B", commit],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+        if msg_res.returncode == 0:
+            for leak in find_cups_leaks(msg_res.stdout):
+                findings.append((commit[:8], "commit-message", leak))
+
+        # 2. Scan commit diff additions
+        diff_res = subprocess.run(
+            ["git", "show", "--format=", commit],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            errors="ignore",
+        )
+        if diff_res.returncode == 0:
+            for line in diff_res.stdout.splitlines():
+                if line.startswith("+") and not line.startswith("+++"):
+                    for leak in find_cups_leaks(line):
+                        findings.append((commit[:8], line[:80].strip(), leak))
+
+    return findings
+
+
+def scan_git_staged(repo_root: Path | str | None = None) -> dict[str, list[tuple[int, str, str]]]:
+    """Scan git staged changes (index) for prohibited real CUPS identifiers before commit.
+
+    Args:
+        repo_root: Optional repository root path. Defaults to current working directory.
+
+    Returns:
+        Dictionary mapping staged file names to lists of findings (line_index, cups, preview).
+    """
+    root = Path(repo_root) if repo_root else Path.cwd()
+    findings: dict[str, list[tuple[int, str, str]]] = {}
+
+    try:
+        res = subprocess.run(
+            ["git", "diff", "--cached", "-U0"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except Exception:
+        return findings
+
+    current_file = ""
+    line_num = 0
+
+    for line in res.stdout.splitlines():
+        if line.startswith("+++ b/"):
+            current_file = line[6:]
+        elif line.startswith("@@ "):
+            # Extract hunk header line number e.g. @@ -1,4 +10,4 @@
+            match = re.search(r"\+(\d+)", line)
+            line_num = int(match.group(1)) if match else 1
+        elif line.startswith("+") and not line.startswith("+++"):
+            leaks = find_cups_leaks(line[1:])
+            for leak in leaks:
+                findings.setdefault(current_file, []).append((line_num, leak, line[1:].strip()))
+            line_num += 1
+
+    return findings
+
+
+def check_privacy(include_history: bool = True, staged_only: bool = False) -> int:
+    """Pre-commit hook and CLI verification entry point for repository data privacy.
+
+    Args:
+        include_history: Whether to also scan all commits in Git history.
+        staged_only: If True, only inspect staged changes in the git index.
+
+    Returns:
+        0 if 100% clean, 1 if any prohibited CUPS identifiers are detected.
+    """
+    repo_root = Path.cwd()
+    has_violations = False
+
+    # 1. Staged files check (if requested)
+    if staged_only:
+        staged_findings = scan_git_staged(repo_root)
+        if staged_findings:
+            print("\n❌ [SECURITY ERROR] Real CUPS detected in staged git changes:")
+            for file_path, items in staged_findings.items():
+                print(f"File: {file_path}")
+                for line_num, cups, preview in items:
+                    print(f"  Line ~{line_num}: Prohibited CUPS '{cups}' -> {preview[:80]}")
+            return 1
+        print("✅ Staged changes are 100% clean of prohibited CUPS.")
         return 0
 
-    print("\n❌ [SECURITY ERROR] Real / Non-synthetic CUPS detected in repository files:")
-    print("Under Real Decreto 244/2019 and GDPR, CUPS numbers are private residential identifiers.")
-    print("Only synthetic mock CUPS adhering to pattern 'ES00210000000000XXYY' are permitted.\n")
+    # 2. Workspace text files check
+    file_findings = scan_directory(repo_root)
+    if file_findings:
+        has_violations = True
+        print("\n❌ [SECURITY ERROR] Real / Non-synthetic CUPS detected in repository files:")
+        print(
+            "Under Real Decreto 244/2019 and GDPR, CUPS numbers are private residential identifiers."
+        )
+        print(
+            "Only synthetic mock CUPS adhering to pattern 'ES00210000000000XXYY' are permitted.\n"
+        )
+        for file_path, items in file_findings.items():
+            rel_path = file_path.relative_to(repo_root)
+            print(f"File: {rel_path}")
+            for line_num, cups, preview in items:
+                print(f"  Line {line_num}: Prohibited CUPS '{cups}' -> {preview[:80]}")
 
-    for file_path, items in findings.items():
-        rel_path = file_path.relative_to(repo_root)
-        print(f"File: {rel_path}")
-        for line_num, cups, preview in items:
-            print(f"  Line {line_num}: Prohibited CUPS '{cups}' -> {preview[:80]}")
+    # 3. Git commit history check
+    if include_history:
+        history_findings = scan_git_history(repo_root)
+        if history_findings:
+            has_violations = True
+            print("\n❌ [SECURITY ERROR] Real CUPS detected in git commit history:")
+            print("No compromised commit may stay in git history under GDPR & LOPDGDD.")
+            for commit_hash, loc, cups in history_findings:
+                print(f"  Commit {commit_hash} ({loc}): Prohibited CUPS '{cups}'")
 
-    print("\nPlease replace these real identifiers with synthetic mock CUPS before committing.\n")
-    return 1
+    if has_violations:
+        print(
+            "\nPlease replace these real identifiers with synthetic mock CUPS before committing.\n"
+        )
+        return 1
+
+    print("✅ Privacy & Security Check passed: Workspace files and git history are 100% clean.")
+    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(check_privacy())
+    args = sys.argv[1:]
+    is_staged_only = "--staged" in args
+    is_files_only = "--files-only" in args
+    exit_code = check_privacy(
+        include_history=not is_files_only and not is_staged_only,
+        staged_only=is_staged_only,
+    )
+    sys.exit(exit_code)

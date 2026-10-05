@@ -97,7 +97,16 @@ electricity-share-distributor/
 
 ## 5. 🤖 Directives for Autonomous AI Agents
 
-- **🛡️ Directive 1: Anonymization & Data Privacy is Absolute.** Universal Supply Point Codes (CUPS) are legally protected identifiers under GDPR and Spanish Organic Law 3/2018 (LOPDGDD). Never commit, log, or include real DATADIS CUPS, contract numbers, residential addresses, or real customer datasets in the codebase, tests, documentation, or commit messages. Always use synthetic mock identifiers (`ES0021000000000001AA`, `ES0021000000000002BB`, etc.). Enforce this with the pre-commit harness: `python3 -m src.security` (or via `pre-commit run privacy-cups-checker`).
+- **🛡️ Directive 1: Anonymization & Data Privacy is Absolute.** Universal Supply Point Codes (CUPS) are legally protected residential identifiers under European GDPR (Regulation EU 2016/679) and Spanish Organic Law 3/2018 (LOPDGDD).
+  - **Zero Real Data Policy:** Never commit, log, or include real DATADIS CUPS, contract numbers, residential addresses, customer names, or real customer consumption datasets in the codebase, tests, documentation, or commit messages.
+  - **Synthetic Mock Specification:** Exclusively use authorized synthetic mock identifiers adhering strictly to pattern `ES00210000000000XXYY` (e.g., `ES0021000000000001AA`, `ES0021000000000002BB`, etc.).
+  - **Automated Verification Harness:** Enforce zero-leakage via the security harness:
+    ```bash
+    python3 -m src.security            # Scans workspace files and entire git commit history
+    python3 -m src.security --history  # Explicit git history scan across all commit blobs and messages
+    pre-commit run privacy-cups-checker # Pre-commit hook enforcement
+    ```
+  - **Git History Invariant:** No commit containing real CUPS or private data may ever exist in Github history. If real data is ever detected in local commits before pushing, you must amend or rewrite commits prior to sharing.
 - **🌐 Directive 2: Universal English Codebase.** Write all code, comments, docstrings, test names, CLI messages, and commit messages entirely in **English**.
 - **🎯 Directive 3: Strict Modern Typing.** Use strict type hints (`typing`, native union syntax `X | Y`) on all function signatures, dataclasses, and class methods. Avoid bare `Any`.
 - **🚨 Directive 4: Domain Exceptions.** Use custom domain exceptions (`EsdError`, `IngestionError`, `OptimizationError`). Handle errors gracefully without uncaught stack traces.

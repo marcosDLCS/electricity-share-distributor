@@ -5,10 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.security import (
+    check_privacy,
     find_cups_leaks,
     is_synthetic_cups,
     scan_directory,
     scan_file,
+    scan_git_history,
 )
 
 # Test fixture string constructed dynamically so it does not contain any real CUPS
@@ -57,3 +59,15 @@ def test_entire_repository_is_clean() -> None:
     repo_root = Path.cwd()
     findings = scan_directory(repo_root)
     assert findings == {}, f"Prohibited CUPS found in files: {findings}"
+
+
+def test_entire_git_history_is_clean() -> None:
+    """Ensure all commits in git history are completely free of real CUPS identifiers."""
+    history_findings = scan_git_history(Path.cwd())
+    assert history_findings == [], f"Prohibited CUPS found in git history: {history_findings}"
+
+
+def test_check_privacy_succeeds() -> None:
+    """Ensure the check_privacy entry point returns 0 for a clean repository."""
+    assert check_privacy(include_history=True) == 0
+    assert check_privacy(staged_only=True) == 0
