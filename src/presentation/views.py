@@ -12,7 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from src.config import SUPPORTED_LANGUAGES
+from src.config import SUPPORTED_LANGUAGES, get_language
 from src.i18n import t
 from src.presentation.console import console
 from src.version import get_version
@@ -91,7 +91,7 @@ def render_help(lang: str | None = None) -> None:
     console.print()
 
 
-def render_version() -> None:
+def render_version(lang: str | None = None) -> None:
     """Render a rich, formatted version panel for 'esd version'."""
     version = get_version()
     py_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
@@ -100,11 +100,11 @@ def render_version() -> None:
     info_table.add_column(style="bold cyan", no_wrap=True)
     info_table.add_column(style="white")
 
-    info_table.add_row("☀️ Version", f"[bold cyan]{version}[/bold cyan]")
+    info_table.add_row(f"☀️ {t('lbl_version', lang=lang)}", f"[bold cyan]{version}[/bold cyan]")
     info_table.add_row("🐍 Python", f"[dim]{py_version}[/dim]")
-    info_table.add_row("📜 License", "[dim]MIT[/dim]")
+    info_table.add_row(f"📜 {t('lbl_license', lang=lang)}", "[dim]MIT[/dim]")
     info_table.add_row(
-        "🌐 Source",
+        f"🌐 {t('lbl_source', lang=lang)}",
         "[dim]github.com/marcosDLCS/electricity-share-distributor[/dim]",
     )
 
@@ -113,7 +113,7 @@ def render_version() -> None:
     title_text.append("(esd)", style="bold white")
 
     subtitle = Text(
-        "\nCollective PV self-consumption coefficient optimization CLI (RD 244/2019)\n",
+        f"\n{t('app_subtitle', lang=lang)}\n",
         style="dim italic",
     )
 
@@ -141,28 +141,28 @@ def render_init_success(
     cleared_files: int = 0,
 ) -> None:
     """Render initialization result card."""
-    title = (
-        "[bold green]✓ Initialized Successfully[/bold green]"
-        if not was_already
-        else "[bold green]✓ Re-initialized Successfully[/bold green]"
-    )
+    title_key = "init_title_reinit" if was_already else "init_title_success"
+    title = f"[bold green]{t(title_key, lang=lang)}[/bold green]"
     lang_name = SUPPORTED_LANGUAGES.get(lang, lang)
     prec_example = "53%" if precision == 0 else ("52.8%" if precision == 1 else "52.86%")
     msg_key = "init_reinit" if was_already else "init_success"
     msg = t(msg_key, lang=lang, language=lang_name)
+    prec_desc = t("init_prec_desc", lang=lang, precision=precision, example=prec_example)
 
     lines = [
         msg,
-        f"[dim]• Language: [cyan]{lang_name}[/cyan] ({lang})[/dim]",
-        f"[dim]• Share Precision: [cyan]{precision} decimal(s)[/cyan] (e.g. {prec_example}, sums to 100%)[/dim]",
-        f"[dim]• Timestamp: {initialized_at}[/dim]",
+        f"[dim]• {t('init_lbl_lang', lang=lang)}: [cyan]{lang_name}[/cyan] ({lang})[/dim]",
+        f"[dim]• {t('init_lbl_precision', lang=lang)}: [cyan]{prec_desc}[/cyan][/dim]",
+        f"[dim]• {t('init_lbl_timestamp', lang=lang)}: {initialized_at}[/dim]",
     ]
     if cleared_files > 0:
+        clean_text = t("init_clean_cleared", lang=lang, count=cleared_files)
         lines.append(
-            f"[dim]• Output Directory: [yellow]Cleared {cleared_files} file(s) from .output[/yellow][/dim]"
+            f"[dim]• {t('init_lbl_output', lang=lang)}: [yellow]{clean_text}[/yellow][/dim]"
         )
     else:
-        lines.append("[dim]• Output Directory: [cyan]Ready & clean[/cyan][/dim]")
+        clean_text = t("init_clean_ready", lang=lang)
+        lines.append(f"[dim]• {t('init_lbl_output', lang=lang)}: [cyan]{clean_text}[/cyan][/dim]")
 
     console.print()
     console.print(
@@ -194,8 +194,8 @@ def render_cleanup_result(count: int, output_dir: str, lang: str | None = None) 
     console.print()
     console.print(
         Panel(
-            f"{msg}\n[dim]Directory: {output_dir}[/dim]",
-            title="[bold yellow]🧹 Cleanup Summary[/bold yellow]",
+            f"{msg}\n[dim]{t('lbl_directory', lang=lang)}: {output_dir}[/dim]",
+            title=f"[bold yellow]{t('title_cleanup', lang=lang)}[/bold yellow]",
             border_style=border,
             box=box.ROUNDED,
             padding=(1, 2),
@@ -346,7 +346,7 @@ def render_monthly_trajectory_table(
     tot = opt_result.total_summary
     table.add_section()
     table.add_row(
-        "[bold]Total[/bold]",
+        f"[bold]{t('lbl_total', lang=lang)}[/bold]",
         f"[bold]{tot.total_generation_kwh:,.1f}[/bold]",
         f"[bold]{tot.total_consumption_kwh:,.1f}[/bold]",
         f"[bold green]{tot.total_self_consumed_kwh:,.1f}[/bold green]",
@@ -404,7 +404,7 @@ def render_strategy_comparison_table(
     gain_str = f"+{gain:,.1f} (+{(gain / eq_sc * 100):.1f}%)" if eq_sc > 0 and gain > 0 else "—"
 
     table.add_row(
-        "★ Optimal (RD 244/2019)",
+        t("lbl_optimal_strat", lang=lang),
         f"{opt_tot.total_self_consumed_kwh:,.1f}",
         f"{opt_tot.total_surplus_kwh:,.1f}",
         f"{opt_tot.self_consumption_rate:.1f}%",
@@ -417,7 +417,7 @@ def render_strategy_comparison_table(
         b_gain_str = (
             f"+{b_gain:,.1f} (+{(b_gain / eq_sc * 100):.1f}%)"
             if eq_sc > 0 and b_gain > 0
-            else ("Baseline" if b_gain == 0 else f"{b_gain:,.1f}")
+            else (t("lbl_baseline", lang=lang) if b_gain == 0 else f"{b_gain:,.1f}")
         )
         table.add_row(
             f"  {b_name}",
@@ -455,15 +455,16 @@ def render_export_success(exported_paths: list[Path], lang: str | None = None) -
 def render_config_view(cfg: AppConfig, lang: str | None = None) -> None:
     """Render active configuration parameters table."""
     table = Table(
-        title="⚙️ Active Configuration",
+        title=f"⚙️ {t('title_config', lang=lang)}",
         box=box.ROUNDED,
         padding=(0, 1),
     )
-    table.add_column("Setting", style="bold cyan")
-    table.add_column("Value", style="green")
+    table.add_column(t("col_setting", lang=lang), style="bold cyan")
+    table.add_column(t("col_value", lang=lang), style="green")
 
     table.add_row("language", cfg.language)
-    table.add_row("share_precision", f"{cfg.share_precision} decimal(s)")
+    prec_unit = "decimal(es)" if (lang or get_language()) == "es" else "decimal(s)"
+    table.add_row("share_precision", f"{cfg.share_precision} {prec_unit}")
     table.add_row("consumption_dir", str(cfg.consumption_dir))
     table.add_row("generation_dir", str(cfg.generation_dir))
     table.add_row("output_dir", str(cfg.output_dir))
@@ -483,40 +484,45 @@ def render_doctor_report(
     """Render comprehensive diagnostic health report for the doctor command."""
     # 1. Overall Status Banner
     if report.overall_status == "ok":
-        badge = "[bold green]✓ ALL DATA HEALTHY & SYNCHRONIZED[/bold green]"
+        badge = f"[bold green]{t('doc_status_ok', lang=lang)}[/bold green]"
         border_col = "green"
     elif report.overall_status == "warning":
-        badge = "[bold yellow]⚠ DATA USABLE WITH DIAGNOSTIC WARNINGS[/bold yellow]"
+        badge = f"[bold yellow]{t('doc_status_warning', lang=lang)}[/bold yellow]"
         border_col = "yellow"
     else:
-        badge = "[bold red]✗ CRITICAL DATA ISSUES DETECTED[/bold red]"
+        badge = f"[bold red]{t('doc_status_error', lang=lang)}[/bold red]"
         border_col = "red"
 
     ov = report.overlap
     banner_grid = Table.grid(padding=(0, 2))
+    banner_grid.add_column(style="bold white", width=25)
+    banner_grid.add_column(style="cyan", width=22)
     banner_grid.add_column(style="bold white", width=22)
-    banner_grid.add_column(style="cyan", width=20)
-    banner_grid.add_column(style="bold white", width=18)
     banner_grid.add_column(style="green", width=16)
 
+    cups_suffix = "puntos" if (lang or get_language()) == "es" else "supply points"
+    hours_suffix = "h"
+    ready_yes = f"[bold green]{t('doc_yes', lang=lang)}[/bold green]"
+    ready_no = f"[bold red]{t('doc_no', lang=lang)}[/bold red]"
+
     banner_grid.add_row(
-        "Participating CUPS:",
-        f"{ov.cups_count} supply points",
-        "Common Hours:",
-        f"{ov.common_hours:,} hours",
+        t("doc_lbl_participating_cups", lang=lang),
+        f"{ov.cups_count} {cups_suffix}",
+        t("doc_lbl_common_hours", lang=lang),
+        f"{ov.common_hours:,} {hours_suffix}",
     )
     banner_grid.add_row(
-        "Overlap Date Range:",
+        t("doc_lbl_overlap_range", lang=lang),
         f"{ov.common_start[:10] if ov.common_start else '—'} ➔ {ov.common_end[:10] if ov.common_end else '—'}",
-        "Ready to Calculate:",
-        "[bold green]Yes[/bold green]" if report.can_calculate else "[bold red]No[/bold red]",
+        t("doc_lbl_ready_calc", lang=lang),
+        ready_yes if report.can_calculate else ready_no,
     )
 
     console.print()
     console.print(
         Panel(
             banner_grid,
-            title=f"🩺 ESD DATA DOCTOR DIAGNOSTIC REPORT — {badge}",
+            title=f"{t('doc_title_banner', lang=lang)} — {badge}",
             border_style=border_col,
             box=box.ROUNDED,
             padding=(1, 2),
@@ -526,17 +532,31 @@ def render_doctor_report(
     # 2. Consumption Files & CUPS Health Table
     if report.consumption_results:
         c_table = Table(
-            title="📥 Consumption Data Health per CUPS (DATADIS)",
+            title=t("doc_title_consumption", lang=lang),
             box=box.ROUNDED,
             padding=(0, 1),
             show_lines=False,
         )
         c_table.add_column("CUPS", style="bold cyan", width=22, no_wrap=True)
-        c_table.add_column("Readings", justify="right", style="white", width=9, no_wrap=True)
-        c_table.add_column("Zero %", justify="right", style="dim", width=7, no_wrap=True)
-        c_table.add_column("Gaps", justify="right", style="yellow", width=5, no_wrap=True)
-        c_table.add_column("Status", justify="center", width=9, no_wrap=True)
-        c_table.add_column("Diagnosis Notes", style="dim", width=22, no_wrap=True)
+        c_table.add_column(
+            t("lbl_doctor_readings", lang=lang),
+            justify="right",
+            style="white",
+            width=9,
+            no_wrap=True,
+        )
+        c_table.add_column(
+            t("doc_lbl_zero_pct", lang=lang), justify="right", style="dim", width=7, no_wrap=True
+        )
+        c_table.add_column(
+            t("lbl_doctor_gaps", lang=lang), justify="right", style="yellow", width=5, no_wrap=True
+        )
+        c_table.add_column(
+            t("lbl_doctor_status", lang=lang), justify="center", width=9, no_wrap=True
+        )
+        c_table.add_column(
+            t("lbl_doctor_diagnosis", lang=lang), style="dim", width=22, no_wrap=True
+        )
 
         for c in report.consumption_results:
             if c.status == "ok":
@@ -546,7 +566,7 @@ def render_doctor_report(
             else:
                 st_badge = "[red]✗ FAIL[/red]"
 
-            note_str = c.notes[0] if c.notes else "Healthy"
+            note_str = c.notes[0] if c.notes else t("doc_lbl_healthy", lang=lang)
             if len(note_str) > 22:
                 note_str = note_str[:20] + "…"
 
@@ -566,25 +586,41 @@ def render_doctor_report(
     if report.generation_result:
         g = report.generation_result
         g_table = Table(
-            title="☀️ Solar PV Generation Health (Huawei FusionSolar)",
+            title=t("title_doctor_gen", lang=lang),
             box=box.ROUNDED,
             padding=(0, 1),
             show_lines=False,
         )
-        g_table.add_column("Source", style="bold yellow", width=24, no_wrap=True)
-        g_table.add_column("Files", justify="right", style="white", width=7, no_wrap=True)
-        g_table.add_column("Readings", justify="right", style="white", width=9, no_wrap=True)
-        g_table.add_column("Gaps", justify="right", style="yellow", width=5, no_wrap=True)
-        g_table.add_column("Status", justify="center", width=9, no_wrap=True)
-        g_table.add_column("Diagnosis Notes", style="dim", width=20, no_wrap=True)
+        g_table.add_column(
+            t("lbl_doctor_source", lang=lang), style="bold yellow", width=24, no_wrap=True
+        )
+        g_table.add_column(
+            t("lbl_doctor_files", lang=lang), justify="right", style="white", width=7, no_wrap=True
+        )
+        g_table.add_column(
+            t("lbl_doctor_readings", lang=lang),
+            justify="right",
+            style="white",
+            width=9,
+            no_wrap=True,
+        )
+        g_table.add_column(
+            t("lbl_doctor_gaps", lang=lang), justify="right", style="yellow", width=5, no_wrap=True
+        )
+        g_table.add_column(
+            t("lbl_doctor_status", lang=lang), justify="center", width=9, no_wrap=True
+        )
+        g_table.add_column(
+            t("lbl_doctor_diagnosis", lang=lang), style="dim", width=20, no_wrap=True
+        )
 
         g_badge = "[green]✓ OK[/green]" if g.status == "ok" else "[yellow]⚠ WARN[/yellow]"
-        g_note = g.notes[0] if g.notes else "Healthy"
+        g_note = g.notes[0] if g.notes else t("doc_lbl_healthy", lang=lang)
         if len(g_note) > 20:
             g_note = g_note[:18] + "…"
 
         g_table.add_row(
-            "Huawei PV Generation",
+            t("doc_source_huawei", lang=lang),
             str(g.files_count),
             f"{g.total_records:,}",
             str(g.missing_hours),
@@ -605,14 +641,26 @@ def render_doctor_report(
 
     if all_gaps:
         gap_table = Table(
-            title="⚠️ Detected Missing Interval Gaps",
+            title=t("title_doctor_gaps", lang=lang),
             box=box.ROUNDED,
             padding=(0, 1),
         )
-        gap_table.add_column("Series", style="bold cyan", width=22, no_wrap=True)
-        gap_table.add_column("Gap Start", style="yellow", width=17, no_wrap=True)
-        gap_table.add_column("Gap End", style="yellow", width=17, no_wrap=True)
-        gap_table.add_column("Missing", justify="right", style="bold red", width=9, no_wrap=True)
+        gap_table.add_column(
+            t("lbl_doctor_series", lang=lang), style="bold cyan", width=22, no_wrap=True
+        )
+        gap_table.add_column(
+            t("lbl_doctor_gap_start", lang=lang), style="yellow", width=17, no_wrap=True
+        )
+        gap_table.add_column(
+            t("lbl_doctor_gap_end", lang=lang), style="yellow", width=17, no_wrap=True
+        )
+        gap_table.add_column(
+            t("lbl_doctor_missing", lang=lang),
+            justify="right",
+            style="bold red",
+            width=9,
+            no_wrap=True,
+        )
 
         show_gaps = all_gaps if verbose else all_gaps[:10]
         for series_id, gap in show_gaps:
@@ -625,8 +673,8 @@ def render_doctor_report(
         if len(all_gaps) > 10 and not verbose:
             gap_table.add_row(
                 "...",
-                f"+{len(all_gaps) - 10} more gaps",
-                "Use --verbose to view all",
+                t("doc_more_gaps", lang=lang, count=len(all_gaps) - 10),
+                t("doc_verbose_hint", lang=lang),
                 "",
             )
 
@@ -638,21 +686,19 @@ def render_doctor_report(
     for c in report.consumption_results:
         if c.zero_ratio_pct >= 99.0:
             advice_items.append(
-                f"[yellow]• Inactive Meter:[/yellow] {c.identifier} has {c.zero_ratio_pct}% zero readings. In optimization, its β coefficient will be 0.00% to protect community solar energy."
+                t("doc_adv_inactive", lang=lang, id=c.identifier, pct=f"{c.zero_ratio_pct:.1f}")
             )
         if c.missing_hours > 0:
             advice_items.append(
-                f"[yellow]• Consumption Gaps:[/yellow] {c.identifier} has {c.missing_hours} missing hours. Download updated DATADIS CSV for complete billing periods."
+                t("doc_adv_cons_gaps", lang=lang, id=c.identifier, hours=c.missing_hours)
             )
     if report.generation_result and report.generation_result.missing_hours > 0:
         advice_items.append(
-            f"[yellow]• Generation Gaps:[/yellow] Huawei solar series has {report.generation_result.missing_hours} missing hours. Check inverter log exports."
+            t("doc_adv_gen_gaps", lang=lang, hours=report.generation_result.missing_hours)
         )
 
     if not advice_items:
-        advice_items.append(
-            "[green]• Dataset is clean and ready. You can safely run 'esd calculate'.[/green]"
-        )
+        advice_items.append(t("doc_adv_clean", lang=lang))
 
     advice_text = Text()
     for item in advice_items:
@@ -661,7 +707,7 @@ def render_doctor_report(
     console.print(
         Panel(
             advice_text,
-            title="💡 Doctor Findings & Recommendations",
+            title=t("doc_title_advice", lang=lang),
             border_style="cyan",
             box=box.ROUNDED,
             padding=(1, 2),

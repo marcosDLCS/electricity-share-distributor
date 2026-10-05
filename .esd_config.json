@@ -1,10 +1,10 @@
 {
-  "language": "en",
-  "share_precision": 0,
+  "language": "es",
+  "share_precision": 2,
   "input_dir": ".input",
   "consumption_dir": ".input/consumption",
   "generation_dir": ".input/generation",
   "output_dir": ".output",
-  "initialized_at": "2026-10-05T21:50:33.639557",
-  "version": "2026.10.009"
+  "initialized_at": "2026-10-05T22:01:30.067394",
+  "version": "2026.10.010"
 }

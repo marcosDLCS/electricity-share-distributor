@@ -59,7 +59,7 @@ def test_cli_init_spanish() -> None:
     result = runner.invoke(app, ["init", "--lang", "es", "--precision", "1"])
     assert result.exit_code == 0
     assert "inicializado" in result.output.lower()
-    assert "1 decimal(s)" in result.output
+    assert "1 decimal(es)" in result.output
 
 
 def test_cli_init_clears_output(tmp_path) -> None:
@@ -295,3 +295,44 @@ def test_cli_cleanup_force(tmp_path) -> None:
     # Override config or pass custom
     res = runner.invoke(app, ["cleanup", "--force"])
     assert res.exit_code == 0
+
+
+def test_cli_init_interactive_prompts() -> None:
+    """Ensure init interactive prompts accept language and precision inputs."""
+    result = runner.invoke(app, ["init"], input="es\n2\n")
+    assert result.exit_code == 0
+    assert "inicializado" in result.output.lower()
+    assert "2 decimal(es)" in result.output
+
+
+def test_cli_calculate_spanish() -> None:
+    """Ensure calculate outputs Spanish console view when --lang es is passed."""
+    result = runner.invoke(
+        app,
+        [
+            "calculate",
+            "-y",
+            "2026",
+            "-m",
+            "5",
+            "--lang",
+            "es",
+            "--format",
+            "none",
+            "--view",
+            "summary",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "RESUMEN DE LA COMUNIDAD DE AUTOCONSUMO COLECTIVO" in result.output
+    assert "Trayectoria Energética Mensual" in result.output
+    assert "Comparativa de Eficiencia según Estrategia de Reparto" in result.output
+
+
+def test_cli_doctor_spanish() -> None:
+    """Ensure doctor outputs Spanish diagnostic report when --lang es is passed."""
+    result = runner.invoke(app, ["doctor", "--lang", "es"])
+    # Should contain Spanish report title and headers
+    assert "INFORME DE DIAGNÓSTICO ESD DATA DOCTOR" in result.output
+    assert "Puntos Suministro:" in result.output
+    assert "Estado de Datos de Consumo" in result.output
