@@ -58,6 +58,43 @@ def export_coefficients_csv(
     return file_path
 
 
+def export_coefficients_matrix_csv(
+    opt_result: OptimizationResult,
+    output_dir: Path | str,
+    precision: int | None = None,
+    timestamp: str | None = None,
+) -> Path:
+    """Export consolidated monthly distribution shares matrix (CUPS in Y, Months in X) as CSV."""
+    from src.config import get_precision
+
+    prec = get_precision() if precision is None else precision
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ts = timestamp or get_export_timestamp()
+    file_path = out_dir / f"{ts}_esd_coefficients_matrix.csv"
+
+    matrix = opt_result.build_matrix()
+    rows: list[dict[str, object]] = []
+
+    for cups in matrix.cups_list:
+        row_dict: dict[str, object] = {"cups": cups}
+        for m in matrix.months:
+            row_dict[m] = matrix.format_cell(cups, m, precision=prec)
+        row_dict["annual_average"] = matrix.format_annual(cups, precision=prec)
+        rows.append(row_dict)
+
+    # Total row
+    total_dict: dict[str, object] = {"cups": "TOTAL"}
+    for m in matrix.months:
+        total_dict[m] = matrix.format_month_sum(m, precision=prec)
+    total_dict["annual_average"] = matrix.format_annual_sum(precision=prec)
+    rows.append(total_dict)
+
+    df = pd.DataFrame(rows)
+    df.to_csv(file_path, index=False, sep=";")
+    return file_path
+
+
 def export_results_json(
     opt_result: OptimizationResult,
     ingestion_summary: IngestionSummary,
@@ -200,6 +237,32 @@ def export_summary_markdown(
             )
         lines.extend(["", "---", ""])
 
+    # Consolidated Regulatory Coefficients Matrix (RD 244/2019)
+    matrix = opt_result.build_matrix()
+    if matrix.cups_list and matrix.months:
+        lines.append(t("md_sec_coeff_matrix", lang=target_lang))
+        lines.append("")
+        lines.append(t("md_desc_coeff_matrix", lang=target_lang))
+        lines.append("")
+
+        headers = ["CUPS", *matrix.months, t("col_annual_avg", lang=target_lang)]
+        lines.append("| " + " | ".join(headers) + " |")
+        lines.append("| :--- | " + " | ".join([":---:"] * (len(headers) - 1)) + " |")
+
+        for cups in matrix.cups_list:
+            row_cells = [f"`{cups}`"]
+            for m in matrix.months:
+                row_cells.append(matrix.format_cell(cups, m, precision=prec))
+            row_cells.append(f"**{matrix.format_annual(cups, precision=prec)}**")
+            lines.append("| " + " | ".join(row_cells) + " |")
+
+        total_cells = [f"**{t('lbl_total_rd244', lang=target_lang)}**"]
+        for m in matrix.months:
+            total_cells.append(f"**{matrix.format_month_sum(m, precision=prec)}**")
+        total_cells.append(f"**{matrix.format_annual_sum(precision=prec)}**")
+        lines.append("| " + " | ".join(total_cells) + " |")
+        lines.extend(["", "---", ""])
+
     # Monthly breakdown tables
     lines.append(t("md_sec_monthly_coeffs", lang=target_lang))
     lines.append("")
@@ -225,6 +288,28 @@ def export_summary_markdown(
                 f"{c.self_consumed_kwh:,.1f} | {c.surplus_kwh:,.1f} | {c.grid_demand_kwh:,.1f} |"
             )
         lines.append("")
+
+    lines.extend(["---", ""])
+
+    # Community Optimization Insights & Generation Dynamics
+    lines.extend(
+        [
+            t("md_sec_insights", lang=target_lang),
+            "",
+            t("md_insight_diurnal_title", lang=target_lang),
+            "",
+            t("md_insight_diurnal_desc", lang=target_lang),
+            "",
+            t("md_insight_zero_protection_title", lang=target_lang),
+            "",
+            t("md_insight_zero_protection_desc", lang=target_lang),
+            "",
+            t("md_insight_seasonal_title", lang=target_lang),
+            "",
+            t("md_insight_seasonal_desc", lang=target_lang),
+            "",
+        ]
+    )
 
     file_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return file_path
@@ -252,6 +337,11 @@ def export_all(
     if fmt in ("all", "csv"):
         exported.append(
             export_coefficients_csv(
+                opt_result, output_dir, precision=precision, timestamp=timestamp
+            )
+        )
+        exported.append(
+            export_coefficients_matrix_csv(
                 opt_result, output_dir, precision=precision, timestamp=timestamp
             )
         )

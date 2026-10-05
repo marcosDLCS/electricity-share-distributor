@@ -180,3 +180,108 @@ def test_round_betas_hare_niemeyer_exact_100_percent() -> None:
     assert np.isclose(sum(pcts2), 100.00)
     assert np.isclose(np.sum(b2), 1.0)
     assert all(b >= 0.0 for b in b2)
+
+
+def test_build_coefficients_matrix_structure_and_sums() -> None:
+    """Test build_matrix produces CUPS in Y, Months in X, and exact 100% sums."""
+    timestamps_m1 = [f"2026-05-01 {h:02d}:00:00" for h in range(24)]
+    timestamps_m2 = [f"2026-06-01 {h:02d}:00:00" for h in range(24)]
+    timestamps = timestamps_m1 + timestamps_m2
+
+    gen = [5.0] * len(timestamps)
+    c1 = [3.0] * len(timestamps)
+    c2 = [2.0] * len(timestamps)
+    c3 = [1.0] * len(timestamps)
+
+    cups_list = ["ES0021000000000001AA", "ES0021000000000002BB", "ES0021000000000003CC"]
+    df = pd.DataFrame(
+        {
+            cups_list[0]: c1,
+            cups_list[1]: c2,
+            cups_list[2]: c3,
+            "generation_kwh": gen,
+        },
+        index=timestamps,
+    )
+
+    summary = IngestionSummary(
+        cups_count=3,
+        cups_list=cups_list,
+        consumption_files_loaded=3,
+        generation_files_loaded=1,
+        start_time=timestamps[0],
+        end_time=timestamps[-1],
+        total_hours=len(timestamps),
+    )
+
+    dataset = AlignedDataset(
+        data=df,
+        cups_list=cups_list,
+        metadata=summary,
+        monthly_groups={
+            "2026-05": df.iloc[:24],
+            "2026-06": df.iloc[24:],
+        },
+    )
+
+    opt_result = DistributionOptimizer.optimize_dataset(
+        dataset, strategy=OptimizationStrategy.OPTIMAL, precision=1
+    )
+
+    matrix = opt_result.build_matrix()
+    assert matrix.cups_list == cups_list
+    assert matrix.months == ["2026-05", "2026-06"]
+
+    # Verify rows (Y) and columns (X)
+    for cups in cups_list:
+        assert cups in matrix.matrix
+        for m in ["2026-05", "2026-06"]:
+            assert m in matrix.matrix[cups]
+            assert 0.0 <= matrix.get_share_pct(cups, m) <= 100.0
+
+    # Verify each month sums to <= 100% (exactly 100%)
+    for m in matrix.months:
+        assert np.isclose(matrix.monthly_sums[m], 1.0)
+        assert matrix.format_month_sum(m, precision=1) == "100.0%"
+
+    # Verify annual weighted shares sum to 100%
+    assert np.isclose(matrix.annual_sum, 1.0)
+    assert matrix.format_annual_sum(precision=1) == "100.0%"
+
+    # Check cell formatting across precisions
+    c1_may_p0 = matrix.format_cell(cups_list[0], "2026-05", precision=0)
+    c1_may_p2 = matrix.format_cell(cups_list[0], "2026-05", precision=2)
+    assert c1_may_p0.endswith("%")
+    assert "." not in c1_may_p0
+    assert "." in c1_may_p2
+
+
+def test_render_coefficients_matrix_table_execution() -> None:
+    """Test that render_coefficients_matrix_table executes cleanly across languages and precisions."""
+    from src.presentation.views import render_coefficients_matrix_table
+
+    timestamps = [f"2026-05-01 {h:02d}:00:00" for h in range(24)]
+    gen = [5.0] * 24
+    c1 = [3.0] * 24
+    c2 = [2.0] * 24
+    cups_list = ["ES0021000000000001AA", "ES0021000000000002BB"]
+    df = pd.DataFrame({cups_list[0]: c1, cups_list[1]: c2, "generation_kwh": gen}, index=timestamps)
+    summary = IngestionSummary(
+        cups_count=2,
+        cups_list=cups_list,
+        consumption_files_loaded=2,
+        generation_files_loaded=1,
+        start_time=timestamps[0],
+        end_time=timestamps[-1],
+        total_hours=24,
+    )
+    dataset = AlignedDataset(
+        data=df, cups_list=cups_list, metadata=summary, monthly_groups={"2026-05": df}
+    )
+    opt_result = DistributionOptimizer.optimize_dataset(
+        dataset, strategy=OptimizationStrategy.OPTIMAL
+    )
+
+    # Should run cleanly in English and Spanish across precisions
+    render_coefficients_matrix_table(opt_result, lang="en", precision=1)
+    render_coefficients_matrix_table(opt_result, lang="es", precision=2)

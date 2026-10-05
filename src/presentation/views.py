@@ -299,6 +299,61 @@ def render_monthly_coefficients_table(
     console.print()
 
 
+def render_coefficients_matrix_table(
+    opt_result: OptimizationResult,
+    lang: str | None = None,
+    precision: int | None = None,
+) -> None:
+    """Render consolidated matrix table of monthly distribution shares (CUPS in Y, Months in X)."""
+    from src.config import get_precision
+
+    matrix = opt_result.build_matrix()
+    if not matrix.cups_list or not matrix.months:
+        return
+
+    prec = get_precision() if precision is None else precision
+
+    table = Table(
+        title=f"[bold yellow]{t('title_coefficients_matrix', lang=lang)}[/bold yellow]",
+        caption=f"[dim]{t('desc_coefficients_matrix', lang=lang)}[/dim]",
+        box=box.ROUNDED,
+        header_style="bold cyan",
+        padding=(0, 1),
+        show_lines=False,
+    )
+
+    table.add_column(t("col_cups", lang=lang), style="bold cyan", width=20, no_wrap=True)
+
+    use_short_header = len(matrix.months) > 6
+    for m in matrix.months:
+        header_name = f"{m[5:]}/{m[2:4]}" if use_short_header and len(m) >= 7 else m
+        table.add_column(header_name, justify="right", style="yellow", no_wrap=True)
+
+    table.add_column(
+        t("col_annual_avg", lang=lang),
+        justify="right",
+        style="bold green",
+        no_wrap=True,
+    )
+
+    for cups in matrix.cups_list:
+        row = [cups]
+        for m in matrix.months:
+            row.append(matrix.format_cell(cups, m, precision=prec))
+        row.append(f"[bold green]{matrix.format_annual(cups, precision=prec)}[/bold green]")
+        table.add_row(*row)
+
+    table.add_section()
+    total_row = [f"[bold]{t('lbl_total_rd244', lang=lang)}[/bold]"]
+    for m in matrix.months:
+        total_row.append(f"[bold green]{matrix.format_month_sum(m, precision=prec)}[/bold green]")
+    total_row.append(f"[bold green]{matrix.format_annual_sum(precision=prec)}[/bold green]")
+    table.add_row(*total_row)
+
+    console.print(table)
+    console.print()
+
+
 def render_monthly_trajectory_table(
     opt_result: OptimizationResult,
     lang: str | None = None,
