@@ -97,6 +97,7 @@ def test_cli_calculate_default() -> None:
     assert result.exit_code == 0
     assert "COLLECTIVE SELF-CONSUMPTION COMMUNITY SUMMARY" in result.output
     assert "CUPS" in result.output
+    assert "Monthly Coefficient Proposals" not in result.output
 
 
 def test_cli_calculate_month_filter() -> None:
@@ -105,6 +106,7 @@ def test_cli_calculate_month_filter() -> None:
     )
     assert result.exit_code == 0
     assert "2026-05" in result.output
+    assert "Monthly Coefficient Proposals" not in result.output
 
 
 def test_cli_calculate_views() -> None:
@@ -374,6 +376,7 @@ def test_cli_calculate_spanish() -> None:
     assert "RESUMEN DE LA COMUNIDAD DE AUTOCONSUMO COLECTIVO" in result.output
     assert "Trayectoria Energética Mensual" in result.output
     assert "Comparativa de Eficiencia según Estrategia de Reparto" in result.output
+    assert "Propuesta de Coeficientes Mensuales" not in result.output
 
 
 def test_cli_doctor_spanish() -> None:

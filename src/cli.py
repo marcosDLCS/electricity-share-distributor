@@ -248,7 +248,7 @@ def calculate_command(
         "summary",
         "--view",
         "-v",
-        help="Display view mode: 'summary' (overview + matrix + details), 'matrix' (CUPS/months share matrix), 'trajectory', or 'all'.",
+        help="Display view mode: 'summary' (overview + matrix), 'matrix' (CUPS/months share matrix), 'trajectory', or 'all'.",
     ),
     export_format: str = typer.Option(
         "all",
@@ -333,16 +333,6 @@ def calculate_command(
             render_coefficients_matrix_table(
                 opt_result, lang=active_lang, precision=active_precision
             )
-            if month is not None or view_mode == "all":
-                for m in opt_result.monthly_results:
-                    render_monthly_coefficients_table(
-                        m, lang=active_lang, precision=active_precision
-                    )
-            else:
-                latest_month = opt_result.monthly_results[-1]
-                render_monthly_coefficients_table(
-                    latest_month, lang=active_lang, precision=active_precision
-                )
         elif view_mode == "matrix":
             render_coefficients_matrix_table(
                 opt_result, lang=active_lang, precision=active_precision
