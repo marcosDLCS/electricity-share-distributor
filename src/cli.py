@@ -341,7 +341,10 @@ def calculate_command(
             render_monthly_trajectory_table(opt_result, lang=active_lang)
         elif view_mode == "coefficients":
             for m in opt_result.monthly_results:
-                render_monthly_coefficients_table(m, lang=active_lang, precision=active_precision)
+                if m.has_data:
+                    render_monthly_coefficients_table(
+                        m, lang=active_lang, precision=active_precision
+                    )
         elif view_mode == "comparison":
             render_strategy_comparison_table(opt_result, lang=active_lang)
 

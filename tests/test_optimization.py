@@ -91,9 +91,17 @@ def test_evaluate_month_energy_balance() -> None:
 
 
 def test_optimize_dataset_with_baselines() -> None:
-    # 2 months dataset
-    timestamps_m1 = [f"2026-05-01 {h:02d}:00:00" for h in range(24)]
-    timestamps_m2 = [f"2026-06-01 {h:02d}:00:00" for h in range(24)]
+    # 2 full months dataset (May and June 2026)
+    timestamps_m1 = (
+        pd.date_range("2026-05-01 00:00:00", "2026-05-31 23:00:00", freq="h")
+        .strftime("%Y-%m-%d %H:%M:%S")
+        .tolist()
+    )
+    timestamps_m2 = (
+        pd.date_range("2026-06-01 00:00:00", "2026-06-30 23:00:00", freq="h")
+        .strftime("%Y-%m-%d %H:%M:%S")
+        .tolist()
+    )
     timestamps = timestamps_m1 + timestamps_m2
 
     gen = [2.0] * len(timestamps)
@@ -125,8 +133,8 @@ def test_optimize_dataset_with_baselines() -> None:
         cups_list=cups_list,
         metadata=summary,
         monthly_groups={
-            "2026-05": df.iloc[:24],
-            "2026-06": df.iloc[24:],
+            "2026-05": df.iloc[: len(timestamps_m1)],
+            "2026-06": df.iloc[len(timestamps_m1) :],
         },
     )
 
@@ -134,7 +142,7 @@ def test_optimize_dataset_with_baselines() -> None:
         dataset, strategy=OptimizationStrategy.OPTIMAL, include_baselines=True
     )
 
-    assert len(opt_result.monthly_results) == 2
+    assert len(opt_result.monthly_results) == 12
     assert opt_result.total_summary.month == "Total"
     assert "consumption_share" in opt_result.baselines
     assert "equal" in opt_result.baselines
@@ -184,8 +192,16 @@ def test_round_betas_hare_niemeyer_exact_100_percent() -> None:
 
 def test_build_coefficients_matrix_structure_and_sums() -> None:
     """Test build_matrix produces CUPS in Y, Months in X, and exact 100% sums."""
-    timestamps_m1 = [f"2026-05-01 {h:02d}:00:00" for h in range(24)]
-    timestamps_m2 = [f"2026-06-01 {h:02d}:00:00" for h in range(24)]
+    timestamps_m1 = (
+        pd.date_range("2026-05-01 00:00:00", "2026-05-31 23:00:00", freq="h")
+        .strftime("%Y-%m-%d %H:%M:%S")
+        .tolist()
+    )
+    timestamps_m2 = (
+        pd.date_range("2026-06-01 00:00:00", "2026-06-30 23:00:00", freq="h")
+        .strftime("%Y-%m-%d %H:%M:%S")
+        .tolist()
+    )
     timestamps = timestamps_m1 + timestamps_m2
 
     gen = [5.0] * len(timestamps)
@@ -219,8 +235,8 @@ def test_build_coefficients_matrix_structure_and_sums() -> None:
         cups_list=cups_list,
         metadata=summary,
         monthly_groups={
-            "2026-05": df.iloc[:24],
-            "2026-06": df.iloc[24:],
+            "2026-05": df.iloc[: len(timestamps_m1)],
+            "2026-06": df.iloc[len(timestamps_m1) :],
         },
     )
 
@@ -230,27 +246,30 @@ def test_build_coefficients_matrix_structure_and_sums() -> None:
 
     matrix = opt_result.build_matrix()
     assert matrix.cups_list == cups_list
-    assert matrix.months == ["2026-05", "2026-06"]
+    expected_months = [f"{m:02d}" for m in range(1, 13)]
+    assert matrix.months == expected_months
 
     # Verify rows (Y) and columns (X)
     for cups in cups_list:
         assert cups in matrix.matrix
-        for m in ["2026-05", "2026-06"]:
+        for m in expected_months:
             assert m in matrix.matrix[cups]
-            assert 0.0 <= matrix.get_share_pct(cups, m) <= 100.0
 
-    # Verify each month sums to <= 100% (exactly 100%)
-    for m in matrix.months:
-        assert np.isclose(matrix.monthly_sums[m], 1.0)
-        assert matrix.format_month_sum(m, precision=1) == "100.0%"
+    # Verify evaluated months sum to 100%
+    assert matrix.format_month_sum("05", precision=1) == "100.0%"
+    assert matrix.format_month_sum("06", precision=1) == "100.0%"
+
+    # Verify unevaluated month has hyphen
+    assert matrix.format_month_sum("01", precision=1) == "—"
+    assert matrix.format_cell(cups_list[0], "01", precision=1) == "—"
 
     # Verify annual weighted shares sum to 100%
     assert np.isclose(matrix.annual_sum, 1.0)
     assert matrix.format_annual_sum(precision=1) == "100.0%"
 
     # Check cell formatting across precisions
-    c1_may_p0 = matrix.format_cell(cups_list[0], "2026-05", precision=0)
-    c1_may_p2 = matrix.format_cell(cups_list[0], "2026-05", precision=2)
+    c1_may_p0 = matrix.format_cell(cups_list[0], "05", precision=0)
+    c1_may_p2 = matrix.format_cell(cups_list[0], "05", precision=2)
     assert c1_may_p0.endswith("%")
     assert "." not in c1_may_p0
     assert "." in c1_may_p2
@@ -285,3 +304,132 @@ def test_render_coefficients_matrix_table_execution() -> None:
     # Should run cleanly in English and Spanish across precisions
     render_coefficients_matrix_table(opt_result, lang="en", precision=1)
     render_coefficients_matrix_table(opt_result, lang="es", precision=2)
+
+
+def test_incomplete_month_skipped_in_annual_schedule() -> None:
+    """Test that a partial month (<90% days or hours) is excluded from annual prevision schedule."""
+    # Only 3 days in May 2026 (72 hours < 744 * 0.9)
+    timestamps = (
+        pd.date_range("2026-05-10 00:00:00", "2026-05-12 23:00:00", freq="h")
+        .strftime("%Y-%m-%d %H:%M:%S")
+        .tolist()
+    )
+    cups_list = ["ES0021000000000001AA", "ES0021000000000002BB"]
+    df = pd.DataFrame(
+        {
+            cups_list[0]: [2.0] * len(timestamps),
+            cups_list[1]: [1.0] * len(timestamps),
+            "generation_kwh": [3.0] * len(timestamps),
+        },
+        index=timestamps,
+    )
+    summary = IngestionSummary(
+        cups_count=2,
+        cups_list=cups_list,
+        consumption_files_loaded=2,
+        generation_files_loaded=1,
+        start_time=timestamps[0],
+        end_time=timestamps[-1],
+        total_hours=len(timestamps),
+    )
+    dataset = AlignedDataset(
+        data=df,
+        cups_list=cups_list,
+        metadata=summary,
+        monthly_groups={"2026-05": df},
+    )
+
+    opt_result = DistributionOptimizer.optimize_dataset(
+        dataset, strategy=OptimizationStrategy.OPTIMAL, require_full_month=True
+    )
+
+    # May is calendar month "05" (index 4)
+    may_res = opt_result.monthly_results[4]
+    assert may_res.month == "05"
+    assert may_res.has_data is False
+    assert may_res.beta_sum == 0.0
+
+    # In matrix representation, all months must display "—"
+    matrix = opt_result.build_matrix()
+    assert matrix.format_month_sum("05", precision=0) == "—"
+    assert matrix.format_cell(cups_list[0], "05", precision=0) == "—"
+    assert matrix.format_annual_sum(precision=0) == "—"
+
+
+def test_multi_year_same_month_aggregation_heuristic() -> None:
+    """Test that complete data for the same month across multiple years is pooled and scaled."""
+    # May 2025 (31 days) and May 2026 (31 days)
+    ts_2025 = (
+        pd.date_range("2025-05-01 00:00:00", "2025-05-31 23:00:00", freq="h")
+        .strftime("%Y-%m-%d %H:%M:%S")
+        .tolist()
+    )
+    ts_2026 = (
+        pd.date_range("2026-05-01 00:00:00", "2026-05-31 23:00:00", freq="h")
+        .strftime("%Y-%m-%d %H:%M:%S")
+        .tolist()
+    )
+    cups_list = ["ES0021000000000001AA", "ES0021000000000002BB"]
+
+    # In both years: CUPS 1 has 3x the demand of CUPS 2 (75% / 25%)
+    # Generation is 5.0 kWh per hour, total demand is 4.0 kWh (solar surplus present)
+    df_2025 = pd.DataFrame(
+        {
+            cups_list[0]: [3.0] * len(ts_2025),
+            cups_list[1]: [1.0] * len(ts_2025),
+            "generation_kwh": [5.0] * len(ts_2025),
+        },
+        index=ts_2025,
+    )
+
+    df_2026 = pd.DataFrame(
+        {
+            cups_list[0]: [3.0] * len(ts_2026),
+            cups_list[1]: [1.0] * len(ts_2026),
+            "generation_kwh": [5.0] * len(ts_2026),
+        },
+        index=ts_2026,
+    )
+
+    all_ts = ts_2025 + ts_2026
+    combined_df = pd.concat([df_2025, df_2026])
+
+    summary = IngestionSummary(
+        cups_count=2,
+        cups_list=cups_list,
+        consumption_files_loaded=2,
+        generation_files_loaded=1,
+        start_time=all_ts[0],
+        end_time=all_ts[-1],
+        total_hours=len(all_ts),
+    )
+    dataset = AlignedDataset(
+        data=combined_df,
+        cups_list=cups_list,
+        metadata=summary,
+        monthly_groups={
+            "2025-05": df_2025,
+            "2026-05": df_2026,
+        },
+    )
+
+    opt_result = DistributionOptimizer.optimize_dataset(
+        dataset, strategy=OptimizationStrategy.OPTIMAL, require_full_month=True, precision=1
+    )
+
+    may_res = opt_result.monthly_results[4]
+    assert may_res.month == "05"
+    assert may_res.has_data is True
+    assert np.isclose(may_res.beta_sum, 1.0, atol=1e-4)
+
+    # In pooled 2025 and 2026, CUPS 1 consumes more than CUPS 2
+    c1 = next(c for c in may_res.cups_metrics if c.cups == cups_list[0])
+    c2 = next(c for c in may_res.cups_metrics if c.cups == cups_list[1])
+    assert c1.beta > c2.beta
+    assert np.isclose(c1.beta + c2.beta, 1.0, atol=1e-4)
+
+    # Energy totals are scaled by 1/2 to reflect a single representative upcoming year
+    expected_single_year_gen = 5.0 * len(ts_2025)
+    expected_single_year_cons = 4.0 * len(ts_2025)
+    assert np.isclose(may_res.total_generation_kwh, expected_single_year_gen, atol=1e-2)
+    assert np.isclose(may_res.total_consumption_kwh, expected_single_year_cons, atol=1e-2)

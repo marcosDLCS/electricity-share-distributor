@@ -26,7 +26,7 @@ It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/da
 - **📥 Dual Time-Series Ingestion:** Ingests hourly consumption curves from DATADIS CSV exports (per CUPS) and photovoltaic generation curves from Huawei FusionSolar Excel workbooks (`.xlsx`).
 - **⏱️ Robust Time-Series Synchronization:** Automatic alignment across differing timestamp conventions, leap years, missing intervals, and European Daylight Saving Time (DST) switches (23-hour March spring transition, 25-hour October autumn transition).
 - **🧮 Regulatory Optimization Engine:** Solves monthly linear programming (LP) models under **Real Decreto 244/2019** using `scipy.optimize.linprog(method='highs')`, finding optimal $\beta_i$ coefficients ($\sum \beta_i \le 1.0$ or $100.00\%$) that maximize collective self-consumption and minimize spilled solar surplus.
-- **📋 Consolidated Distribution Share Matrix:** Computes and formats monthly shares per CUPS into an official schedule grid (CUPS on Y, Months on X) summing strictly to $\le 100\%$ with configured precision (0, 1, or 2 decimals) using Hare-Niemeyer exact remainder rounding.
+- **📋 Annual Prevision Distribution Matrix:** Computes and formats monthly shares per CUPS into an official 12-month schedule grid (CUPS on Y, Months on X from January to December) for an upcoming operational year. Incomplete months are skipped (`—`), while multi-year observations for the same calendar month are pooled into an LP model and scaled by $1/K$.
 - **⚖️ Multi-Strategy Efficiency Benchmarking:** Benchmarks optimal coefficients against standard baselines:
   - `optimal`: Linear programming maximizing collective self-consumption.
   - `consumption_share`: Proportional to each CUPS's share of total community demand.
@@ -115,17 +115,23 @@ flowchart TD
 │   equal                │   1,758.0 │ 16,221.4 │    9.8% │           Baseline │
 ╰────────────────────────┴───────────┴──────────┴─────────┴────────────────────╯
 
-               📅 Suggested Electricity Distribution Share Matrix (β_i %)
-    Regulatory allocation schedule (RD 244/2019) • Sum per month: 100%
-╭──────────────────────┬─────────┬─────────┬─────────┬─────────┬────────────╮
-│ CUPS                 │ 2025-12 │ 2026-01 │ 2026-02 │ 2026-03 │ Annual Avg │
-├──────────────────────┼─────────┼─────────┼─────────┼─────────┼────────────┤
-│ ES0021000000000001AA │   45.2% │   48.1% │   52.0% │   50.3% │      48.9% │
-│ ES0021000000000002BB │   30.8% │   28.5% │   25.0% │   27.2% │      27.9% │
-│ ES0021000000000003CC │   24.0% │   23.4% │   23.0% │   22.5% │      23.2% │
-├──────────────────────┼─────────┼─────────┼─────────┼─────────┼────────────┤
-│ TOTAL (RD 244/2019)  │  100.0% │  100.0% │  100.0% │  100.0% │     100.0% │
-╰──────────────────────┴─────────┴─────────┴─────────┴─────────┴────────────╯
+          📅 Suggested Electricity Distribution Share Matrix (β_i %)
+╭────────────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────╮
+│CUPS        │ Jan│ Feb│ Mar│ Apr│ May│ Jun│ Jul│ Aug│ Sep│ Oct│ Nov│ Dec│ Avg│
+├────────────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┤
+│…00000001AA │  1%│  1%│  1%│  2%│  2%│  2%│  2%│  2%│  1%│   —│   —│   —│  2%│
+│…00000002BB │  1%│  1%│  1%│  2%│  2%│  1%│  1%│  1%│  2%│   —│   —│   —│  1%│
+│…00000003CC │  1%│  1%│  2%│  2%│  2%│  1%│  1%│  2%│  2%│   —│   —│   —│  2%│
+│…00000004DD │  9%│ 11%│ 12%│ 24%│ 21%│ 14%│ 15%│ 18%│ 18%│   —│   —│   —│ 17%│
+│…00000005EE │  1%│  2%│  2%│  3%│  3%│  2%│  2%│  2%│  2%│   —│   —│   —│  2%│
+│…00000006FF │  0%│  0%│  0%│  0%│  0%│  0%│  0%│  0%│  0%│   —│   —│   —│  0%│
+│…00000007GG │  1%│  1%│  1%│  2%│  2%│  1%│  1%│  2%│  2%│   —│   —│   —│  1%│
+│…00000008HH │  0%│  0%│  0%│  0%│ 15%│ 21%│ 19%│ 28%│ 25%│   —│   —│   —│ 14%│
+│…00000009II │ 86%│ 83%│ 81%│ 65%│ 53%│ 58%│ 59%│ 45%│ 48%│   —│   —│   —│ 61%│
+├────────────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┤
+│TOTAL       │100%│100%│100%│100%│100%│100%│100%│100%│100%│   —│   —│   —│100%│
+╰────────────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────╯
+      Regulatory allocation schedule (RD 244/2019) • Sum per month: 100%
 ```
 
 ---
