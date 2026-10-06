@@ -22,44 +22,13 @@ It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/da
 
 ## 2. 🧩 Architecture & Component Boundaries
 
-```mermaid
-graph TD
-    CLI["🎮 src/cli.py\n(Typer Commands & Options)"] --> CFG["⚙️ src/config.py\n(AppConfig & Path Resolution)"]
-    CLI --> VER["🏷️ src/version.py\n(CalVer Versioning Engine)"]
-    CLI --> ING["📥 src/ingestion/\n(Parsers & Time-Series Aligner)"]
-    ING --> SCH["🔍 src/ingestion/schema.py\n(Dataclasses & Domain Errors)"]
-    CLI --> OPT["🧮 src/optimization/\n(RD 244/2019 Linear Programming Engine)"]
-    CLI --> VIEW["🖥️ src/presentation/views.py\n(Rich Tables, Panels & Bars)"]
-    CLI --> EXP["📝 src/presentation/export.py\n(Multi-format Exporter)"]
-    CLI --> I18N["🌐 src/i18n.py\n(Localization Engine en/es)"]
-```
-
-### File Hierarchy
-```text
-electricity-share-distributor/
-├── pyproject.toml              # Build config, CLI entry point (esd), Ruff & Pytest config
-├── requirements.txt            # Dependency manifest
-├── LICENSE                     # MIT License
-├── README.md / AGENTS.md       # User guide and agent directives
-├── CONTRIBUTING.md             # Contribution guidelines & Conventional Commits
-├── docs/                       # Technical & operational documentation guides
-│   ├── GUIDE_EN.md             # Comprehensive English technical guide
-│   └── GUIDE_ES.md             # Comprehensive Spanish technical guide
-├── .pre-commit-config.yaml     # Git hook definitions (Ruff linter, formatter, CalVer)
-├── .esd_config.json            # Persistent application configuration
-├── .input/                     # Raw input data
-│   ├── consumption/            # DATADIS hourly consumption CSV files
-│   └── generation/             # Huawei FusionSolar generation Excel files
-├── .output/                    # Generated reports and exports
-├── src/
-│   ├── cli.py                  # Typer CLI application and command dispatch
-│   ├── config.py / i18n.py     # Configuration, path resolution, and translations
-│   ├── version.py              # CalVer version management and pre-commit enforcer
-│   ├── ingestion/              # Parsers, schemas, and time-series alignment
-│   ├── optimization/           # Regulatory allocation model & solver engine
-│   └── presentation/           # Rich console UI, views, and exporters
-└── tests/                      # Automated unit, integration, and CLI test suite
-```
+The codebase is organized into focused, modular layers with clean separation of concerns:
+- **CLI & Dispatch (`src/cli.py`):** Typer application orchestrating command dispatch, parameter validation, and user workflow.
+- **Configuration & Localization (`src/config.py`, `src/i18n.py`):** Persistent settings (`.esd_config.json`) and bilingual English/Spanish lookup engine.
+- **Ingestion & Alignment (`src/ingestion/`):** DATADIS CSV loader, Huawei Excel loader, `DataDoctor` pre-flight auditor, and DST-aware `TimeSeriesAligner`.
+- **Optimization Core (`src/optimization/`):** RD 244/2019 linear programming solver (`scipy.optimize.linprog`), baseline comparisons, Hare-Niemeyer exact rounding, and multi-year calendar prevision engine.
+- **Presentation & Reporting (`src/presentation/`):** Rich 80-column terminal tables, views, and multi-format exporters (CSV, JSON, Markdown).
+- **Security & Versioning (`src/security.py`, `src/version.py`):** GDPR CUPS privacy audit harness and automated CalVer release manager.
 
 ---
 

@@ -14,102 +14,39 @@
 
 ## 1. 🎯 Principios Básicos y Contexto Regulatorio
 
-### El Reto del Autoconsumo Colectivo
-En España, el **Real Decreto 244/2019** regula las condiciones administrativas, técnicas y económicas del autoconsumo de energía eléctrica. En una modalidad de *autoconsumo colectivo*, varios suministros (cada uno identificado por su código unívoco **CUPS**) comparten la electricidad generada por una instalación fotovoltaica común.
+En España, el **Real Decreto 244/2019** regula el autoconsumo colectivo, donde varios suministros (**CUPS**) comparten la producción de una instalación fotovoltaica (FV) común.
 
-La normativa exige que los participantes formalicen un **acuerdo de reparto** con las siguientes reglas:
-1. **Coeficientes Horarios de Reparto ($\beta_i$):** En cada hora $h$, el participante $i$ recibe una cuota de la generación horaria igual a $\beta_i \cdot G_h$.
-2. **Restricción Mensual:** La regulación permite que los coeficientes varíen de un mes a otro ($\beta_{i, m}$), pero **dentro de un mismo mes natural, el coeficiente de cada participante debe ser único y fijo para todas las horas**.
-3. **Restricción Presupuestaria:** La suma de los coeficientes de todos los participantes en un mes no puede superar el 100%:
-   $$\sum_{i=1}^{N} \beta_{i, m} \le 1{,}0000 \quad (100{,}00\%)$$
+### Reglas Regulatorias y Balance Horario
+1. **Asignación Horaria ($\beta_i$):** En cada hora $h$, el participante $i$ recibe $G_{i, h} = \beta_i \cdot G_h$.
+2. **Restricción Mensual:** Los coeficientes $\beta_{i, m}$ son estrictamente fijos a lo largo de cada mes natural $m$.
+3. **Restricción Presupuestaria:** La suma de cuotas no puede superar el 100%: $\sum_{i=1}^{N} \beta_{i, m} \le 1{,}0000$ ($100{,}00\%$).
+4. **Balance Horario por CUPS:**
+   - Autoconsumido: $SC_{i, h} = \min(C_{i, h}, \beta_i \cdot G_h)$
+   - Demanda Residual de Red: $RD_{i, h} = \max(0, C_{i, h} - \beta_i \cdot G_h)$
+   - Excedente Vertido: $Surplus_{i, h} = \max(0, \beta_i \cdot G_h - C_{i, h})$
 
-### Por qué un Reparto Igualitario Desperdicia Energía Solar
-Un reparto simple a partes iguales ($\beta_i = 1/N$, por ejemplo $11{,}1\%$ para 9 vecinos) o basado en el consumo bruto total provoca un desaprovechamiento crítico:
-- **Curva Solar Diurna:** La energía solar fotovoltaica se produce exclusivamente durante el día (habitualmente de 08:00 a 20:00).
-- **Desincronización de Hábitos:** Si a un vecino que trabaja fuera de casa o cuya vivienda está desocupada se le asigna un porcentaje fijo, su cuota solar no se autoconsume y se vierte a la red eléctrica como excedente. En España, la compensación de excedentes se liquida a precio de mercado mayorista (*pool*), notablemente inferior al precio minorista de compra de la electricidad.
-- **Consecuencia:** Mientras ese vecino vierte energía a bajo precio, otro vecino con alto consumo diurno (teletrabajo, climatización, familias) se ve forzado a comprar energía cara de la red.
-- **Misión de `esd`:** Encontrar matemáticamente los coeficientes mensuales óptimos ($\beta_{i, m}$) que **maximicen el autoconsumo colectivo directo** $\sum_i \min(C_{i, h}, \beta_{i, m} \cdot G_h)$, reteniendo la mayor cantidad posible de energía dentro de la comunidad.
+### Por qué la Optimización Supera a los Repartos Simples
+Los repartos simétricos ($1/N$) o por consumo total ignoran la ventana solar diurna (08:00–20:00). Los suministros ausentes vierten energía a precio mayorista de excedentes mientras los consumidores diurnos compran energía cara de red. `esd` calcula coeficientes que **maximizan el autoconsumo colectivo** $\sum_i \min(C_{i, h}, \beta_i \cdot G_h)$, minimizando la dependencia de red.
 
 ---
 
-## 2. 📥 Cómo Obtiene la Información la Herramienta
+## 2. 📥 Especificaciones de Ingesta
 
-`esd` se alimenta de dos fuentes de datos complementarias situadas en el directorio `.input/`:
-
-```
-.input/
-├── consumption/    # Archivos CSV de consumo horario de DATADIS (por CUPS)
-└── generation/     # Libros Excel (.xlsx) de generación de Huawei FusionSolar
-```
-
-### 1. Curvas Horarias de Consumo de DATADIS
-- **Origen:** [DATADIS](https://datadis.es), plataforma oficial y agregada de las distribuidoras eléctricas españolas.
-- **Formato:** Archivos CSV con columnas `CUPS`, `Fecha` (`AAAA/MM/DD` o `DD/MM/AAAA`), `Hora` (1 a 24) y `Consumo_kWh`.
-- **Tratamiento en Código ([`DatadisConsumptionLoader`](file:///Users/marcos/workspace/repo/electricity-share-distributor/src/ingestion/consumption.py)):**
-  - Detección automática de codificación (`utf-8`, `iso-8859-1`, `windows-1252`).
-  - Detección automática de delimitadores (`;`, `,` o `\t`).
-  - Normalización de la convención horaria española (1 a 24) a marcas temporales estándar indexadas en cero (`00:00:00` a `23:00:00`).
-
-### 2. Curvas de Generación Solar de Huawei FusionSolar
-- **Origen:** Exportaciones del portal de gestión de inversores solares Huawei FusionSolar.
-- **Formato:** Libros Excel (`.xlsx`) con mediciones temporales de producción solar.
-- **Tratamiento en Código ([`HuaweiGenerationLoader`](file:///Users/marcos/workspace/repo/electricity-share-distributor/src/ingestion/generation.py)):**
-  - Extracción de lecturas de columnas como `Rendimiento FV (kWh)` o `Rendimiento del inversor (kWh)`.
-  - Normalización e indexación en marcas horarias estándar.
+`esd` procesa datos depositados en `.input/`:
+- **Consumo Horario DATADIS (`.input/consumption/*.csv`):** Curvas oficiales de distribuidoras. [`DatadisConsumptionLoader`](file:///Users/marcos/workspace/repo/electricity-share-distributor/src/ingestion/consumption.py) autodetecta codificaciones (`utf-8`, `latin-1`), delimitadores (`;`, `,`, `\t`), formato decimal y mapea las horas 01:00–24:00 a marcas estándar indexadas en cero.
+- **Generación FV Huawei FusionSolar (`.input/generation/*.xlsx`):** Informes de inversor. [`HuaweiGenerationLoader`](file:///Users/marcos/workspace/repo/electricity-share-distributor/src/ingestion/generation.py) extrae la producción (`Rendimiento FV` o `Rendimiento del inversor`) y normaliza la frecuencia horaria.
 
 ---
 
-## 3. ⚙️ Cómo se Procesa la Información
+## 3. ⚙️ Flujo de Procesamiento
 
-El flujo de procesamiento consta de cinco fases sistemáticas:
+El pipeline de cálculo opera en cinco fases:
 
-```mermaid
-flowchart LR
-    A["📥 Ingesta\n(Cargadores)"] --> B["🩺 Auditoría\n(Data Doctor)"]
-    B --> C["⏱️ Alineación\n(TimeSeriesAligner)"]
-    C --> D["🧮 Optimizador PL\n(SciPy HiGHS)"]
-    D --> E["🎯 Redondeo Exacto\n(Hare-Niemeyer)"]
-    E --> F["📊 Presentación\n(Matriz e Informes)"]
-```
-
-### Fase 1: Auditoría y Diagnóstico de Salud ([`DataDoctor`](file:///Users/marcos/workspace/repo/electricity-share-distributor/src/ingestion/doctor.py))
-Antes de cualquier cálculo, el motor de diagnóstico evalúa los datos brutos:
-- **Detección de Huecos:** Identifica intervalos horarios ausentes y reporta su duración.
-- **Detección de Inactividad:** Detecta suministros con $>90\%$ de lecturas a cero (contadores inactivos o segundas residencias).
-- **Comprobación de Solape:** Localiza el rango de fechas en común entre la generación solar y los consumos para prevenir incoherencias temporales.
-
-### Fase 2: Sincronización Temporal ([`TimeSeriesAligner`](file:///Users/marcos/workspace/repo/electricity-share-distributor/src/ingestion/aligner.py))
-- **Alineación de Índices:** Transforma los consumos pivotando cada CUPS en una columna y cruzando los registros temporales con la serie de generación solar mediante intersección de índices de pandas.
-- **Cambio de Hora Estacional (DST):** Gestiona los cambios de horario oficial en España (CET/CEST):
-  - Transición de primavera (23 horas, se omite de 02:00 a 03:00).
-  - Transición de otoño (25 horas, lectura duplicada de 02:00 a 03:00).
-- **Segmentación Mensual:** Agrupa la serie continua en bloques mensuales (`AAAA-MM`) para su resolución independiente.
-
-### Fase 3: Núcleo de Programación Lineal ([`DistributionOptimizer`](file:///Users/marcos/workspace/repo/electricity-share-distributor/src/optimization/engine.py))
-Para cada mes $m$, el objetivo matemático es:
-$$\max_{\beta_1, \dots, \beta_N} \sum_{i=1}^{N} \sum_{h \in \text{sol}} \min(C_{i, h}, \beta_i \cdot G_h) \quad \text{sujeto a} \quad \sum_{i=1}^{N} \beta_i \le 1{,}0, \; \beta_i \ge 0$$
-
-#### La Transformación Epigráfica:
-Dado que la función $\min(A, B)$ es no lineal, un algoritmo estándar no puede resolverla directamente. Se introduce una **variable auxiliar** $s_{i, h}$ que representa los kWh autoconsumidos por el CUPS $i$ en la hora solar $h$:
-- **Límite Superior 1:** $s_{i, h} \le C_{i, h}$ (no se puede autoconsumir más de lo consumido).
-- **Límite Superior 2:** $s_{i, h} \le \beta_i \cdot G_h \iff s_{i, h} - \beta_i \cdot G_h \le 0$ (no se puede autoconsumir más de la energía solar asignada).
-- **Restricción Regulatoria:** $\sum_i \beta_i \le 1{,}0$.
-
-El optimizador maximiza la suma de todas las variables $s_{i, h}$ empleando el solver **HiGHS de SciPy**, hallando la solución óptima global en cuestión de milisegundos.
-
-### Fase 4: Redondeo Exacto al 100% ([`_round_betas`](file:///Users/marcos/workspace/repo/electricity-share-distributor/src/optimization/engine.py#L136))
-El redondeo habitual en coma flotante (por ejemplo, `round(beta * 100, 2)`) suele producir sumas de $99{,}99\%$ o $100{,}01\%$. La distribuidora rechaza de plano cualquier acuerdo de reparto cuya suma mensual no sea exactamente igual o inferior al 100%.
-
-Para garantizar la exactitud, `esd` implementa el **Método del Resto Mayor (Hare-Niemeyer)**:
-1. Escala los coeficientes por $100 \times 10^p$ (donde $p$ es la precisión decimal configurada: 0, 1 o 2).
-2. Obtiene la parte entera de cada cuota.
-3. Calcula el déficit residual ($100 - \sum \lfloor \text{cuotas} \rfloor$).
-4. Asigna las unidades restantes de forma ordenada a los participantes con mayores restos decimales.
-5. **Resultado:** Se garantiza matemáticamente que la suma de cada columna sea **exactamente $100{,}00\%$** (o $100{,}0\%$ / $100\%$) en cualquier nivel de precisión.
-
-### Fase 5: Comparativa de Eficiencia Frente a Estrategias Base
-Para validar el ahorro, `esd` calcula simultáneamente dos escenarios de referencia:
-- **`equal` ($1/N$):** Reparto simétrico e indiferenciado entre todos los contadores.
+1. **Auditoría Previa de Salud ([`DataDoctor`](file:///Users/marcos/workspace/repo/electricity-share-distributor/src/ingestion/doctor.py)):** Audita series por huecos horarios, contadores inactivos (>90% ceros) y verifica el solape temporal.
+2. **Sincronización Temporal ([`TimeSeriesAligner`](file:///Users/marcos/workspace/repo/electricity-share-distributor/src/ingestion/aligner.py)):** Pivota los CUPS en columnas e interseca índices con la generación solar, gestionando cambios de hora estacionales DST (23 h en marzo, 25 h en octubre).
+3. **Optimizador de Programación Lineal ([`DistributionOptimizer`](file:///Users/marcos/workspace/repo/electricity-share-distributor/src/optimization/engine.py)):** Reformula la función no lineal $\max \sum \min(C_{i, h}, \beta_i G_h)$ mediante variables auxiliares $s_{i, h} \le C_{i, h}$ y $s_{i, h} - \beta_i G_h \le 0$, resuelta globalmente con SciPy HiGHS.
+4. **Redondeo Exacto al 100% ([`_round_betas`](file:///Users/marcos/workspace/repo/electricity-share-distributor/src/optimization/engine.py#L136)):** Aplica el **Método del Resto Mayor (Hare-Niemeyer)** para garantizar que la suma sea **exactamente 100%** en cualquier precisión decimal (0, 1 o 2).
+5. **Comparativa de Referencia:** Contrasta la asignación óptima frente a escenarios base `equal` ($1/N$) y `consumption_share`.*`equal` ($1/N$):** Reparto simétrico e indiferenciado entre todos los contadores.
 - **`consumption_share`:** Reparto proporcional al consumo bruto acumulado de cada miembro.
 
 ---
