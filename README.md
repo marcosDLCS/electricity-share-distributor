@@ -227,10 +227,10 @@ esd doctor --verbose
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |
 
 ### `esd init`
-Sets up project directory hierarchy (`.input/consumption`, `.input/generation`, `.output`) and default `.esd_config.json`.
+Sets up project directory hierarchy (`.input/consumption`, `.input/generation`, `.output`) and default `.esd_config.json`. Defaults to English (`en`) and zero precision (`0`).
 
 ```bash
-esd init [--lang en|es]
+esd init [--lang en|es] [--precision 0|1|2]
 ```
 
 ### `esd config`

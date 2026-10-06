@@ -37,10 +37,12 @@ def test_cli_init_english() -> None:
 
 
 def test_cli_init_no_flags_uses_defaults() -> None:
-    """init with no flags should succeed, using stored config values."""
+    """init with no flags should succeed, defaulting to English and zero precision."""
     result = runner.invoke(app, ["init"])
     assert result.exit_code == 0
     assert "nitialized Successfully" in result.output
+    assert "English (en)" in result.output
+    assert "0 decimal(s)" in result.output
 
 
 def test_cli_init_precision_valid() -> None:
@@ -329,6 +331,25 @@ def test_cli_init_interactive_prompts() -> None:
     assert result.exit_code == 0
     assert "inicializado" in result.output.lower()
     assert "2 decimal(es)" in result.output
+
+
+def test_cli_init_interactive_prompts_defaults() -> None:
+    """Ensure init interactive prompts default to English and zero precision when Enter is pressed."""
+    from src.config import get_language, get_precision, set_language, set_precision
+
+    set_language("es")
+    set_precision(2)
+    assert get_language() == "es"
+    assert get_precision() == 2
+
+    # User presses Enter on both prompts (empty inputs)
+    result = runner.invoke(app, ["init"], input="\n\n")
+    assert result.exit_code == 0
+    assert "nitialized Successfully" in result.output
+    assert "English (en)" in result.output
+    assert "0 decimal(s)" in result.output
+    assert get_language() == "en"
+    assert get_precision() == 0
 
 
 def test_cli_calculate_spanish() -> None:

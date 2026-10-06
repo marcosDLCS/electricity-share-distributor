@@ -92,19 +92,19 @@ def init_command(
         None,
         "--lang",
         "-l",
-        help="Language preference: 'en' (English) or 'es' (Español). Defaults to current setting or 'en'.",
+        help="Language preference: 'en' (English) or 'es' (Español). Defaults to 'en'.",
     ),
     precision: int | None = typer.Option(
         None,
         "--precision",
         "-p",
-        help="Share percentage precision: 0 (e.g. 53%), 1 (e.g. 52.8%), or 2 (e.g. 52.86%). Defaults to current setting or 0.",
+        help="Share percentage precision: 0 (e.g. 53%), 1 (e.g. 52.8%), or 2 (e.g. 52.86%). Defaults to 0.",
     ),
 ) -> None:
     """Initialize workspace: create dirs, clear .output, configure language and precision.
 
     Safe to call multiple times — always re-applies settings, clears .output, and creates
-    missing directories. Language and precision default to already-configured values if omitted.
+    missing directories. Defaults to English ('en') and zero precision (0) if omitted.
     """
     cfg = load_config()
     was_already = is_initialized()
@@ -117,10 +117,10 @@ def init_command(
         try:
             raw_lang = typer.prompt(
                 "Select desired language ('en' for English, 'es' for Spanish)",
-                default=cfg.language or "en",
+                default="en",
             )
         except (typer.exceptions.Abort, EOFError):
-            raw_lang = cfg.language or "en"
+            raw_lang = "en"
     else:
         raw_lang = lang
 
@@ -135,15 +135,11 @@ def init_command(
         try:
             raw_precision = typer.prompt(
                 "Select desired share precision (0, 1, or 2 decimal places)",
-                default=cfg.share_precision
-                if cfg.share_precision is not None
-                else DEFAULT_SHARE_PRECISION,
+                default=DEFAULT_SHARE_PRECISION,
                 type=int,
             )
         except (typer.exceptions.Abort, EOFError):
-            raw_precision = (
-                cfg.share_precision if cfg.share_precision is not None else DEFAULT_SHARE_PRECISION
-            )
+            raw_precision = DEFAULT_SHARE_PRECISION
     else:
         raw_precision = precision
 
