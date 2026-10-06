@@ -118,29 +118,32 @@ Para validar el ahorro, `esd` calcula simultáneamente dos escenarios de referen
 
 ### 1. La Matriz de Coeficientes de Reparto Mensuales
 El resultado principal de `esd` es la **Matriz Regulatoria de Coeficientes de Reparto** ([`CoefficientsMatrix`](file:///Users/marcos/workspace/repo/electricity-share-distributor/src/optimization/models.py#L78)):
+- **Calendario Previsional (Año Nuevo en Inicio):** En lugar de un análisis retrospectivo de fechas pasadas, `esd` genera una tabla previsional de 12 meses naturales, de **enero a diciembre**, para un nuevo año operativo que comienza.
+- **Tratamiento de Meses Incompletos:** Si no se dispone de datos completos (cobertura ≥90% de días y horas) de generación o consumo en al menos un mes completo (independientemente del año), `esd` omite el cálculo de dicho mes y muestra un guion / sin datos (`—`).
+- **Heurística de Agregación Multianual:** Si existen datos del mismo mes natural en diferentes años (ej. mayo de 2025 y mayo de 2026), `esd` agrega las observaciones horarias en un modelo de programación lineal unificado para calcular los $\beta_i$ óptimos, escalando los totales energéticos por $1/K$ para representar un ciclo anual representativo.
 - **Filas (Eje Y):** Códigos CUPS de los suministros participantes.
-- **Columnas (Eje X):** Meses naturales analizados y columna de **Media Anual Ponderada**.
-- **Celdas:** Porcentaje de reparto sugerido ($\beta_i$) con la precisión configurada.
-- **Fila TOTAL:** Acreditación de que cada columna suma exactamente el $100\%$.
+- **Columnas (Eje X):** Los 12 meses naturales (Ene–Dic) y columna de **Media Anual Ponderada**.
+- **Celdas:** Porcentaje de reparto sugerido ($\beta_i$) con la precisión configurada, o `—` para meses sin datos completos.
+- **Fila TOTAL:** Acreditación de que cada columna mensual evaluada suma exactamente el $100\%$.
 
 ```text
              📅 Matriz Sugerida de Coeficientes de Reparto (β_i %)
-    Acuerdo regulatorio de reparto (RD 244/2019) • Suma mensual: 100%
-╭────────────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────╮
-│CUPS        │   12│   01│   02│   03│   04│   05│   06│   07│   08│   09│Media│
-├────────────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤
-│…00000001AA │ 1.2%│ 1.0%│ 1.2%│ 1.4%│ 1.9%│ 1.9%│ 1.4%│ 1.4%│ 1.6%│ 1.5%│ 1.5%│
-│…00000002BB │ 1.0%│ 0.9%│ 1.2%│ 1.4%│ 2.0%│ 2.0%│ 1.4%│ 1.3%│ 1.6%│ 1.6%│ 1.6%│
-│…00000003CC │ 1.3%│ 1.0%│ 1.3%│ 1.5%│ 2.2%│ 2.2%│ 1.4%│ 1.3%│ 1.7%│ 1.9%│ 1.7%│
-│…00000004DD │ 9.1%│ 9.4%│10.4%│11.8%│23.8%│21.2%│14.2%│14.9%│18.6%│17.8%│16.6%│
-│…00000005EE │ 1.5%│ 1.1%│ 1.4%│ 1.7%│ 2.5%│ 2.6%│ 1.6%│ 1.5%│ 1.8%│ 2.1%│ 1.9%│
-│…00000006FF │ 0.0%│ 0.0%│ 0.0%│ 0.0%│ 0.0%│ 0.0%│ 0.0%│ 0.0%│ 0.0%│ 0.0%│ 0.0%│
-│…00000007GG │ 1.2%│ 1.0%│ 1.1%│ 1.4%│ 2.0%│ 1.9%│ 1.3%│ 1.3%│ 1.7%│ 1.6%│ 1.5%│
-│…00000008HH │ 0.0%│ 0.0%│ 0.1%│ 0.1%│ 0.1%│15.3%│20.4%│19.3%│28.1%│25.4%│13.6%│
-│…00000009II │84.7%│85.6%│83.3%│80.7%│65.5%│52.9%│58.3%│59.0%│44.9%│48.1%│61.6%│
-├────────────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤
-│TOTAL       │ 100%│ 100%│ 100%│ 100%│ 100%│ 100%│ 100%│ 100%│ 100%│ 100%│ 100%│
-╰────────────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────╯
+╭────────────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────╮
+│CUPS        │ Ene│ Feb│ Mar│ Abr│ May│ Jun│ Jul│ Ago│ Sep│ Oct│ Nov│ Dic│Med…│
+├────────────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┤
+│…00000001AA │  1%│  1%│  1%│  2%│  2%│  2%│  2%│  2%│  1%│   —│   —│   —│  2%│
+│…00000002BB │  1%│  1%│  1%│  2%│  2%│  1%│  1%│  1%│  2%│   —│   —│   —│  1%│
+│…00000003CC │  1%│  1%│  2%│  2%│  2%│  1%│  1%│  2%│  2%│   —│   —│   —│  2%│
+│…00000004DD │  9%│ 11%│ 12%│ 24%│ 21%│ 14%│ 15%│ 18%│ 18%│   —│   —│   —│ 17%│
+│…00000005EE │  1%│  2%│  2%│  3%│  3%│  2%│  2%│  2%│  2%│   —│   —│   —│  2%│
+│…00000006FF │  0%│  0%│  0%│  0%│  0%│  0%│  0%│  0%│  0%│   —│   —│   —│  0%│
+│…00000007GG │  1%│  1%│  1%│  2%│  2%│  1%│  1%│  2%│  2%│   —│   —│   —│  1%│
+│…00000008HH │  0%│  0%│  0%│  0%│ 15%│ 21%│ 19%│ 28%│ 25%│   —│   —│   —│ 14%│
+│…00000009II │ 86%│ 83%│ 81%│ 65%│ 53%│ 58%│ 59%│ 45%│ 48%│   —│   —│   —│ 61%│
+├────────────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┤
+│TOTAL       │100%│100%│100%│100%│100%│100%│100%│100%│100%│   —│   —│   —│100%│
+╰────────────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────╯
+       Acuerdo regulatorio de reparto (RD 244/2019) • Suma mensual: 100%
 ```
 
 ### 2. Archivos e Informes Exportados (`.output/`)

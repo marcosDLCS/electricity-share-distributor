@@ -107,17 +107,20 @@ def test_export_coefficients_matrix_csv(tmp_path: Path) -> None:
     df = pd.read_csv(csv_path, sep=";")
     # 2 CUPS rows + 1 TOTAL row
     assert len(df) == 3
-    assert list(df.columns) == ["cups", "2026-05", "annual_average"]
+    expected_cols = ["cups"] + [f"{m:02d}" for m in range(1, 13)] + ["annual_average"]
+    assert list(df.columns) == expected_cols
 
     # Verify CUPS rows
     assert df.iloc[0]["cups"] == "ES0021000000000001AA"
-    assert df.iloc[0]["2026-05"] == "60.0%"
+    assert df.iloc[0]["05"] == "60.0%"
+    assert df.iloc[0]["01"] == "—"
     assert df.iloc[1]["cups"] == "ES0021000000000002BB"
-    assert df.iloc[1]["2026-05"] == "40.0%"
+    assert df.iloc[1]["05"] == "40.0%"
+    assert df.iloc[1]["01"] == "—"
 
     # Verify TOTAL row
     assert df.iloc[2]["cups"] == "TOTAL"
-    assert df.iloc[2]["2026-05"] == "100.0%"
+    assert df.iloc[2]["05"] == "100.0%"
     assert df.iloc[2]["annual_average"] == "100.0%"
 
 

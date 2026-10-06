@@ -117,29 +117,32 @@ To demonstrate the value of optimization, `esd` automatically computes two compa
 
 ### 1. The Consolidated Distribution Share Matrix
 The core deliverable of `esd` is the **Regulatory Distribution Share Matrix** ([`CoefficientsMatrix`](file:///Users/marcos/workspace/repo/electricity-share-distributor/src/optimization/models.py#L78)):
+- **Prevision Schedule (Brand-New Year):** Rather than a retrospective analysis of historical dates, `esd` generates a forward-looking 12-month calendar distribution schedule from **January to December** for an upcoming operating year.
+- **Incomplete Month Handling:** If complete data (≥90% calendar day and hourly coverage) for PV generation or consumption is unavailable for at least one full calendar month, `esd` skips the calculation for that month and displays `—` (no-data / hyphen).
+- **Multi-Year Aggregation Heuristic:** If complete data exists for the same calendar month across multiple years (e.g., May 2025 and May 2026), `esd` pools historical hourly observations into a unified LP optimization model to solve for the optimal $\beta_i$ distribution coefficients, scaling energy totals by $1/K$ to represent a typical single annual cycle.
 - **Rows (Y-axis):** Participating CUPS.
-- **Columns (X-axis):** Evaluated calendar months, plus the **Annual Average** share.
-- **Cells:** Recommended $\beta_i$ percentage share formatted to the configured precision (0, 1, or 2 decimal places).
-- **TOTAL Row:** Verifies that every single month column sums strictly to $100\%$.
+- **Columns (X-axis):** 12 calendar months (Jan–Dec), plus the **Annual Average** share.
+- **Cells:** Recommended $\beta_i$ percentage share formatted to the configured precision (0, 1, or 2 decimal places), or `—` for months without complete data.
+- **TOTAL Row:** Verifies that every evaluated month column sums strictly to $100\%$.
 
 ```text
-             📅 Suggested Electricity Distribution Share Matrix (β_i %)
-    Regulatory allocation schedule (RD 244/2019) • Sum per month: 100%
-╭────────────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────╮
-│CUPS        │   12│   01│   02│   03│   04│   05│   06│   07│   08│   09│Media│
-├────────────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤
-│…00000001AA │ 1.2%│ 1.0%│ 1.2%│ 1.4%│ 1.9%│ 1.9%│ 1.4%│ 1.4%│ 1.6%│ 1.5%│ 1.5%│
-│…00000002BB │ 1.0%│ 0.9%│ 1.2%│ 1.4%│ 2.0%│ 2.0%│ 1.4%│ 1.3%│ 1.6%│ 1.6%│ 1.6%│
-│…00000003CC │ 1.3%│ 1.0%│ 1.3%│ 1.5%│ 2.2%│ 2.2%│ 1.4%│ 1.3%│ 1.7%│ 1.9%│ 1.7%│
-│…00000004DD │ 9.1%│ 9.4%│10.4%│11.8%│23.8%│21.2%│14.2%│14.9%│18.6%│17.8%│16.6%│
-│…00000005EE │ 1.5%│ 1.1%│ 1.4%│ 1.7%│ 2.5%│ 2.6%│ 1.6%│ 1.5%│ 1.8%│ 2.1%│ 1.9%│
-│…00000006FF │ 0.0%│ 0.0%│ 0.0%│ 0.0%│ 0.0%│ 0.0%│ 0.0%│ 0.0%│ 0.0%│ 0.0%│ 0.0%│
-│…00000007GG │ 1.2%│ 1.0%│ 1.1%│ 1.4%│ 2.0%│ 1.9%│ 1.3%│ 1.3%│ 1.7%│ 1.6%│ 1.5%│
-│…00000008HH │ 0.0%│ 0.0%│ 0.1%│ 0.1%│ 0.1%│15.3%│20.4%│19.3%│28.1%│25.4%│13.6%│
-│…00000009II │84.7%│85.6%│83.3%│80.7%│65.5%│52.9%│58.3%│59.0%│44.9%│48.1%│61.6%│
-├────────────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤
-│TOTAL       │ 100%│ 100%│ 100%│ 100%│ 100%│ 100%│ 100%│ 100%│ 100%│ 100%│ 100%│
-╰────────────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────╯
+          📅 Suggested Electricity Distribution Share Matrix (β_i %)
+╭────────────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────╮
+│CUPS        │ Jan│ Feb│ Mar│ Apr│ May│ Jun│ Jul│ Aug│ Sep│ Oct│ Nov│ Dec│ Avg│
+├────────────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┤
+│…00000001AA │  1%│  1%│  1%│  2%│  2%│  2%│  2%│  2%│  1%│   —│   —│   —│  2%│
+│…00000002BB │  1%│  1%│  1%│  2%│  2%│  1%│  1%│  1%│  2%│   —│   —│   —│  1%│
+│…00000003CC │  1%│  1%│  2%│  2%│  2%│  1%│  1%│  2%│  2%│   —│   —│   —│  2%│
+│…00000004DD │  9%│ 11%│ 12%│ 24%│ 21%│ 14%│ 15%│ 18%│ 18%│   —│   —│   —│ 17%│
+│…00000005EE │  1%│  2%│  2%│  3%│  3%│  2%│  2%│  2%│  2%│   —│   —│   —│  2%│
+│…00000006FF │  0%│  0%│  0%│  0%│  0%│  0%│  0%│  0%│  0%│   —│   —│   —│  0%│
+│…00000007GG │  1%│  1%│  1%│  2%│  2%│  1%│  1%│  2%│  2%│   —│   —│   —│  1%│
+│…00000008HH │  0%│  0%│  0%│  0%│ 15%│ 21%│ 19%│ 28%│ 25%│   —│   —│   —│ 14%│
+│…00000009II │ 86%│ 83%│ 81%│ 65%│ 53%│ 58%│ 59%│ 45%│ 48%│   —│   —│   —│ 61%│
+├────────────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┼────┤
+│TOTAL       │100%│100%│100%│100%│100%│100%│100%│100%│100%│   —│   —│   —│100%│
+╰────────────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────╯
+      Regulatory allocation schedule (RD 244/2019) • Sum per month: 100%
 ```
 
 ### 2. Multi-Format Output Files (`.output/`)

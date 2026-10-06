@@ -13,6 +13,35 @@ from src.ingestion.schema import IngestionSummary
 from src.optimization.models import OptimizationResult
 from src.version import get_version
 
+MONTH_ABBR_EN: dict[str, str] = {
+    "01": "Jan",
+    "02": "Feb",
+    "03": "Mar",
+    "04": "Apr",
+    "05": "May",
+    "06": "Jun",
+    "07": "Jul",
+    "08": "Aug",
+    "09": "Sep",
+    "10": "Oct",
+    "11": "Nov",
+    "12": "Dec",
+}
+MONTH_ABBR_ES: dict[str, str] = {
+    "01": "Ene",
+    "02": "Feb",
+    "03": "Mar",
+    "04": "Abr",
+    "05": "May",
+    "06": "Jun",
+    "07": "Jul",
+    "08": "Ago",
+    "09": "Sep",
+    "10": "Oct",
+    "11": "Nov",
+    "12": "Dic",
+}
+
 
 def get_export_timestamp() -> str:
     """Generate standardized export timestamp string: YYYYMMDD_HHMMSS."""
@@ -185,12 +214,17 @@ def export_summary_markdown(
         "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
     ]
 
+    abbr_map = MONTH_ABBR_ES if target_lang == "es" else MONTH_ABBR_EN
     for m in opt_result.monthly_results:
-        lines.append(
-            f"| **{m.month}** | {m.total_generation_kwh:,.1f} | {m.total_consumption_kwh:,.1f} | "
-            f"{m.total_self_consumed_kwh:,.1f} | {m.total_surplus_kwh:,.1f} | {m.total_grid_demand_kwh:,.1f} | "
-            f"{m.self_consumption_rate:.1f}% | {m.solar_coverage_rate:.1f}% |"
-        )
+        m_label = abbr_map.get(m.month, m.month)
+        if m.has_data:
+            lines.append(
+                f"| **{m_label}** | {m.total_generation_kwh:,.1f} | {m.total_consumption_kwh:,.1f} | "
+                f"{m.total_self_consumed_kwh:,.1f} | {m.total_surplus_kwh:,.1f} | {m.total_grid_demand_kwh:,.1f} | "
+                f"{m.self_consumption_rate:.1f}% | {m.solar_coverage_rate:.1f}% |"
+            )
+        else:
+            lines.append(f"| **{m_label}** | — | — | — | — | — | — | — |")
 
     lines.extend(
         [
@@ -245,7 +279,8 @@ def export_summary_markdown(
         lines.append(t("md_desc_coeff_matrix", lang=target_lang))
         lines.append("")
 
-        headers = ["CUPS", *matrix.months, t("col_annual_avg", lang=target_lang)]
+        month_headers = [abbr_map.get(m, m) for m in matrix.months]
+        headers = ["CUPS", *month_headers, t("col_annual_avg", lang=target_lang)]
         lines.append("| " + " | ".join(headers) + " |")
         lines.append("| :--- | " + " | ".join([":---:"] * (len(headers) - 1)) + " |")
 
@@ -268,11 +303,14 @@ def export_summary_markdown(
     lines.append("")
 
     for m in opt_result.monthly_results:
+        if not m.has_data:
+            continue
+        m_label = abbr_map.get(m.month, m.month)
         lines.append(
             t(
                 "md_month_header",
                 lang=target_lang,
-                month=m.month,
+                month=m_label,
                 gen=m.total_generation_kwh,
             )
         )

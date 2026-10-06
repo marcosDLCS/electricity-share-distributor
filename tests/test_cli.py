@@ -170,7 +170,8 @@ def test_cli_calculate_views() -> None:
     )
     assert result_matrix.exit_code == 0
     assert "Distribution Share" in result_matrix.output
-    assert "TOTAL (RD 244/2019)" in result_matrix.output
+    assert "TOTAL" in result_matrix.output
+    assert "RD 244/2019" in result_matrix.output
 
     # Test summary view
     result_sum = runner.invoke(

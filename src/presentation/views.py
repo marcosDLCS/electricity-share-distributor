@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from rich import box
 from rich.align import Align
@@ -299,6 +299,36 @@ def render_monthly_coefficients_table(
     console.print()
 
 
+MONTH_ABBR_EN: Final[dict[str, str]] = {
+    "01": "Jan",
+    "02": "Feb",
+    "03": "Mar",
+    "04": "Apr",
+    "05": "May",
+    "06": "Jun",
+    "07": "Jul",
+    "08": "Aug",
+    "09": "Sep",
+    "10": "Oct",
+    "11": "Nov",
+    "12": "Dec",
+}
+MONTH_ABBR_ES: Final[dict[str, str]] = {
+    "01": "Ene",
+    "02": "Feb",
+    "03": "Mar",
+    "04": "Abr",
+    "05": "May",
+    "06": "Jun",
+    "07": "Jul",
+    "08": "Ago",
+    "09": "Sep",
+    "10": "Oct",
+    "11": "Nov",
+    "12": "Dic",
+}
+
+
 def render_coefficients_matrix_table(
     opt_result: OptimizationResult,
     lang: str | None = None,
@@ -330,14 +360,13 @@ def render_coefficients_matrix_table(
     cups_width = 12 if compact_mode else 20
     table.add_column(t("col_cups", lang=lang), style="bold cyan", width=cups_width, no_wrap=True)
 
+    abbr_map = MONTH_ABBR_ES if current_lang == "es" else MONTH_ABBR_EN
     for m in matrix.months:
-        if compact_mode:
-            header_name = m[5:]
-        elif len(matrix.months) > 4:
-            header_name = f"{m[5:]}/{m[2:4]}" if len(m) >= 7 else m
-        else:
-            header_name = m
-        table.add_column(header_name, justify="right", style="yellow", no_wrap=True)
+        header_name = abbr_map.get(m, m)
+        col_width = 4 if compact_mode else None
+        table.add_column(
+            header_name, justify="right", style="yellow", width=col_width, no_wrap=True
+        )
 
     annual_col = t("col_annual_avg", lang=lang)
     if compact_mode and len(annual_col) > 6:
@@ -347,6 +376,7 @@ def render_coefficients_matrix_table(
         annual_col,
         justify="right",
         style="bold green",
+        width=4 if compact_mode else None,
         no_wrap=True,
     )
 
@@ -378,6 +408,9 @@ def render_monthly_trajectory_table(
     lang: str | None = None,
 ) -> None:
     """Render month-by-month trajectory table of community self-consumption."""
+    from src.config import get_language
+
+    current_lang = lang or get_language()
     table = Table(
         title=f"[bold yellow]{t('title_monthly_trajectory', lang=lang)}[/bold yellow] [dim](kWh)[/dim]",
         box=box.ROUNDED,
@@ -406,16 +439,29 @@ def render_monthly_trajectory_table(
         t("col_cov_rate", lang=lang), justify="right", style="bold magenta", width=7, no_wrap=True
     )
 
+    abbr_map = MONTH_ABBR_ES if current_lang == "es" else MONTH_ABBR_EN
     for m in opt_result.monthly_results:
-        table.add_row(
-            m.month,
-            f"{m.total_generation_kwh:,.1f}",
-            f"{m.total_consumption_kwh:,.1f}",
-            f"{m.total_self_consumed_kwh:,.1f}",
-            f"{m.total_surplus_kwh:,.1f}",
-            f"{m.self_consumption_rate:.1f}%",
-            f"{m.solar_coverage_rate:.1f}%",
-        )
+        m_name = abbr_map.get(m.month, m.month)
+        if m.has_data:
+            table.add_row(
+                m_name,
+                f"{m.total_generation_kwh:,.1f}",
+                f"{m.total_consumption_kwh:,.1f}",
+                f"{m.total_self_consumed_kwh:,.1f}",
+                f"{m.total_surplus_kwh:,.1f}",
+                f"{m.self_consumption_rate:.1f}%",
+                f"{m.solar_coverage_rate:.1f}%",
+            )
+        else:
+            table.add_row(
+                m_name,
+                "—",
+                "—",
+                "—",
+                "—",
+                "—",
+                "—",
+            )
 
     tot = opt_result.total_summary
     table.add_section()

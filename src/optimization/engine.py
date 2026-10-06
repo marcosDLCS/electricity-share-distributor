@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import calendar
+
 import numpy as np
 import pandas as pd
 import scipy.optimize as opt
@@ -283,6 +285,128 @@ class DistributionOptimizer:
             cups_metrics=cups_metrics,
         )
 
+    @staticmethod
+    def is_complete_month(df: pd.DataFrame, year: int, month: int) -> bool:
+        """Determine whether an aligned dataset for a year-month constitutes a complete month.
+
+        A month is considered complete if:
+        1. It spans across the month (earliest day <= 2 and latest day >= days_in_month - 1).
+        2. At least 90% of the calendar days in the month are represented.
+        3. Total hourly readings cover at least 90% of expected hours in the month.
+        """
+        if df.empty:
+            return False
+
+        days_in_month = calendar.monthrange(year, month)[1]
+        ts_days = pd.to_datetime(df.index).day
+        unique_days = ts_days.unique()
+
+        if min(unique_days) > 2 or max(unique_days) < days_in_month - 1:
+            return False
+
+        if len(unique_days) < int(days_in_month * 0.90):
+            return False
+
+        expected_hours = days_in_month * 24
+        if len(df) < int(expected_hours * 0.90):
+            return False
+
+        return True
+
+    @classmethod
+    def _evaluate_calendar_months(
+        cls,
+        aligned_dataset: AlignedDataset,
+        cups_list: list[str],
+        strategy: OptimizationStrategy,
+        precision: int,
+        require_full_month: bool = True,
+    ) -> list[CommunityMonthlyMetrics]:
+        """Evaluate each calendar month (01 to 12), aggregating multi-year data and skipping incomplete months."""
+        monthly_results: list[CommunityMonthlyMetrics] = []
+
+        for m in range(1, 13):
+            m_str = f"{m:02d}"
+            complete_dfs: list[pd.DataFrame] = []
+
+            for ym, group_df in aligned_dataset.monthly_groups.items():
+                try:
+                    parts = ym.split("-")
+                    y_val, m_val = int(parts[0]), int(parts[1])
+                    if m_val == m:
+                        if not require_full_month or cls.is_complete_month(group_df, y_val, m):
+                            complete_dfs.append(group_df)
+                except (ValueError, IndexError):
+                    continue
+
+            if not complete_dfs:
+                # Month does not have complete data: skip calculation
+                monthly_results.append(
+                    CommunityMonthlyMetrics(
+                        month=m_str,
+                        strategy=strategy.value,
+                        total_consumption_kwh=0.0,
+                        total_generation_kwh=0.0,
+                        total_self_consumed_kwh=0.0,
+                        total_surplus_kwh=0.0,
+                        total_grid_demand_kwh=0.0,
+                        self_consumption_rate=0.0,
+                        solar_coverage_rate=0.0,
+                        beta_sum=0.0,
+                        cups_metrics=[],
+                        has_data=False,
+                    )
+                )
+            elif len(complete_dfs) == 1:
+                # Exactly one complete year for this calendar month
+                res = cls.evaluate_month(
+                    complete_dfs[0],
+                    cups_list=cups_list,
+                    month_name=m_str,
+                    strategy=strategy,
+                    precision=precision,
+                )
+                res.has_data = True
+                monthly_results.append(res)
+            else:
+                # Multi-year complete data: aggregate by pooling historical observations
+                k = len(complete_dfs)
+                pooled_df = pd.concat(complete_dfs)
+                res = cls.evaluate_month(
+                    pooled_df,
+                    cups_list=cups_list,
+                    month_name=m_str,
+                    strategy=strategy,
+                    precision=precision,
+                )
+                # Scale energy totals by 1/k to reflect single upcoming year expected energy:
+                res.total_generation_kwh /= k
+                res.total_consumption_kwh /= k
+                res.total_self_consumed_kwh /= k
+                res.total_surplus_kwh /= k
+                res.total_grid_demand_kwh /= k
+                scaled_cups: list[CupsMonthlyMetrics] = []
+                for cm in res.cups_metrics:
+                    scaled_cups.append(
+                        CupsMonthlyMetrics(
+                            cups=cm.cups,
+                            month=cm.month,
+                            beta=cm.beta,
+                            consumption_kwh=cm.consumption_kwh / k,
+                            generation_allocated_kwh=cm.generation_allocated_kwh / k,
+                            self_consumed_kwh=cm.self_consumed_kwh / k,
+                            surplus_kwh=cm.surplus_kwh / k,
+                            grid_demand_kwh=cm.grid_demand_kwh / k,
+                            self_consumption_rate=cm.self_consumption_rate,
+                            solar_coverage_rate=cm.solar_coverage_rate,
+                        )
+                    )
+                res.cups_metrics = scaled_cups
+                res.has_data = True
+                monthly_results.append(res)
+
+        return monthly_results
+
     @classmethod
     def optimize_dataset(
         cls,
@@ -290,17 +414,19 @@ class DistributionOptimizer:
         strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL,
         include_baselines: bool = True,
         precision: int | None = None,
+        require_full_month: bool = True,
     ) -> OptimizationResult:
-        """Run optimization across all months in the dataset.
+        """Run optimization for an upcoming calendar year (January to December).
 
         Args:
             aligned_dataset: Ingested and aligned dataset.
             strategy: Primary optimization strategy.
             include_baselines: If True, also computes results for baseline strategies.
             precision: Share percentage precision (0, 1, or 2 decimals). If None, uses configured setting.
+            require_full_month: If True, skips months that do not have at least one complete month of data.
 
         Returns:
-            OptimizationResult containing monthly breakdowns, total summary, and baselines.
+            OptimizationResult containing 12-month calendar prevision, total summary, and baselines.
         """
         from src.config import get_precision, validate_share_precision
 
@@ -308,19 +434,14 @@ class DistributionOptimizer:
             get_precision() if precision is None else validate_share_precision(precision)
         )
         cups_list = aligned_dataset.cups_list
-        sorted_months = sorted(aligned_dataset.monthly_groups.keys())
 
-        monthly_results: list[CommunityMonthlyMetrics] = []
-        for ym in sorted_months:
-            m_df = aligned_dataset.get_month_data(ym)
-            res = cls.evaluate_month(
-                m_df,
-                cups_list=cups_list,
-                month_name=ym,
-                strategy=strategy,
-                precision=active_precision,
-            )
-            monthly_results.append(res)
+        monthly_results = cls._evaluate_calendar_months(
+            aligned_dataset=aligned_dataset,
+            cups_list=cups_list,
+            strategy=strategy,
+            precision=active_precision,
+            require_full_month=require_full_month,
+        )
 
         total_summary = cls._aggregate_summary(monthly_results, cups_list, strategy.value)
 
@@ -328,22 +449,20 @@ class DistributionOptimizer:
         if include_baselines:
             for base_strat in (OptimizationStrategy.CONSUMPTION_SHARE, OptimizationStrategy.EQUAL):
                 if base_strat != strategy:
-                    base_monthly = [
-                        cls.evaluate_month(
-                            aligned_dataset.get_month_data(ym),
-                            cups_list=cups_list,
-                            month_name=ym,
-                            strategy=base_strat,
-                            precision=active_precision,
-                        )
-                        for ym in sorted_months
-                    ]
+                    base_monthly = cls._evaluate_calendar_months(
+                        aligned_dataset=aligned_dataset,
+                        cups_list=cups_list,
+                        strategy=base_strat,
+                        precision=active_precision,
+                        require_full_month=require_full_month,
+                    )
                     base_summary = cls._aggregate_summary(base_monthly, cups_list, base_strat.value)
                     baselines[base_strat.value] = OptimizationResult(
                         strategy=base_strat.value,
                         monthly_results=base_monthly,
                         total_summary=base_summary,
                         baselines={},
+                        cups_list=cups_list,
                     )
 
         return OptimizationResult(
@@ -351,6 +470,7 @@ class DistributionOptimizer:
             monthly_results=monthly_results,
             total_summary=total_summary,
             baselines=baselines,
+            cups_list=cups_list,
         )
 
     @staticmethod
@@ -360,7 +480,8 @@ class DistributionOptimizer:
         strategy: str,
     ) -> CommunityMonthlyMetrics:
         """Compute aggregate total metrics across multiple months."""
-        if not monthly_results:
+        active_months = [m for m in monthly_results if m.has_data]
+        if not active_months:
             return CommunityMonthlyMetrics(
                 month="Total",
                 strategy=strategy,
@@ -372,13 +493,29 @@ class DistributionOptimizer:
                 self_consumption_rate=0.0,
                 solar_coverage_rate=0.0,
                 beta_sum=1.0,
+                cups_metrics=[
+                    CupsMonthlyMetrics(
+                        cups=c,
+                        month="Total",
+                        beta=0.0,
+                        consumption_kwh=0.0,
+                        generation_allocated_kwh=0.0,
+                        self_consumed_kwh=0.0,
+                        surplus_kwh=0.0,
+                        grid_demand_kwh=0.0,
+                        self_consumption_rate=0.0,
+                        solar_coverage_rate=0.0,
+                    )
+                    for c in cups_list
+                ],
+                has_data=False,
             )
 
-        tot_cons = sum(m.total_consumption_kwh for m in monthly_results)
-        tot_gen = sum(m.total_generation_kwh for m in monthly_results)
-        tot_sc = sum(m.total_self_consumed_kwh for m in monthly_results)
-        tot_surplus = sum(m.total_surplus_kwh for m in monthly_results)
-        tot_grid = sum(m.total_grid_demand_kwh for m in monthly_results)
+        tot_cons = sum(m.total_consumption_kwh for m in active_months)
+        tot_gen = sum(m.total_generation_kwh for m in active_months)
+        tot_sc = sum(m.total_self_consumed_kwh for m in active_months)
+        tot_surplus = sum(m.total_surplus_kwh for m in active_months)
+        tot_grid = sum(m.total_grid_demand_kwh for m in active_months)
 
         sc_rate = (tot_sc / tot_gen * 100.0) if tot_gen > 0 else 0.0
         cov_rate = (tot_sc / tot_cons * 100.0) if tot_cons > 0 else 0.0
@@ -396,7 +533,7 @@ class DistributionOptimizer:
             for c in cups_list
         }
 
-        for m in monthly_results:
+        for m in active_months:
             m_gen = m.total_generation_kwh
             for cm in m.cups_metrics:
                 entry = cups_aggregates[cm.cups]
@@ -449,4 +586,5 @@ class DistributionOptimizer:
             solar_coverage_rate=cov_rate,
             beta_sum=1.0,
             cups_metrics=cups_summary_metrics,
+            has_data=True,
         )

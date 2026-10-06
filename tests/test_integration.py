@@ -22,8 +22,8 @@ def create_synthetic_environment(tmp_path: Path) -> tuple[Path, Path]:
     consumption_dir.mkdir(parents=True)
     generation_dir.mkdir(parents=True)
 
-    # Generate 14 days of hourly data in May 2026 (336 hours)
-    dates = pd.date_range("2026-05-01 00:00:00", "2026-05-14 23:00:00", freq="h")
+    # Generate full month of hourly data in May 2026 (744 hours)
+    dates = pd.date_range("2026-05-01 00:00:00", "2026-05-31 23:00:00", freq="h")
 
     # 3 Synthetic CUPS:
     # CUPS 1: Diurnal consumer (offices / stores) - heavy daytime demand
@@ -107,7 +107,7 @@ def test_synthetic_community_optimization(tmp_path: Path) -> None:
         generation_files_loaded=1,
     )
     aligned = aligner.align()
-    assert len(aligned.data) == 336
+    assert len(aligned.data) == 744
     assert aligned.metadata.cups_count == 3
 
     # 3. Optimize (Optimal strategy)
@@ -118,8 +118,9 @@ def test_synthetic_community_optimization(tmp_path: Path) -> None:
         include_baselines=True,
     )
 
-    assert len(res.monthly_results) == 1
-    m = res.monthly_results[0]
+    assert len(res.monthly_results) == 12
+    m = next(res_m for res_m in res.monthly_results if res_m.month == "05")
+    assert m.has_data is True
 
     # Verify RD 244/2019 Domain Invariants
     # 1. Sum of betas <= 1.0001
