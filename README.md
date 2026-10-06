@@ -23,18 +23,14 @@ It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/da
 
 ## 🚀 Key Capabilities
 
-- **📥 Dual Time-Series Ingestion:** Ingests hourly consumption curves from DATADIS CSV exports (per CUPS) and photovoltaic generation curves from Huawei FusionSolar Excel workbooks (`.xlsx`).
-- **⏱️ Robust Time-Series Synchronization:** Automatic alignment across differing timestamp conventions, leap years, missing intervals, and European Daylight Saving Time (DST) switches (23-hour March spring transition, 25-hour October autumn transition).
-- **🧮 Regulatory Optimization Engine:** Solves monthly linear programming (LP) models under **Real Decreto 244/2019** using `scipy.optimize.linprog(method='highs')`, finding optimal $\beta_i$ coefficients ($\sum \beta_i \le 1.0$ or $100.00\%$) that maximize collective self-consumption and minimize spilled solar surplus.
-- **📋 Annual Prevision Distribution Matrix:** Computes and formats monthly shares per CUPS into an official 12-month schedule grid (CUPS on Y, Months on X from January to December) for an upcoming operational year. Incomplete months are skipped (`—`), while multi-year observations for the same calendar month are pooled into an LP model and scaled by $1/K$.
-- **⚖️ Multi-Strategy Efficiency Benchmarking:** Benchmarks optimal coefficients against standard baselines:
-  - `optimal`: Linear programming maximizing collective self-consumption.
-  - `consumption_share`: Proportional to each CUPS's share of total community demand.
-  - `equal`: Uniform allocation split across all participating supply points ($1/N$).
-- **📊 Rich 80-Column Terminal UI:** Elegant console rendering formatted strictly for 80-column terminals, complete with metric overview cards, monthly trajectory balances, strategy comparisons, and Unicode share bars (`████░░░░`).
-- **📝 Multi-Format Reporting:** Generates timestamped export reports in CSV (ready for utility/distributor submission), structured JSON, and executive Markdown into `.output/`.
-- **🏷️ Automated CalVer Versioning:** Increments release version on every commit following `YYYY.MM.NNN` (e.g., `2026.10.004`), displayed in console banners and reports.
-- **🌐 Dual-Language Support:** Full English (`en`) and Spanish (`es`) localization, persisted across commands via `.esd_config.json`.
+- **📥 Dual Time-Series Ingestion:** DATADIS hourly consumption curves (per CUPS) and Huawei FusionSolar generation Excel workbooks (`.xlsx`).
+- **⏱️ Time-Series Alignment & DST:** Synchronizes disparate timestamps across leap years, missing intervals, and European DST switches (23h spring leap, 25h autumn transition).
+- **🧮 Regulatory Optimization Engine:** Solves monthly linear programming models under **Real Decreto 244/2019** via `scipy.optimize.linprog(method='highs')`, finding optimal $\beta_i$ coefficients ($\sum \beta_i \le 1.0$) that maximize collective self-consumption.
+- **📋 Annual Prevision Distribution Matrix:** Formulates a 12-month calendar schedule (Jan–Dec) for an upcoming operating year, skipping incomplete months (`—`) and pooling multi-year observations with $1/K$ energy scaling.
+- **⚖️ Strategy Benchmarking:** Evaluates `optimal` LP against `consumption_share` and `equal` ($1/N$) baselines.
+- **📊 Rich 80-Column Terminal UI:** Tabular overviews, monthly trajectories, strategy comparisons, and visual share bars formatted for 80-column terminals.
+- **📝 Multi-Format Reporting:** Timestamped exports in CSV (DSO-ready), JSON, and Markdown in `.output/`.
+- **🌐 Localization & Versioning:** Bilingual English/Spanish (`en`/`es`) support and automated per-commit CalVer (`YYYY.MM.NNN`).
 
 ---
 
@@ -55,33 +51,6 @@ In Spanish shared self-consumption schemes (*autoconsumo colectivo*), participat
    $$\max_{\beta_1, \dots, \beta_N} \sum_{i=1}^{N} \sum_{h \in \text{month}} \min(C_{i, h}, \beta_i \cdot G_h) \quad \text{s.t.} \quad \sum_{i=1}^{N} \beta_i \le 1, \; \beta_i \ge 0$$
 
    This piecewise-linear optimization is cast as a standard Linear Program and solved in milliseconds via SciPy's Simplex/HiGHS solver.
-
----
-
-## 🏗️ Architecture & Data Flow
-
-```mermaid
-flowchart TD
-    subgraph Ingestion ["📥 Ingestion & Validation"]
-        DATADIS["📁 .input/consumption/*.csv\n(DATADIS hourly per CUPS)"] --> C_LOAD["🧹 DatadisConsumptionLoader\n(Auto-delimiter, encoding & DST)"]
-        HUAWEI["📁 .input/generation/*.xlsx\n(Huawei FusionSolar exports)"] --> G_LOAD["☀️ HuaweiGenerationLoader\n(Openpyxl / XML extractor)"]
-    end
-
-    subgraph Alignment ["⏱️ Time-Series Alignment"]
-        C_LOAD --> ALIGN["⏱️ TimeSeriesAligner\n(Zero-gap timestamp matching)"]
-        G_LOAD --> ALIGN
-    end
-
-    subgraph Optimization ["🧮 RD 244/2019 Solver Core"]
-        ALIGN --> OPT["📐 DistributionOptimizer\n(SciPy HiGHS LP Solver)"]
-        OPT --> STRATS["⚖️ Baseline Comparator\n(Optimal vs Consumption vs Equal)"]
-    end
-
-    subgraph Presentation ["📊 Presentation & Export"]
-        STRATS --> RICH["🖥️ Rich Console UI\n(80-Col Tables, Panels & Share Bars)"]
-        STRATS --> EXP["📝 Multi-Format Exporter\n(CSV, JSON, Markdown in .output/)"]
-    end
-```
 
 ---
 
@@ -255,49 +224,10 @@ esd version
 
 ---
 
-## 📁 File Structure & Input Data Specifications
+## 📁 Supported Ingestion Formats
 
-```text
-electricity-share-distributor/
-├── pyproject.toml              # Build config, CLI entry point (esd), Ruff & Pytest config
-├── requirements.txt            # Dependency manifest
-├── LICENSE                     # MIT License
-├── README.md / AGENTS.md       # User documentation & Agent directives
-├── CONTRIBUTING.md             # Contribution guidelines & Conventional Commits
-├── docs/                       # Comprehensive documentation guides
-│   ├── GUIDE_EN.md             # Technical & operational guide (English)
-│   └── GUIDE_ES.md             # Technical & operational guide (Spanish)
-├── .pre-commit-config.yaml     # Git hook definitions (Ruff linter, formatter, CalVer)
-├── .esd_config.json            # Persistent application configuration
-├── .input/                     # Raw input data
-│   ├── consumption/            # DATADIS hourly consumption CSV files
-│   └── generation/             # Huawei FusionSolar generation Excel files
-├── .output/                    # Generated reports and exports
-│   ├── YYYYMMDD_HHMMSS_esd_coefficients_matrix.csv
-│   ├── YYYYMMDD_HHMMSS_esd_coefficients.csv
-│   ├── YYYYMMDD_HHMMSS_esd_results.json
-│   └── YYYYMMDD_HHMMSS_esd_optimization_summary.md
-└── src/
-    ├── cli.py                  # Typer CLI application and command dispatch
-    ├── config.py / i18n.py     # Configuration, path resolution, and translations
-    ├── version.py              # CalVer version management and pre-commit enforcer
-    ├── ingestion/              # Ingestion loaders, schemas, and time-series alignment
-    ├── optimization/           # RD 244/2019 Linear Programming allocation engine
-    └── presentation/           # Rich console UI, views, and multi-format exporters
-```
-
-### Supported Ingestion Formats
-
-1. **DATADIS Consumption Files (`.csv`):**
-   - Automatically detects semicolon (`;`), comma (`,`), or tab delimiters.
-   - Handles European comma (`0,152`) and standard dot (`0.152`) decimals.
-   - Detects UTF-8, UTF-8-SIG, and Latin-1 character encodings.
-   - Maps Spanish 01:00–24:00 billing hours and standard Daylight Saving Time shifts.
-
-2. **Huawei FusionSolar Generation Files (`.xlsx`):**
-   - Ingests inverter and plant generation export reports.
-   - Parses date-time columns with `DST` labels.
-   - Extracts PV generation yield (`Rendimiento FV (kWh)` or `Rendimiento del inversor (kWh)`).
+1. **DATADIS Consumption Files (`.input/consumption/*.csv`):** Auto-detects delimiters (`;`, `,`, `\t`), decimal formats (`0,152` / `0.152`), character encodings (`utf-8`, `latin-1`), and standardizes Spanish 01:00–24:00 billing hours.
+2. **Huawei FusionSolar Generation Files (`.input/generation/*.xlsx`):** Ingests inverter and plant generation reports, extracting PV yield (`Rendimiento FV` or `Rendimiento del inversor`) and standardizing timestamps.
 
 ---
 
