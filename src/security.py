@@ -31,6 +31,11 @@ SYNTHETIC_TRUNCATED_PATTERN: re.Pattern[str] = re.compile(
     r"^0{2,}\d{1,4}[A-Za-z0-9]{2,4}$", re.IGNORECASE
 )
 
+# Prohibited absolute local filesystem paths (e.g. /Users/..., /home/..., file:///...)
+LOCAL_PATH_PATTERN: re.Pattern[str] = re.compile(
+    r"(?:file:///|/(?:Users|home)/[a-zA-Z0-9._-]+/)\S*", re.IGNORECASE
+)
+
 # File patterns or paths ignored from scanning (e.g. git internals, venv, caches, local inputs)
 IGNORED_DIRS: set[str] = {
     ".git",
@@ -133,14 +138,26 @@ def find_cups_leaks(text: str, private_signatures: set[str] | None = None) -> li
     return list(dict.fromkeys(leaks))
 
 
+def find_path_leaks(text: str) -> list[str]:
+    """Scan text for prohibited local filesystem paths or file:/// links.
+
+    Args:
+        text: Arbitrary text to scan.
+
+    Returns:
+        List of prohibited local paths detected.
+    """
+    return list(dict.fromkeys(LOCAL_PATH_PATTERN.findall(text)))
+
+
 def scan_file(file_path: Path) -> list[tuple[int, str, str]]:
-    """Scan a single text file for prohibited real CUPS identifiers.
+    """Scan a single text file for prohibited real CUPS identifiers or local paths.
 
     Args:
         file_path: Path to the file.
 
     Returns:
-        List of tuples (line_number, cups, line_preview).
+        List of tuples (line_number, leak, line_preview).
     """
     findings: list[tuple[int, str, str]] = []
     try:
@@ -148,8 +165,11 @@ def scan_file(file_path: Path) -> list[tuple[int, str, str]]:
     except Exception:
         return findings
 
+    is_sec = file_path.name in ("security.py", "test_security.py")
     for line_num, line in enumerate(content.splitlines(), start=1):
         leaks = find_cups_leaks(line)
+        if not is_sec:
+            leaks += find_path_leaks(line)
         for leak in leaks:
             findings.append((line_num, leak, line.strip()))
     return findings
@@ -186,13 +206,13 @@ def scan_directory(root_dir: Path | str) -> dict[Path, list[tuple[int, str, str]
 
 
 def scan_git_history(repo_root: Path | str | None = None) -> list[tuple[str, str, str]]:
-    """Scan all git commits in repository history for prohibited real CUPS identifiers.
+    """Scan all git commits in repository history for prohibited real CUPS identifiers or local paths.
 
     Args:
         repo_root: Optional repository root path. Defaults to current working directory.
 
     Returns:
-        List of tuples: (commit_hash, location_preview, prohibited_cups).
+        List of tuples: (commit_hash, location_preview, prohibited_leak).
     """
     root = Path(repo_root) if repo_root else Path.cwd()
     findings: list[tuple[str, str, str]] = []
@@ -219,7 +239,7 @@ def scan_git_history(repo_root: Path | str | None = None) -> list[tuple[str, str
             text=True,
         )
         if msg_res.returncode == 0:
-            for leak in find_cups_leaks(msg_res.stdout):
+            for leak in find_cups_leaks(msg_res.stdout) + find_path_leaks(msg_res.stdout):
                 findings.append((commit[:8], "commit-message", leak))
 
         # 2. Scan commit diff additions
@@ -231,22 +251,31 @@ def scan_git_history(repo_root: Path | str | None = None) -> list[tuple[str, str
             errors="ignore",
         )
         if diff_res.returncode == 0:
+            current_diff_file = ""
             for line in diff_res.stdout.splitlines():
-                if line.startswith("+") and not line.startswith("+++"):
-                    for leak in find_cups_leaks(line):
+                if line.startswith("+++ b/"):
+                    current_diff_file = line[6:]
+                elif line.startswith("+") and not line.startswith("+++"):
+                    is_sec = current_diff_file.endswith(
+                        "security.py"
+                    ) or current_diff_file.endswith("test_security.py")
+                    leaks = find_cups_leaks(line)
+                    if not is_sec:
+                        leaks += find_path_leaks(line)
+                    for leak in leaks:
                         findings.append((commit[:8], line[:80].strip(), leak))
 
     return findings
 
 
 def scan_git_staged(repo_root: Path | str | None = None) -> dict[str, list[tuple[int, str, str]]]:
-    """Scan git staged changes (index) for prohibited real CUPS identifiers before commit.
+    """Scan git staged changes (index) for prohibited real CUPS identifiers or local paths before commit.
 
     Args:
         repo_root: Optional repository root path. Defaults to current working directory.
 
     Returns:
-        Dictionary mapping staged file names to lists of findings (line_index, cups, preview).
+        Dictionary mapping staged file names to lists of findings (line_index, leak, preview).
     """
     root = Path(repo_root) if repo_root else Path.cwd()
     findings: dict[str, list[tuple[int, str, str]]] = {}
@@ -273,7 +302,12 @@ def scan_git_staged(repo_root: Path | str | None = None) -> dict[str, list[tuple
             match = re.search(r"\+(\d+)", line)
             line_num = int(match.group(1)) if match else 1
         elif line.startswith("+") and not line.startswith("+++"):
+            is_sec = current_file.endswith("security.py") or current_file.endswith(
+                "test_security.py"
+            )
             leaks = find_cups_leaks(line[1:])
+            if not is_sec:
+                leaks += find_path_leaks(line[1:])
             for leak in leaks:
                 findings.setdefault(current_file, []).append((line_num, leak, line[1:].strip()))
             line_num += 1

@@ -7,6 +7,7 @@ from pathlib import Path
 from src.security import (
     check_privacy,
     find_cups_leaks,
+    find_path_leaks,
     is_synthetic_cups,
     scan_directory,
     scan_file,
@@ -39,6 +40,17 @@ def test_find_cups_leaks_dirty() -> None:
     dirty_text = f"Prohibited CUPS in text: {PROHIBITED_SAMPLE_CUPS} and ES0021000000000001AA"
     leaks = find_cups_leaks(dirty_text)
     assert leaks == [PROHIBITED_SAMPLE_CUPS]
+
+
+def test_find_path_leaks() -> None:
+    clean_text = "Relative link: [file](../src/cli.py) or `src/cli.py`"
+    assert find_path_leaks(clean_text) == []
+
+    # Prohibited local file paths
+    fake_path = "/Users" + "/john/workspace/project"
+    dirty_text = f"Local file: {fake_path} and file:///Users/someone/doc.md"
+    leaks = find_path_leaks(dirty_text)
+    assert len(leaks) >= 1
 
 
 def test_scan_file(tmp_path: Path) -> None:
