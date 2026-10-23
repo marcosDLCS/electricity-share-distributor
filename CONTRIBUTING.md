@@ -2,7 +2,7 @@
 
 ## 🛠️ Development Standards
 
-- **Language & Typing:** Universal English codebase. Strict Python 3.11+ typing (`X | Y`, dataclasses) across all modules.
+- **Language & Typing:** Universal English codebase. Strict Python 3.14+ typing (`X | Y`, dataclasses) across all modules.
 - **Code Quality:** Format and lint with [Ruff](https://astral.sh/ruff):
   ```bash
   ruff check --fix . && ruff format .

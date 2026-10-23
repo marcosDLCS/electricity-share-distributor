@@ -447,7 +447,7 @@ def t(key: str, lang: str | None = None, **kwargs: Any) -> str:
     if kwargs:
         try:
             return template.format(**kwargs)
-        except (KeyError, ValueError):
+        except KeyError, ValueError:
             return template
 
     return template

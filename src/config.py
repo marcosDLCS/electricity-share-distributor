@@ -131,7 +131,7 @@ def load_config(path: Path | None = None) -> AppConfig:
         prec = data.get("share_precision", DEFAULT_SHARE_PRECISION)
         try:
             valid_prec = validate_share_precision(int(prec))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             valid_prec = DEFAULT_SHARE_PRECISION
 
         return AppConfig(

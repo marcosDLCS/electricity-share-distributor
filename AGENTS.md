@@ -36,7 +36,7 @@ The codebase is organized into focused, modular layers with clean separation of 
 
 | Component | Technology | Standard / Role |
 | :--- | :--- | :--- |
-| **Runtime** | Python 3.11+ | Modern typing, union types (`X \| Y`), dataclasses |
+| **Runtime** | Python 3.14+ | Modern typing, union types (`X \| Y`), dataclasses |
 | **CLI & UI** | Typer & Rich | Command parsing, 80-column tables, visual bars |
 | **Data Engine** | Pandas & Openpyxl | Time-series indexing, CSV and Excel ingestion |
 | **Optimization** | Scipy (`scipy.optimize.linprog`) | Linear programming solver for optimal $\beta$ coefficients |

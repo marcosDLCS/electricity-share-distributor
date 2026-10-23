@@ -338,7 +338,7 @@ class DistributionOptimizer:
                     if m_val == m:
                         if not require_full_month or cls.is_complete_month(group_df, y_val, m):
                             complete_dfs.append(group_df)
-                except (ValueError, IndexError):
+                except ValueError, IndexError:
                     continue
 
             if not complete_dfs:

@@ -41,7 +41,7 @@ class DatadisConsumptionLoader:
             try:
                 raw_bytes.decode(enc)
                 return enc
-            except (UnicodeDecodeError, LookupError):
+            except UnicodeDecodeError, LookupError:
                 continue
         return "utf-8"
 
@@ -117,7 +117,7 @@ class DatadisConsumptionLoader:
                 hora_str = row["hora"]
                 try:
                     h = int(hora_str.split(":")[0])
-                except (ValueError, IndexError):
+                except ValueError, IndexError:
                     h = idx + 1
 
                 if is_spring_dst and h >= 3:

@@ -120,7 +120,7 @@ def init_command(
                 "Select desired language ('en' for English, 'es' for Spanish)",
                 default="en",
             )
-        except (typer.exceptions.Abort, EOFError):
+        except typer.exceptions.Abort, EOFError:
             raw_lang = "en"
     else:
         raw_lang = lang
@@ -139,7 +139,7 @@ def init_command(
                 default=DEFAULT_SHARE_PRECISION,
                 type=int,
             )
-        except (typer.exceptions.Abort, EOFError):
+        except typer.exceptions.Abort, EOFError:
             raw_precision = DEFAULT_SHARE_PRECISION
     else:
         raw_precision = precision
