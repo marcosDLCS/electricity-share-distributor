@@ -96,6 +96,7 @@ Electrical distribution companies (DSOs) reject regulatory share filings if the 
 On cloudy or stormy days, solar production can drop to near zero. If a single resident turns on a microwave during a momentary solar lull, calculating an instantaneous percentage would assign them an absurdly high share (like 95%) that doesn't reflect typical habits.
 - The 24-hour diurnal profile (`--hourly`) calculates average hourly patterns across all observed days.
 - It provides both the actual share and a cloud-resilient estimated share that protects participants from momentary weather distortions.
+- **Night Hours with Exact Zero Generation:** In night hours where solar generation is exactly zero, 100% of the share is assigned to the primary installation CUPS (and 0% to non-primary participants). This avoids distributing meaningless fractions of zero energy among residents while maintaining an exact regulatory 100% sum.
 
 ---
 

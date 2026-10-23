@@ -455,3 +455,70 @@ def test_cli_calculate_uses_existing_curated(tmp_path: Path) -> None:
     assert "COLLECTIVE SELF-CONSUMPTION COMMUNITY SUMMARY" in result.output
     assert "00000001AA" in result.output
     assert "1 CUPS" in result.output
+
+
+def test_curated_data_loads_primary_cups_and_hourly_assigns_100_percent_night(
+    tmp_path: Path,
+) -> None:
+    """Verify curated data retains primary CUPS and hourly calculation assigns 100% to primary cups at night."""
+    curated_dir = tmp_path / "curated"
+    curated_dir.mkdir()
+    out_dir = tmp_path / "output"
+    out_dir.mkdir()
+
+    pri_cups = "ES0021000000000001AA"
+    sec_cups = "ES0021000000000002BB"
+
+    rows = ["timestamp,generation,cups_id,use,consumption,primary,reconciled"]
+    for h in range(24):
+        gen = 0.0 if (h < 7 or h > 20) else 8.0
+        ts = f"2026-05-01 {h:02d}:00:00"
+        rows.append(f"{ts},{gen},{pri_cups},Aerotermia,2.0,True,False")
+        rows.append(f"{ts},{gen},{sec_cups},Piso 1,1.5,False,False")
+
+    (curated_dir / "curated.csv").write_text("\n".join(rows), encoding="utf-8")
+
+    aligned = DataCurator.load_aligned_dataset(curated_dir / "curated.csv")
+    assert aligned.primary_cups == pri_cups
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "calculate",
+            "--curated-dir",
+            str(curated_dir),
+            "--output-dir",
+            str(out_dir),
+            "--hourly",
+            "-y",
+            "2026",
+            "-m",
+            "5",
+            "--format",
+            "csv",
+            "--lang",
+            "en",
+        ],
+    )
+
+    assert result.exit_code == 0
+    hourly_csvs = list(out_dir.glob("*_esd_hourly_shares.csv"))
+    assert len(hourly_csvs) == 1
+    content = hourly_csvs[0].read_text(encoding="utf-8")
+    lines = content.strip().splitlines()
+    header = lines[0].split(";")
+    share_idx = header.index("share_pct")
+    cups_idx = header.index("cups")
+    hour_idx = header.index("hour")
+
+    for line in lines[1:]:
+        cols = line.split(";")
+        h = int(cols[hour_idx])
+        c = cols[cups_idx]
+        share = cols[share_idx]
+        if h < 7 or h > 20:
+            if c == pri_cups:
+                assert share == "100%"
+            else:
+                assert share == "0%"

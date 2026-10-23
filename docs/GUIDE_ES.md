@@ -96,6 +96,7 @@ Las distribuidoras eléctricas rechazan los anexos de reparto si los porcentajes
 En días de tormenta, la producción solar puede caer bruscamente. Si un vecino enciende el horno en un momento puntual de sol débil, calcular porcentajes instantáneos en ese día le asignaría un porcentaje desproporcionado (como el 95%) que no refleja su patrón habitual.
 - El perfil diario de 24 horas (`--hourly`) calcula el patrón típico consolidado en todos los días observados.
 - Ofrece el porcentaje horario real y un porcentaje estimado que protege a los vecinos de distorsiones en días nublados.
+- **Horas nocturnas con producción exactamente cero:** En las horas nocturnas sin ninguna producción solar, se asigna siempre el 100% del reparto al CUPS principal de la instalación (y 0% al resto de vecinos). Esto evita repartir cuotas ficticias de energía inexistente entre vecinos, garantizando a la vez una suma reglamentaria exactamente del 100%.
 
 ---
 

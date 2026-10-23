@@ -70,6 +70,7 @@ class AlignedDataset:
     metadata: IngestionSummary
     monthly_groups: dict[str, pd.DataFrame] = field(default_factory=dict)
     cups_uses: dict[str, str] = field(default_factory=dict)
+    primary_cups: str | None = None
 
     def get_month_data(self, year_month: str) -> pd.DataFrame:
         """Retrieve slice of aligned data for a specific 'YYYY-MM' month."""

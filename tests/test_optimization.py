@@ -537,3 +537,86 @@ def test_hourly_precision_rounding() -> None:
         )
         for h_str in res.profile_matrix.hours:
             assert res.profile_matrix.format_hour_sum(h_str, precision=prec) == expected
+
+
+def test_compute_hourly_optimization_night_zero_generation_primary() -> None:
+    """Verify that during night hours with exact zero generation, primary CUPS receives 100% and others 0%."""
+    pri_cups = "ES0021000000000001AA"
+    sec_cups = "ES0021000000000002BB"
+    cups_list = [pri_cups, sec_cups]
+    timestamps = [f"2026-05-01 {h:02d}:00:00" for h in range(24)]
+
+    # Hours 0-6 and 21-23 are night (0.0 generation), hours 7-20 have 5.0 kWh solar generation
+    df = pd.DataFrame(
+        {
+            pri_cups: [1.5] * 24,
+            sec_cups: [3.5] * 24,
+            "generation_kwh": [0.0 if (h < 7 or h > 20) else 5.0 for h in range(24)],
+        },
+        index=timestamps,
+    )
+    summary = IngestionSummary(
+        cups_count=2,
+        cups_list=cups_list,
+        consumption_files_loaded=2,
+        generation_files_loaded=1,
+        start_time=timestamps[0],
+        end_time=timestamps[-1],
+        total_hours=24,
+    )
+    dataset = AlignedDataset(
+        data=df,
+        cups_list=cups_list,
+        metadata=summary,
+        monthly_groups={"2026-05": df},
+        primary_cups=pri_cups,
+    )
+
+    # Test with precision=0 (e.g. '100%' and '0%')
+    res_p0 = DistributionOptimizer.compute_hourly_optimization(
+        dataset, strategy=OptimizationStrategy.OPTIMAL, precision=0
+    )
+
+    matrix_p0 = res_p0.profile_matrix
+    ts_df_p0 = res_p0.time_series_df
+
+    for h in range(24):
+        h_str = f"{h:02d}"
+        if h < 7 or h > 20:
+            # Night hours: exact zero generation
+            assert matrix_p0.matrix[pri_cups][h_str] == 1.0
+            assert matrix_p0.matrix[sec_cups][h_str] == 0.0
+            assert matrix_p0.format_cell(pri_cups, h_str, precision=0) == "100%"
+            assert matrix_p0.format_cell(sec_cups, h_str, precision=0) == "0%"
+        else:
+            # Daytime hours: positive generation divided between participants
+            assert matrix_p0.matrix[sec_cups][h_str] > 0.0
+
+    # In time series DataFrame, check night timestamps
+    for h in range(24):
+        ts = f"2026-05-01 {h:02d}:00:00"
+        ts_slice = ts_df_p0[ts_df_p0["timestamp"] == ts]
+        pri_row = ts_slice[ts_slice["cups"] == pri_cups].iloc[0]
+        sec_row = ts_slice[ts_slice["cups"] == sec_cups].iloc[0]
+
+        if h < 7 or h > 20:
+            assert pri_row["share_pct"] == "100%"
+            assert pri_row["estimated_share_pct"] == "100%"
+            assert sec_row["share_pct"] == "0%"
+            assert sec_row["estimated_share_pct"] == "0%"
+        else:
+            assert pri_row["share_pct"] != "100%"
+
+    # Test with precision=1 (e.g. '100.0%' and '0.0%')
+    res_p1 = DistributionOptimizer.compute_hourly_optimization(
+        dataset, strategy=OptimizationStrategy.OPTIMAL, precision=1
+    )
+    ts_df_p1 = res_p1.time_series_df
+    night_ts = "2026-05-01 02:00:00"
+    night_slice = ts_df_p1[ts_df_p1["timestamp"] == night_ts]
+    pri_row1 = night_slice[night_slice["cups"] == pri_cups].iloc[0]
+    sec_row1 = night_slice[night_slice["cups"] == sec_cups].iloc[0]
+    assert pri_row1["share_pct"] == "100.0%"
+    assert pri_row1["estimated_share_pct"] == "100.0%"
+    assert sec_row1["share_pct"] == "0.0%"
+    assert sec_row1["estimated_share_pct"] == "0.0%"

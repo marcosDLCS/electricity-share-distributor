@@ -415,6 +415,7 @@ class DistributionOptimizer:
         aligned_dataset: AlignedDataset,
         strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL,
         precision: int = 0,
+        primary_cups: str | None = None,
     ) -> HourlyOptimizationResult:
         """Compute 24-hour diurnal distribution profile and full hourly time-series balance.
 
@@ -422,6 +423,7 @@ class DistributionOptimizer:
             aligned_dataset: Ingested and aligned dataset containing hourly timestamps.
             strategy: Primary optimization strategy ('optimal', 'consumption_share', 'equal').
             precision: Share percentage precision (0, 1, or 2 decimal places).
+            primary_cups: Optional identifier of primary CUPS. If None, derived from dataset or configuration.
 
         Returns:
             HourlyOptimizationResult containing HourlyProfileMatrix and time_series_df.
@@ -447,6 +449,25 @@ class DistributionOptimizer:
                 metrics=[],
             )
 
+        # Identify effective primary CUPS if configured
+        effective_primary = primary_cups or getattr(aligned_dataset, "primary_cups", None)
+        if effective_primary is None:
+            try:
+                from src.curation.curator import DataCurator
+
+                cups_cfg = DataCurator().load_cups_config()
+                candidate = next((c.cups for c in cups_cfg.values() if c.primary), None)
+                if candidate and candidate in cups_list:
+                    effective_primary = candidate
+            except Exception:
+                pass
+
+        pri_idx = (
+            cups_list.index(effective_primary)
+            if effective_primary and effective_primary in cups_list
+            else None
+        )
+
         # -------------------------------------------------------------------------
         # 1. 24-Hour Diurnal Profile Matrix (Hours 00:00 to 23:00)
         # -------------------------------------------------------------------------
@@ -470,11 +491,18 @@ class DistributionOptimizer:
             else:
                 c_h = subset[cups_list].values
                 g_h = subset["generation_kwh"].values
-                betas_h = cls.calculate_betas(c_h, g_h, strategy=strategy, precision=precision)
-                hourly_gen_totals[h_str] = float(np.sum(g_h))
-                for i, c in enumerate(cups_list):
-                    matrix[c][h_str] = float(betas_h[i])
-                hourly_sums[h_str] = round(float(np.sum(betas_h)), 6)
+                tot_g_h = float(np.sum(g_h))
+                hourly_gen_totals[h_str] = tot_g_h
+
+                if pri_idx is not None and tot_g_h <= 1e-6:
+                    for c in cups_list:
+                        matrix[c][h_str] = 1.0 if c == effective_primary else 0.0
+                    hourly_sums[h_str] = 1.0
+                else:
+                    betas_h = cls.calculate_betas(c_h, g_h, strategy=strategy, precision=precision)
+                    for i, c in enumerate(cups_list):
+                        matrix[c][h_str] = float(betas_h[i])
+                    hourly_sums[h_str] = round(float(np.sum(betas_h)), 6)
 
         # Diurnal generation-weighted average share across all 24 hours
         tot_gen = sum(hourly_gen_totals.values())
@@ -525,9 +553,14 @@ class DistributionOptimizer:
                 raw_betas = np.where(c_row_sums > 0, c_arr / c_row_sums, 1.0 / n_cups)
 
         # Apply exact Hare-Niemeyer rounding row-by-row
+        # In zero-generation hours (e.g. night hours), assign 100% to primary CUPS
         rounded_betas = np.zeros_like(raw_betas)
         for t in range(t_steps):
-            rounded_betas[t] = cls._round_betas(raw_betas[t], precision=precision)
+            if pri_idx is not None and g_arr[t] <= 1e-6:
+                rounded_betas[t] = 0.0
+                rounded_betas[t, pri_idx] = 1.0
+            else:
+                rounded_betas[t] = cls._round_betas(raw_betas[t], precision=precision)
 
         # Build simplified long-format hourly time series
         ts_rows: list[dict[str, object]] = []
@@ -536,13 +569,18 @@ class DistributionOptimizer:
             h_int = int(dt_index[t].hour)
             h_str = f"{h_int:02d}"
             gen_val = round(float(g_arr[t]), 4)
+            is_zero_gen = (pri_idx is not None) and (g_arr[t] <= 1e-6)
 
             for i, cups in enumerate(cups_list):
                 cons_val = round(float(c_arr[t, i]), 4)
                 actual_share = f"{rounded_betas[t, i] * 100:.{precision}f}%"
-                est_share = profile_matrix.format_cell(cups, h_str, precision=precision)
-                if est_share == "—":
-                    est_share = actual_share
+                if is_zero_gen:
+                    est_val = 100.0 if cups == effective_primary else 0.0
+                    est_share = f"{est_val:.{precision}f}%"
+                else:
+                    est_share = profile_matrix.format_cell(cups, h_str, precision=precision)
+                    if est_share == "—":
+                        est_share = actual_share
 
                 ts_rows.append(
                     {
@@ -573,6 +611,7 @@ class DistributionOptimizer:
         precision: int | None = None,
         require_full_month: bool = True,
         compute_hourly: bool = False,
+        primary_cups: str | None = None,
     ) -> OptimizationResult:
         """Run optimization for an upcoming calendar year (January to December).
 
@@ -583,6 +622,7 @@ class DistributionOptimizer:
             precision: Share percentage precision (0, 1, or 2 decimals). If None, uses configured setting.
             require_full_month: If True, skips months that do not have at least one complete month of data.
             compute_hourly: If True, computes 24-hour diurnal profile and full hourly time-series balance.
+            primary_cups: Optional identifier of primary CUPS.
 
         Returns:
             OptimizationResult containing 12-month calendar prevision, total summary, baselines, and optional hourly_result.
@@ -630,6 +670,7 @@ class DistributionOptimizer:
                 aligned_dataset=aligned_dataset,
                 strategy=strategy,
                 precision=active_precision,
+                primary_cups=primary_cups or getattr(aligned_dataset, "primary_cups", None),
             )
 
         return OptimizationResult(

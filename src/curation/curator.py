@@ -99,6 +99,25 @@ def dataframe_to_aligned_dataset(
             if cups and pd.notna(use_val) and str(use_val).strip():
                 cups_uses[str(cups)] = str(use_val).strip()
 
+    # Extract primary CUPS if available
+    primary_cups: str | None = None
+    if "primary" in df_clean.columns:
+        pri_mask = df_clean["primary"].astype(str).str.lower().isin(["true", "1"])
+        pri_rows = df_clean[pri_mask]
+        if not pri_rows.empty:
+            cand = str(pri_rows["cups_id"].iloc[0])
+            if cand in cups_list:
+                primary_cups = cand
+
+    if not primary_cups:
+        try:
+            cfg = DataCurator().load_cups_config()
+            cand = next((c.cups for c in cfg.values() if c.primary), None)
+            if cand and cand in cups_list:
+                primary_cups = cand
+        except Exception:
+            pass
+
     # Summary metadata
     summary = IngestionSummary(
         cups_count=len(cups_list),
@@ -122,6 +141,7 @@ def dataframe_to_aligned_dataset(
         metadata=summary,
         monthly_groups=monthly_groups,
         cups_uses=cups_uses,
+        primary_cups=primary_cups,
     )
 
 
