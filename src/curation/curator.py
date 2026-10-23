@@ -24,6 +24,105 @@ from src.curation.models import (
 from src.ingestion.aligner import TimeSeriesAligner
 from src.ingestion.consumption import DatadisConsumptionLoader
 from src.ingestion.generation import HuaweiGenerationLoader
+from src.ingestion.schema import (
+    AlignedDataset,
+    AlignmentError,
+    IngestionSummary,
+)
+
+
+def dataframe_to_aligned_dataset(
+    df: pd.DataFrame,
+    year: int | None = None,
+    month: int | None = None,
+) -> AlignedDataset:
+    """Convert a curated DataFrame into an AlignedDataset for calculation.
+
+    Args:
+        df: Curated DataFrame containing timestamp, cups_id, consumption, and generation.
+        year: Optional calendar year filter.
+        month: Optional calendar month filter (1-12).
+
+    Returns:
+        AlignedDataset with pivoted consumption and generation series.
+
+    Raises:
+        CurationError: If required columns are missing or DataFrame is empty.
+        AlignmentError: If no data points match the year/month filter.
+    """
+    if df.empty:
+        raise AlignmentError("Curated dataset is empty.")
+
+    required_cols = {"timestamp", "generation", "cups_id", "consumption"}
+    missing_cols = required_cols - set(df.columns)
+    if missing_cols:
+        raise CurationError(f"Curated dataset is missing required columns: {sorted(missing_cols)}")
+
+    df_clean = df.copy()
+    df_clean["consumption"] = pd.to_numeric(df_clean["consumption"], errors="coerce").fillna(0.0)
+    df_clean["generation"] = pd.to_numeric(df_clean["generation"], errors="coerce").fillna(0.0)
+
+    # Apply year / month filters if specified
+    if year is not None:
+        prefix = f"{year:04d}"
+        if month is not None:
+            prefix = f"{year:04d}-{month:02d}"
+        df_clean = df_clean[df_clean["timestamp"].str.startswith(prefix)]
+        if df_clean.empty:
+            raise AlignmentError(
+                f"No aligned data points found for specified filter (year={year}, month={month})."
+            )
+    elif month is not None:
+        m_str = f"-{month:02d}-"
+        df_clean = df_clean[df_clean["timestamp"].str.contains(m_str)]
+        if df_clean.empty:
+            raise AlignmentError(f"No aligned data points found for month={month}.")
+
+    # Pivot consumption: index=timestamp, columns=cups_id, values=consumption
+    pivot_cons = df_clean.pivot(index="timestamp", columns="cups_id", values="consumption")
+    cups_list = sorted(pivot_cons.columns.tolist())
+    missing_count = int(pivot_cons.isna().sum().sum())
+    pivot_cons = pivot_cons.fillna(0.0)
+
+    # Extract generation series
+    gen_series = df_clean.groupby("timestamp")["generation"].first()
+
+    # Combine into aligned DataFrame
+    aligned_df = pivot_cons.copy()
+    aligned_df["generation_kwh"] = gen_series.loc[aligned_df.index]
+    aligned_df = aligned_df.sort_index()
+
+    # Extract CUPS functional uses if available
+    cups_uses: dict[str, str] = {}
+    if "use" in df_clean.columns:
+        for cups, use_val in zip(df_clean["cups_id"], df_clean["use"], strict=False):
+            if cups and pd.notna(use_val) and str(use_val).strip():
+                cups_uses[str(cups)] = str(use_val).strip()
+
+    # Summary metadata
+    summary = IngestionSummary(
+        cups_count=len(cups_list),
+        cups_list=cups_list,
+        consumption_files_loaded=len(cups_list),
+        generation_files_loaded=1,
+        start_time=str(aligned_df.index[0]),
+        end_time=str(aligned_df.index[-1]),
+        total_hours=len(aligned_df),
+        missing_hours_count=missing_count,
+    )
+
+    # Monthly groups
+    monthly_groups: dict[str, pd.DataFrame] = {}
+    for ym, group in aligned_df.groupby(aligned_df.index.str.slice(0, 7)):
+        monthly_groups[str(ym)] = group
+
+    return AlignedDataset(
+        data=aligned_df,
+        cups_list=cups_list,
+        metadata=summary,
+        monthly_groups=monthly_groups,
+        cups_uses=cups_uses,
+    )
 
 
 def format_energy_value(val: float) -> float | int:
@@ -298,3 +397,88 @@ class DataCurator:
         df.to_csv(csv_file, index=False, sep=delimiter, encoding="utf-8")
 
         return csv_file
+
+    def ensure_curated(
+        self,
+        force: bool = False,
+        base_name: str = "curated",
+        delimiter: str = ",",
+    ) -> Path:
+        """Ensure that a curated CSV file exists, generating it if missing or forced.
+
+        Args:
+            force: If True, re-runs curation even if the curated CSV already exists.
+            base_name: Base filename (defaults to 'curated').
+            delimiter: CSV separator (defaults to ',').
+
+        Returns:
+            Path to the verified curated CSV file.
+        """
+        target_dir = self.curated_dir
+        if target_dir.is_file():
+            target_dir = target_dir.parent
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+        csv_path = target_dir / f"{base_name}.csv"
+        if not force and csv_path.exists() and csv_path.stat().st_size > 0:
+            return csv_path
+
+        dataset = self.curate()
+        return self.export_csv(
+            dataset,
+            curated_dir=target_dir,
+            base_name=base_name,
+            delimiter=delimiter,
+        )
+
+    @classmethod
+    def load_aligned_dataset(
+        cls,
+        curated_path: Path | str,
+        year: int | None = None,
+        month: int | None = None,
+        delimiter: str | None = None,
+    ) -> AlignedDataset:
+        """Load curated CSV file and reconstruct an AlignedDataset for calculation.
+
+        Args:
+            curated_path: Path to curated CSV file or directory containing it.
+            year: Optional calendar year filter.
+            month: Optional calendar month filter (1-12).
+            delimiter: Optional CSV delimiter character. If None, auto-detected.
+
+        Returns:
+            AlignedDataset ready for optimization and evaluation.
+
+        Raises:
+            CurationError: If the file does not exist or schema is invalid.
+            AlignmentError: If no rows match the specified filters.
+        """
+        path = Path(curated_path)
+        if path.is_dir():
+            candidate = path / "curated.csv"
+            if candidate.exists():
+                path = candidate
+            else:
+                csvs = sorted(path.glob("*.csv"))
+                if not csvs:
+                    raise CurationError(f"No curated CSV files found in directory '{path}'.")
+                path = csvs[0]
+
+        if not path.exists() or not path.is_file():
+            raise CurationError(f"Curated file '{path}' does not exist.")
+
+        # Auto-detect delimiter if not provided
+        sep = delimiter
+        if sep is None:
+            first_line = (
+                path.read_text(encoding="utf-8").splitlines()[0] if path.stat().st_size > 0 else ""
+            )
+            sep = ";" if ";" in first_line else ","
+
+        try:
+            df = pd.read_csv(path, sep=sep, dtype={"cups_id": str, "timestamp": str})
+        except Exception as err:
+            raise CurationError(f"Failed to read curated CSV '{path}': {err}") from err
+
+        return dataframe_to_aligned_dataset(df, year=year, month=month)

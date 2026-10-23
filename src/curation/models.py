@@ -144,3 +144,13 @@ class CuratedDataset:
                     }
                 )
         return pd.DataFrame(rows)
+
+    def to_aligned_dataset(
+        self,
+        year: int | None = None,
+        month: int | None = None,
+    ) -> Any:
+        """Convert in-memory curated dataset into AlignedDataset for calculation."""
+        from src.curation.curator import dataframe_to_aligned_dataset
+
+        return dataframe_to_aligned_dataset(self.to_dataframe(), year=year, month=month)

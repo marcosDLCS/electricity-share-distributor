@@ -1,6 +1,10 @@
 """Curation and reconciliation module for collective PV installations."""
 
-from src.curation.curator import DataCurator, format_energy_value
+from src.curation.curator import (
+    DataCurator,
+    dataframe_to_aligned_dataset,
+    format_energy_value,
+)
 from src.curation.models import (
     CupsConfig,
     CuratedCupsReading,
@@ -18,5 +22,6 @@ __all__ = [
     "CuratedSummary",
     "CurationError",
     "DataCurator",
+    "dataframe_to_aligned_dataset",
     "format_energy_value",
 ]

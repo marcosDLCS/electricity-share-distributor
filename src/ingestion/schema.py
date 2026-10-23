@@ -62,12 +62,14 @@ class AlignedDataset:
         cups_list: Sorted list of CUPS identifiers present in columns.
         metadata: Summary metadata describing the aligned dataset.
         monthly_groups: Dictionary mapping 'YYYY-MM' strings to filtered subset DataFrames.
+        cups_uses: Mapping of CUPS identifiers to functional use descriptions if available.
     """
 
     data: pd.DataFrame
     cups_list: list[str]
     metadata: IngestionSummary
     monthly_groups: dict[str, pd.DataFrame] = field(default_factory=dict)
+    cups_uses: dict[str, str] = field(default_factory=dict)
 
     def get_month_data(self, year_month: str) -> pd.DataFrame:
         """Retrieve slice of aligned data for a specific 'YYYY-MM' month."""

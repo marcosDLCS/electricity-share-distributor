@@ -47,6 +47,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "opt_format": "Export format: 'table', 'csv', 'json', 'markdown', or 'all'.",
         "opt_hourly": "Calculate and export distribution shares per hour (24-hour diurnal profile and hourly time-series).",
         "opt_force": "Execute cleanup without interactive confirmation.",
+        "opt_force_curate": "Force re-running curation before calculating, even if curated CSV exists.",
         # Messages
         "init_success": "Workspace successfully initialized with language '{language}'.",
         "init_reinit": "Workspace successfully re-initialized with language '{language}'.",
@@ -63,6 +64,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status_optimizing": "Solving RD 244/2019 optimization linear programs...",
         "status_doctor": "Scanning and verifying consumption and generation datasets...",
         "status_curating": "Reconciling and curating time-series data...",
+        "status_curating_auto": "Curated data not found or custom inputs provided. Reconciling and curating time-series data...",
+        "status_loading_curated": "Loading curated time-series from {curated_path}...",
         "prompt_lang": "Select language preference ('en' for English, 'es' for Spanish)",
         "prompt_precision": "Select share percentage precision (0, 1, or 2 decimal places)",
         # Table & View Labels
@@ -269,6 +272,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "opt_format": "Formato de exportación: 'table', 'csv', 'json', 'markdown' o 'all'.",
         "opt_hourly": "Calcular y exportar el reparto por hora (perfil diario de 24 horas y serie temporal horaria).",
         "opt_force": "Ejecutar limpieza sin confirmación interactiva.",
+        "opt_force_curate": "Forzar re-ejecución del curado antes de calcular, incluso si ya existe el CSV curado.",
         # Messages
         "init_success": "Espacio de trabajo inicializado correctamente con idioma '{language}'.",
         "init_reinit": "Espacio de trabajo reinicializado correctamente con idioma '{language}'.",
@@ -285,6 +289,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status_optimizing": "Resolviendo modelos de programación lineal RD 244/2019...",
         "status_doctor": "Analizando y verificando conjuntos de datos de consumo y generación...",
         "status_curating": "Reconciliando y curando series temporales de datos...",
+        "status_curating_auto": "Datos curados no encontrados o entradas personalizadas. Reconciliando y curando series temporales...",
+        "status_loading_curated": "Cargando series temporales curadas desde {curated_path}...",
         "prompt_lang": "Seleccione idioma preferido ('en' para inglés, 'es' para español)",
         "prompt_precision": "Seleccione precisión de porcentaje de reparto (0, 1 o 2 decimales)",
         # Table & View Labels

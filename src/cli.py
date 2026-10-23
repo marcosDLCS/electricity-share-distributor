@@ -29,11 +29,8 @@ from src.config import (
 from src.curation import DataCurator
 from src.i18n import t
 from src.ingestion import (
-    DatadisConsumptionLoader,
     DataDoctor,
     EsdError,
-    HuaweiGenerationLoader,
-    TimeSeriesAligner,
 )
 from src.optimization import DistributionOptimizer, OptimizationStrategy
 from src.presentation.console import console
@@ -323,6 +320,23 @@ def calculate_command(
         "-o",
         help="Path to folder where summary reports and exports will be written.",
     ),
+    curated_dir: Path = typer.Option(
+        DEFAULT_CURATED_DIR,
+        "--curated-dir",
+        "-u",
+        help="Path to folder containing curated time-series CSV file.",
+    ),
+    cups_file: Path | None = typer.Option(
+        None,
+        "--cups-file",
+        "-C",
+        help="Path to cups.json configuration file specifying CUPS uses and primary flags.",
+    ),
+    force_curate: bool = typer.Option(
+        False,
+        "--force-curate",
+        help="Force re-running curation before calculating, even if curated CSV exists.",
+    ),
     year: int | None = typer.Option(
         None,
         "--year",
@@ -401,25 +415,36 @@ def calculate_command(
     is_hourly = hourly or (view_mode == "hourly")
 
     try:
+        curator = DataCurator(
+            consumption_dir=consumption_dir,
+            generation_dir=generation_dir,
+            cups_config_path=cups_file,
+            curated_dir=curated_dir,
+        )
+
+        curated_csv = curated_dir / "curated.csv" if curated_dir.is_dir() else curated_dir
+        is_custom_input = (
+            consumption_dir != DEFAULT_CONSUMPTION_DIR or generation_dir != DEFAULT_GENERATION_DIR
+        )
+        is_custom_curated = curated_dir != DEFAULT_CURATED_DIR
+        needs_curation = (
+            force_curate or not curated_csv.exists() or (is_custom_input and not is_custom_curated)
+        )
+
+        if needs_curation:
+            with console.status(
+                f"[bold cyan]{t('status_curating_auto', lang=active_lang)}[/bold cyan]"
+            ):
+                curated_csv = curator.ensure_curated(force=True)
+
         with console.status(
-            f"[bold cyan]{t('status_ingesting', lang=active_lang, consumption_dir=consumption_dir, generation_dir=generation_dir)}[/bold cyan]"
+            f"[bold cyan]{t('status_loading_curated', lang=active_lang, curated_path=str(curated_csv))}[/bold cyan]"
         ):
-            c_loader = DatadisConsumptionLoader(consumption_dir)
-            g_loader = HuaweiGenerationLoader(generation_dir)
-
-            c_df = c_loader.load_all()
-            g_df = g_loader.load_all()
-
-            c_files_count = len(c_loader.discover_files())
-            g_files_count = len(g_loader.discover_files())
-
-            aligner = TimeSeriesAligner(
-                c_df,
-                g_df,
-                consumption_files_loaded=c_files_count,
-                generation_files_loaded=g_files_count,
+            aligned = curator.load_aligned_dataset(
+                curated_csv,
+                year=year,
+                month=month,
             )
-            aligned = aligner.align(year=year, month=month)
 
         with console.status(f"[bold green]{t('status_optimizing', lang=active_lang)}[/bold green]"):
             opt_result = DistributionOptimizer.optimize_dataset(

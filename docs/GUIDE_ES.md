@@ -102,11 +102,15 @@ La ejecución de `esd calculate` genera automáticamente entregables fechados:
 | `*_esd_hourly_profile_matrix.csv` | CSV (delimitado por `;`) | Matriz de perfil diario de 24 horas para coeficientes variables según Orden TED/1247/2021. |
 
 ### 4. Reconciliación y Curado de Series Temporales (`esd curate`)
-Al ejecutar `esd curate`, la herramienta lleva a cabo una reconciliación completa entre las curvas de red de DATADIS y los registros de generación de Huawei FusionSolar:
+El motor de curado lleva a cabo una reconciliación completa entre las curvas de red de DATADIS y los registros de generación de Huawei FusionSolar:
 - **Reconciliación de CUPS Principal tras Inversor:** En comunidades donde la planta solar FV está conectada físicamente tras el contador de un punto principal (identificado con `"primary": true` en [`.input/cups/cups.json`](../.input/cups/cups.json)), DATADIS registra 0,0 kWh (falsos ceros) en las horas diurnas de generación al reflejar únicamente intercambios netos de red. `esd curate` obtiene el consumo total real desde la curva `Consumo (kWh)` de Huawei, recuperando la demanda física oculta.
 - **Usos Funcionales de CUPS:** Incorpora la descripción funcional (ej. `"piscina"`, `"Garaje"`, `"Portal 1"`, `"Aerotermia"`) procedente de `cups.json` en cada intervalo horario.
 - **Entregables Curados (`.curated/`):**
   - `curated.csv`: Tabla plana en formato largo con marca temporal canónica (`timestamp,generation,cups_id,use,consumption,primary,reconciled`).
+- **Integración Nativa con `esd calculate`:**
+  - `esd calculate` utiliza automáticamente el conjunto reconciliado `.curated/curated.csv` para todas las optimizaciones de coeficientes y balances.
+  - Si `curated.csv` no existe en la carpeta indicada, `esd calculate` dispara automáticamente el curado previo antes de realizar los cálculos.
+  - Utilice `--curated-dir` / `-u` para indicar un directorio curado personalizado, o `--force-curate` para forzar la re-ejecución del curado desde las carpetas de entrada.
 
 ---
 

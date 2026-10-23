@@ -13,8 +13,10 @@ from src.cli import app
 from src.curation import (
     CurationError,
     DataCurator,
+    dataframe_to_aligned_dataset,
     format_energy_value,
 )
+from src.ingestion.schema import AlignmentError
 
 
 def create_mock_datadis_csv(
@@ -307,3 +309,149 @@ def test_cli_curate_spanish_lang(tmp_path: Path) -> None:
     assert "RECONCILIACIÓN" in result.output
     assert (curated_dir / "curated.csv").exists()
     assert not (curated_dir / "curated.json").exists()
+
+
+def test_dataframe_to_aligned_dataset() -> None:
+    """Verify conversion from flat curated DataFrame to AlignedDataset."""
+    import pandas as pd
+
+    c1 = "ES0021000000000001AA"
+    c2 = "ES0021000000000002BB"
+    df = pd.DataFrame(
+        [
+            {
+                "timestamp": "2026-05-01 12:00:00",
+                "generation": 10.5,
+                "cups_id": c1,
+                "use": "Portal 1",
+                "consumption": 2.5,
+                "primary": True,
+                "reconciled": True,
+            },
+            {
+                "timestamp": "2026-05-01 12:00:00",
+                "generation": 10.5,
+                "cups_id": c2,
+                "use": "Piscina",
+                "consumption": 1.5,
+                "primary": False,
+                "reconciled": False,
+            },
+        ]
+    )
+
+    aligned = dataframe_to_aligned_dataset(df)
+    assert aligned.cups_list == [c1, c2]
+    assert aligned.metadata.cups_count == 2
+    assert aligned.cups_uses[c1] == "Portal 1"
+    assert aligned.cups_uses[c2] == "Piscina"
+    assert float(aligned.data.loc["2026-05-01 12:00:00", "generation_kwh"]) == 10.5
+    assert float(aligned.data.loc["2026-05-01 12:00:00", c1]) == 2.5
+
+
+def test_dataframe_to_aligned_dataset_validation() -> None:
+    """Verify validation when dataframe is empty or missing columns."""
+    import pandas as pd
+
+    with pytest.raises(AlignmentError, match="empty"):
+        dataframe_to_aligned_dataset(pd.DataFrame())
+
+    bad_df = pd.DataFrame([{"timestamp": "2026-05-01 00:00:00"}])
+    with pytest.raises(CurationError, match="missing required columns"):
+        dataframe_to_aligned_dataset(bad_df)
+
+
+def test_data_curator_load_aligned_dataset_semicolon(tmp_path: Path) -> None:
+    """Verify that load_aligned_dataset automatically detects semicolon delimiter."""
+    c1 = "ES0021000000000001AA"
+    lines = [
+        "timestamp;generation;cups_id;use;consumption;primary;reconciled",
+        f"2026-05-01 10:00:00;5.0;{c1};Garaje;1.2;False;False",
+    ]
+    csv_file = tmp_path / "custom.csv"
+    csv_file.write_text("\n".join(lines), encoding="utf-8")
+
+    aligned = DataCurator.load_aligned_dataset(csv_file)
+    assert aligned.cups_list == [c1]
+    assert float(aligned.data.loc["2026-05-01 10:00:00", c1]) == 1.2
+    assert aligned.cups_uses[c1] == "Garaje"
+
+
+def test_cli_calculate_auto_curates_when_missing(tmp_path: Path) -> None:
+    """Verify that calculate auto-curates when curated.csv does not exist."""
+    cons_dir = tmp_path / "consumption"
+    gen_dir = tmp_path / "generation"
+    curated_dir = tmp_path / "curated"
+    cons_dir.mkdir()
+    gen_dir.mkdir()
+
+    pri_cups = "ES0021000000000001AA"
+    create_mock_datadis_csv(cons_dir / f"{pri_cups}.csv", pri_cups, solar_cons_val=0.0)
+    create_mock_huawei_excel(gen_dir / "gen.xlsx", solar_gen=10.0, solar_cons=6.0)
+
+    cups_file = tmp_path / "cups.json"
+    cups_file.write_text(
+        json.dumps([{"cups": pri_cups, "use": "Aerotermia", "primary": True}]),
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "calculate",
+            "--consumption-dir",
+            str(cons_dir),
+            "--generation-dir",
+            str(gen_dir),
+            "--curated-dir",
+            str(curated_dir),
+            "--cups-file",
+            str(cups_file),
+            "--format",
+            "none",
+            "--lang",
+            "en",
+        ],
+    )
+
+    assert result.exit_code == 0
+    # Verified: curated.csv was generated on the fly!
+    assert (curated_dir / "curated.csv").exists()
+    assert "COLLECTIVE SELF-CONSUMPTION COMMUNITY SUMMARY" in result.output
+
+
+def test_cli_calculate_uses_existing_curated(tmp_path: Path) -> None:
+    """Verify that calculate directly loads an existing curated.csv."""
+    curated_dir = tmp_path / "curated"
+    curated_dir.mkdir()
+
+    pri_cups = "ES0021000000000001AA"
+    lines = [
+        "timestamp,generation,cups_id,use,consumption,primary,reconciled",
+        f"2026-05-01 12:00:00,10,{pri_cups},Aerotermia,5,True,True",
+    ]
+    (curated_dir / "curated.csv").write_text("\n".join(lines), encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "calculate",
+            "--curated-dir",
+            str(curated_dir),
+            "-y",
+            "2026",
+            "-m",
+            "5",
+            "--format",
+            "none",
+            "--lang",
+            "en",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "COLLECTIVE SELF-CONSUMPTION COMMUNITY SUMMARY" in result.output
+    assert "00000001AA" in result.output
+    assert "1 CUPS" in result.output
