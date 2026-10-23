@@ -4,7 +4,10 @@ from src.optimization.engine import DistributionOptimizer, OptimizationError
 from src.optimization.models import (
     CoefficientsMatrix,
     CommunityMonthlyMetrics,
+    CupsHourlyMetrics,
     CupsMonthlyMetrics,
+    HourlyOptimizationResult,
+    HourlyProfileMatrix,
     OptimizationResult,
     OptimizationStrategy,
 )
@@ -12,8 +15,11 @@ from src.optimization.models import (
 __all__ = [
     "CoefficientsMatrix",
     "CommunityMonthlyMetrics",
+    "CupsHourlyMetrics",
     "CupsMonthlyMetrics",
     "DistributionOptimizer",
+    "HourlyOptimizationResult",
+    "HourlyProfileMatrix",
     "OptimizationError",
     "OptimizationResult",
     "OptimizationStrategy",

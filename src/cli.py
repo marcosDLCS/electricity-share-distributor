@@ -44,6 +44,7 @@ from src.presentation.views import (
     render_doctor_report,
     render_export_success,
     render_help,
+    render_hourly_profile_table,
     render_init_success,
     render_monthly_coefficients_table,
     render_monthly_trajectory_table,
@@ -248,7 +249,13 @@ def calculate_command(
         "summary",
         "--view",
         "-v",
-        help="Display view mode: 'summary' (overview + matrix), 'matrix' (CUPS/months share matrix), 'trajectory', or 'all'.",
+        help="Display view mode: 'summary' (overview + matrix), 'matrix' (CUPS/months share matrix), 'trajectory', 'hourly', or 'all'.",
+    ),
+    hourly: bool = typer.Option(
+        False,
+        "--hourly",
+        "-H",
+        help="Calculate and export distribution shares per hour (24-hour diurnal profile and hourly time-series).",
     ),
     export_format: str = typer.Option(
         "all",
@@ -294,6 +301,9 @@ def calculate_command(
         )
         sys.exit(1)
 
+    view_mode = view.lower().strip()
+    is_hourly = hourly or (view_mode == "hourly")
+
     try:
         with console.status(
             f"[bold cyan]{t('status_ingesting', lang=active_lang, consumption_dir=consumption_dir, generation_dir=generation_dir)}[/bold cyan]"
@@ -321,11 +331,10 @@ def calculate_command(
                 strategy=opt_strat,
                 include_baselines=True,
                 precision=active_precision,
+                compute_hourly=is_hourly,
             )
 
         # Presentation Views
-        view_mode = view.lower().strip()
-
         if view_mode in ("summary", "all"):
             render_community_summary(aligned.metadata, opt_result.total_summary, lang=active_lang)
             render_monthly_trajectory_table(opt_result, lang=active_lang)
@@ -333,6 +342,15 @@ def calculate_command(
             render_coefficients_matrix_table(
                 opt_result, lang=active_lang, precision=active_precision
             )
+            if hourly and opt_result.hourly_result is not None:
+                render_hourly_profile_table(
+                    opt_result.hourly_result, lang=active_lang, precision=active_precision
+                )
+        elif view_mode == "hourly":
+            if opt_result.hourly_result is not None:
+                render_hourly_profile_table(
+                    opt_result.hourly_result, lang=active_lang, precision=active_precision
+                )
         elif view_mode == "matrix":
             render_coefficients_matrix_table(
                 opt_result, lang=active_lang, precision=active_precision

@@ -83,15 +83,23 @@ El resultado principal de `esd` es la **Matriz Regulatoria de Coeficientes de Re
        Acuerdo regulatorio de reparto (RD 244/2019) • Suma mensual: 100%
 ```
 
-### 2. Archivos e Informes Exportados (`.output/`)
-La ejecución de `esd calculate` genera automáticamente cuatro entregables fechados:
+### 2. El Perfil Diario de Coeficientes de Reparto Horarios (`--hourly` / `-H`)
+Al indicar el parámetro `--hourly` (o `-H`), o ejecutar con `--view hourly`, `esd` calcula y visualiza el perfil de reparto diario por horas:
+- **Horario Diario de 24 Horas:** Coeficientes óptimos ($\beta_{i, h}$) calculados para cada hora del día (00:00 a 23:00) a lo largo de todos los días evaluados, sumando exactamente el $100\%$ en cada hora.
+- **Compatibilidad con Terminales de 80 Columnas:** Las tablas Rich se dividen automáticamente en dos paneles de 12 horas (00:00–11:00 y 12:00–23:00) en pantallas estándar para evitar saltos o desbordamientos.
+- **Exportación de Series Temporales Horarias:** Genera archivos CSV con la serie temporal completa hora a hora, con coeficientes instantáneos y balances de energía (autoconsumo, excedentes, demanda de red).
+
+### 3. Archivos e Informes Exportados (`.output/`)
+La ejecución de `esd calculate` genera automáticamente entregables fechados:
 
 | Archivo Generado | Formato | Finalidad |
 | :--- | :--- | :--- |
 | `*_esd_coefficients_matrix.csv` | CSV (delimitado por `;`) | Tabla en formato hoja de cálculo preparada para el anexo oficial a remitir a la distribuidora. |
 | `*_esd_optimization_summary.md` | Markdown | Informe ejecutivo y anexo documental listo para la firma del acuerdo de reparto por la comunidad. |
-| `*_esd_coefficients.csv` | CSV (delimitado por `;`) | Balance horario y mensual completo (kWh autoconsumidos, excedentes, demanda de red) por CUPS. |
+| `*_esd_coefficients.csv` | CSV (delimitado por `;`) | Balance mensual completo (kWh autoconsumidos, excedentes, demanda de red) por CUPS. |
 | `*_esd_results.json` | JSON | Estructura de datos completa serializada para integraciones API o análisis posterior. |
+| `*_esd_hourly_shares.csv` | CSV (delimitado por `;`) | Serie temporal horaria completa con balances y coeficientes por CUPS (generada con `--hourly`). |
+| `*_esd_hourly_profile_matrix.csv` | CSV (delimitado por `;`) | Matriz de perfil diario de 24 horas para coeficientes variables según Orden TED/1247/2021. |
 
 ---
 
@@ -101,15 +109,15 @@ Para inspeccionar o ampliar el código fuente, utilice la siguiente tabla de cor
 
 | Capa Arquitectónica | Módulo | Clases / Funciones Clave | Responsabilidad |
 | :--- | :--- | :--- | :--- |
-| **CLI e Interfaz** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `init_command`, `doctor_command` | Enrutamiento de comandos Typer, validación de parámetros y flujo general. |
+| **CLI e Interfaz** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `init_command`, `doctor_command` | Enrutamiento de comandos Typer, validación de parámetros (`--hourly`) y flujo general. |
 | **Configuración** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision` | Persistencia de ajustes en `.esd_config.json` y rutas de trabajo. |
 | **Internacionalización** | [`src/i18n.py`](../src/i18n.py) | `t()`, `TRANSLATIONS` | Diccionarios bilingües inglés/español con interpolación de variables. |
 | **Ingesta: Consumo** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | Localización, lectura y normalización de archivos CSV de DATADIS. |
 | **Ingesta: Generación** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `HuaweiGenerationLoader` | Lectura de libros Excel `.xlsx` de Huawei FusionSolar. |
 | **Ingesta: Diagnóstico** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Detección previa de huecos, contadores inactivos y comprobación de solapes. |
 | **Ingesta: Alineación** | [`src/ingestion/aligner.py`](../src/ingestion/aligner.py) | `TimeSeriesAligner` | Sincronización temporal horaria, imputación de nulos y cambios de hora DST. |
-| **Optimización: Modelos** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `OptimizationResult` | Estructuras de datos matriciales y métricas de balances energéticos. |
-| **Optimización: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Formulación PL en SciPy HiGHS, comparativas y redondeo Hare-Niemeyer. |
-| **Presentación: Vistas** | [`src/presentation/views.py`](../src/presentation/views.py) | `render_coefficients_matrix_table` | Tablas Rich para terminales de 80 columnas y barras gráficas de reparto. |
-| **Presentación: Exportación** | [`src/presentation/export.py`](../src/presentation/export.py) | `export_all`, `export_coefficients_matrix_csv` | Generación de informes en Markdown, exportación a CSV y volcado en JSON. |
+| **Optimización: Modelos** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Estructuras de datos matriciales, perfiles horarios diarios y métricas de balances. |
+| **Optimización: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Formulación PL en SciPy HiGHS, optimizador diario, comparativas y redondeo Hare-Niemeyer. |
+| **Presentación: Vistas** | [`src/presentation/views.py`](../src/presentation/views.py) | `render_coefficients_matrix_table`, `render_hourly_profile_table` | Tablas Rich para terminales de 80 columnas y vistas de perfil horario. |
+| **Presentación: Exportación** | [`src/presentation/export.py`](../src/presentation/export.py) | `export_all`, `export_hourly_shares_csv`, `export_hourly_profile_matrix_csv` | Generación de informes en Markdown, exportación a CSV y volcado en JSON. |
 | **Seguridad y Privacidad** | [`src/security.py`](../src/security.py) | `CupsPrivacyChecker`, `scan_git_history` | Protección LOPD/RGPD y verificación estricta de CUPS sintéticos. |

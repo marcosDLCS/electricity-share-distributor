@@ -40,6 +40,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "opt_year": "Filter analysis to a specific calendar year.",
         "opt_month": "Filter analysis to a specific month (1-12).",
         "opt_format": "Export format: 'table', 'csv', 'json', 'markdown', or 'all'.",
+        "opt_hourly": "Calculate and export distribution shares per hour (24-hour diurnal profile and hourly time-series).",
         "opt_force": "Execute cleanup without interactive confirmation.",
         # Messages
         "init_success": "Workspace successfully initialized with language '{language}'.",
@@ -94,6 +95,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "col_annual_avg": "Annual Avg",
         "title_coefficients_matrix": "📅 Suggested Electricity Distribution Share Matrix (β_i %)",
         "desc_coefficients_matrix": "Regulatory allocation schedule (RD 244/2019) • Sum per month: 100%",
+        "title_hourly_profile": "🕒 Diurnal Distribution Share Profile (β_i %)",
+        "title_hourly_profile_am": "🕒 Diurnal Distribution Share Profile (β_i %) — Hours 00:00 to 11:00",
+        "title_hourly_profile_pm": "🕒 Diurnal Distribution Share Profile (β_i %) — Hours 12:00 to 23:00",
+        "desc_hourly_profile": "Diurnal allocation profile (RD 244/2019) • Sum per hour: 100%",
+        "col_hour": "Hour",
+        "col_hourly_avg": "Avg",
         "lbl_total_rd244": "TOTAL (RD 244/2019)",
         "export_success_title": "✓ Exports Generated Successfully",
         # Init View Strings
@@ -184,6 +191,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "The matrix below serves directly as the documentation schedule to be signed by all participants and submitted to the "
             "distribution system operator (DSO / *distribuidora*). Each monthly column sums to $\\le 100.00\\%$."
         ),
+        "md_sec_hourly_profile": "## 🕒 Diurnal Distribution Share Profile (24-Hour Schedule)",
+        "md_desc_hourly_profile": (
+            "> **Hourly Distribution Profile:** Optimal coefficients ($\\beta_{{i, h}}$) computed for each hour of the day (00:00 to 23:00) "
+            "across all evaluated days. Each hourly column sums to $100.00\\%$."
+        ),
         "md_sec_insights": "## 💡 Community Optimization Insights & Generation Dynamics",
         "md_insight_diurnal_title": "### ☀️ Diurnal Alignment (Solar Peak Hours vs Demand Profiles)",
         "md_insight_diurnal_desc": (
@@ -235,6 +247,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "opt_year": "Filtrar análisis a un año natural específico.",
         "opt_month": "Filtrar análisis a un mes específico (1-12).",
         "opt_format": "Formato de exportación: 'table', 'csv', 'json', 'markdown' o 'all'.",
+        "opt_hourly": "Calcular y exportar el reparto por hora (perfil diario de 24 horas y serie temporal horaria).",
         "opt_force": "Ejecutar limpieza sin confirmación interactiva.",
         # Messages
         "init_success": "Espacio de trabajo inicializado correctamente con idioma '{language}'.",
@@ -289,6 +302,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "col_annual_avg": "Media Anual",
         "title_coefficients_matrix": "📅 Matriz Sugerida de Coeficientes de Reparto (β_i %)",
         "desc_coefficients_matrix": "Acuerdo regulatorio de reparto (RD 244/2019) • Suma mensual: 100%",
+        "title_hourly_profile": "🕒 Perfil Diario de Coeficientes de Reparto (β_i %)",
+        "title_hourly_profile_am": "🕒 Perfil Diario de Coeficientes de Reparto (β_i %) — Horas 00:00 a 11:00",
+        "title_hourly_profile_pm": "🕒 Perfil Diario de Coeficientes de Reparto (β_i %) — Horas 12:00 a 23:00",
+        "desc_hourly_profile": "Perfil de reparto horario (RD 244/2019) • Suma por hora: 100%",
+        "col_hour": "Hora",
+        "col_hourly_avg": "Prom",
         "lbl_total_rd244": "TOTAL (RD 244/2019)",
         "export_success_title": "✓ Informes Generados Correctamente",
         # Init View Strings
@@ -378,6 +397,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "cada punto de suministro (CUPS) participante recibe un porcentaje de la generación solar que permanece legalmente fijo por mes ($\\beta_{{i, m}}$). "
             "La siguiente matriz constituye directamente el anexo para el acuerdo de reparto a formalizar por los participantes y "
             "presentar a la distribuidora. La suma de cada mes no supera el $100{,}00\\%$."
+        ),
+        "md_sec_hourly_profile": "## 🕒 Perfil Diario de Coeficientes de Reparto (Horario 24 Horas)",
+        "md_desc_hourly_profile": (
+            "> **Perfil de Reparto Horario:** Coeficientes óptimos ($\\beta_{{i, h}}$) calculados para cada hora del día (00:00 a 23:00) "
+            "a lo largo de todos los días evaluados. Cada columna horaria suma el $100{,}00\\%$."
         ),
         "md_sec_insights": "## 💡 Análisis de Rendimiento y Dinámica de Generación",
         "md_insight_diurnal_title": "### ☀️ Coincidencia Diurna (Horas Solares vs Curvas de Consumo)",

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from typer.testing import CliRunner
 
 from src.cli import app
@@ -387,3 +389,73 @@ def test_cli_doctor_spanish() -> None:
     assert "INFORME DE DIAGNÓSTICO ESD DATA DOCTOR" in result.output
     assert "Puntos Suministro:" in result.output
     assert "Estado de Datos de Consumo" in result.output
+
+
+def test_cli_calculate_hourly_flag() -> None:
+    """Ensure calculate --hourly displays the diurnal distribution profile."""
+    result = runner.invoke(
+        app,
+        ["calculate", "-y", "2026", "-m", "5", "--hourly", "--format", "none", "--lang", "en"],
+    )
+    assert result.exit_code == 0
+    assert "Diurnal Distribution Share Profile" in result.output
+    assert "00h" in result.output
+    assert "12h" in result.output
+    assert "23h" in result.output
+
+
+def test_cli_calculate_hourly_short_flag() -> None:
+    """Ensure calculate -H displays the diurnal distribution profile."""
+    result = runner.invoke(
+        app,
+        ["calculate", "-y", "2026", "-m", "5", "-H", "--format", "none", "--lang", "en"],
+    )
+    assert result.exit_code == 0
+    assert "Diurnal Distribution Share Profile" in result.output
+
+
+def test_cli_calculate_view_hourly() -> None:
+    """Ensure calculate --view hourly displays only the hourly profile table."""
+    result = runner.invoke(
+        app,
+        [
+            "calculate",
+            "-y",
+            "2026",
+            "-m",
+            "5",
+            "--view",
+            "hourly",
+            "--format",
+            "none",
+            "--lang",
+            "en",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Diurnal Distribution Share Profile" in result.output
+    assert "COLLECTIVE SELF-CONSUMPTION COMMUNITY SUMMARY" not in result.output
+
+
+def test_cli_calculate_hourly_export_csv(tmp_path: Path) -> None:
+    """Ensure calculate --hourly exports hourly CSV files."""
+    result = runner.invoke(
+        app,
+        [
+            "calculate",
+            "-y",
+            "2026",
+            "-m",
+            "5",
+            "--hourly",
+            "--output-dir",
+            str(tmp_path),
+            "--format",
+            "csv",
+        ],
+    )
+    assert result.exit_code == 0
+    exported_files = list(tmp_path.glob("*.csv"))
+    file_names = [f.name for f in exported_files]
+    assert any("_esd_hourly_shares.csv" in n for n in file_names)
+    assert any("_esd_hourly_profile_matrix.csv" in n for n in file_names)

@@ -433,3 +433,105 @@ def test_multi_year_same_month_aggregation_heuristic() -> None:
     expected_single_year_cons = 4.0 * len(ts_2025)
     assert np.isclose(may_res.total_generation_kwh, expected_single_year_gen, atol=1e-2)
     assert np.isclose(may_res.total_consumption_kwh, expected_single_year_cons, atol=1e-2)
+
+
+def test_compute_hourly_optimization() -> None:
+    """Verify that hourly optimization computes 24-hour profile and full time-series."""
+    cups_list = ["ES0021000000000001AA", "ES0021000000000002BB"]
+    timestamps = [f"2026-05-01 {h:02d}:00:00" for h in range(24)]
+
+    df = pd.DataFrame(
+        {
+            cups_list[0]: [1.0, 2.0] * 12,
+            cups_list[1]: [3.0, 1.0] * 12,
+            "generation_kwh": [0.0 if h < 7 or h > 20 else 5.0 for h in range(24)],
+        },
+        index=timestamps,
+    )
+    summary = IngestionSummary(
+        cups_count=2,
+        cups_list=cups_list,
+        consumption_files_loaded=2,
+        generation_files_loaded=1,
+        start_time=timestamps[0],
+        end_time=timestamps[-1],
+        total_hours=24,
+    )
+    dataset = AlignedDataset(
+        data=df,
+        cups_list=cups_list,
+        metadata=summary,
+        monthly_groups={"2026-05": df},
+    )
+
+    hourly_res = DistributionOptimizer.compute_hourly_optimization(
+        dataset, strategy=OptimizationStrategy.OPTIMAL, precision=1
+    )
+
+    assert len(hourly_res.profile_matrix.hours) == 24
+    assert hourly_res.profile_matrix.cups_list == cups_list
+
+    # Every hour sums to 1.0 (100.0%)
+    for h_str in hourly_res.profile_matrix.hours:
+        h_sum = hourly_res.profile_matrix.hourly_sums[h_str]
+        assert h_sum is not None
+        assert np.isclose(h_sum, 1.0, atol=1e-4)
+        assert hourly_res.profile_matrix.format_hour_sum(h_str, precision=1) == "100.0%"
+
+    # Time series DataFrame checks
+    ts_df = hourly_res.time_series_df
+    assert len(ts_df) == 24
+    assert "timestamp" in ts_df.columns
+    assert "generation_kwh" in ts_df.columns
+    assert f"{cups_list[0]}_beta" in ts_df.columns
+    assert f"{cups_list[1]}_beta" in ts_df.columns
+
+    # Row-by-row beta sums strictly equal 1.0
+    for _idx, row in ts_df.iterrows():
+        b1 = row[f"{cups_list[0]}_beta"]
+        b2 = row[f"{cups_list[1]}_beta"]
+        assert np.isclose(b1 + b2, 1.0, atol=1e-4)
+
+        # Check self-consumed energy conservation
+        sc1 = row[f"{cups_list[0]}_self_consumed_kwh"]
+        surplus1 = row[f"{cups_list[0]}_surplus_kwh"]
+        alloc1 = row[f"{cups_list[0]}_allocated_kwh"]
+        assert np.isclose(sc1 + surplus1, alloc1, atol=1e-4)
+
+
+def test_hourly_precision_rounding() -> None:
+    """Test Hare-Niemeyer exact rounding on hourly profiles across 0, 1, and 2 decimal precisions."""
+    cups_list = ["ES0021000000000001AA", "ES0021000000000002BB", "ES0021000000000003CC"]
+    timestamps = [f"2026-05-01 {h:02d}:00:00" for h in range(24)]
+
+    df = pd.DataFrame(
+        {
+            cups_list[0]: [1.5] * 24,
+            cups_list[1]: [2.3] * 24,
+            cups_list[2]: [3.7] * 24,
+            "generation_kwh": [4.0] * 24,
+        },
+        index=timestamps,
+    )
+    summary = IngestionSummary(
+        cups_count=3,
+        cups_list=cups_list,
+        consumption_files_loaded=3,
+        generation_files_loaded=1,
+        start_time=timestamps[0],
+        end_time=timestamps[-1],
+        total_hours=24,
+    )
+    dataset = AlignedDataset(
+        data=df,
+        cups_list=cups_list,
+        metadata=summary,
+        monthly_groups={"2026-05": df},
+    )
+
+    for prec, expected in [(0, "100%"), (1, "100.0%"), (2, "100.00%")]:
+        res = DistributionOptimizer.compute_hourly_optimization(
+            dataset, strategy=OptimizationStrategy.OPTIMAL, precision=prec
+        )
+        for h_str in res.profile_matrix.hours:
+            assert res.profile_matrix.format_hour_sum(h_str, precision=prec) == expected

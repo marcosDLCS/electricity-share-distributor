@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 class OptimizationStrategy(StrEnum):
@@ -130,6 +134,85 @@ class CoefficientsMatrix:
 
 
 @dataclass
+class HourlyProfileMatrix:
+    """Consolidated matrix of diurnal hourly distribution coefficients (CUPS in Y, Hours 00..23 in X).
+
+    Attributes:
+        cups_list: List of CUPS identifiers (rows).
+        hours: List of 24 hourly strings '00'..'23' (columns).
+        matrix: Dictionary mapping cups -> {hour_str: beta (0.0 to 1.0) or None}.
+        hourly_sums: Dictionary mapping hour_str -> sum of betas (must equal 1.0 or None).
+        average_shares: Dictionary mapping cups -> weighted average share across 24 hours (or None).
+        average_sum: Sum of average shares (must equal 1.0 or None).
+    """
+
+    cups_list: list[str]
+    hours: list[str]
+    matrix: dict[str, dict[str, float | None]]
+    hourly_sums: dict[str, float | None]
+    average_shares: dict[str, float | None]
+    average_sum: float | None
+
+    def get_share_pct(self, cups: str, hour: str) -> float | None:
+        """Get the percentage share for a given CUPS and hour, or None if no data."""
+        val = self.matrix.get(cups, {}).get(hour)
+        return (val * 100.0) if val is not None else None
+
+    def format_cell(self, cups: str, hour: str, precision: int = 0) -> str:
+        """Format share percentage for a given CUPS and hour with configured precision, or '—' if no data."""
+        val = self.get_share_pct(cups, hour)
+        if val is None:
+            return "—"
+        return f"{val:.{precision}f}%"
+
+    def format_average(self, cups: str, precision: int = 0) -> str:
+        """Format average share percentage with configured precision, or '—' if no data."""
+        val = self.average_shares.get(cups)
+        if val is None:
+            return "—"
+        return f"{val * 100.0:.{precision}f}%"
+
+    def format_hour_sum(self, hour: str, precision: int = 0) -> str:
+        """Format the total sum of shares for an hour with configured precision, or '—' if no data."""
+        val = self.hourly_sums.get(hour)
+        if val is None:
+            return "—"
+        return f"{val * 100.0:.{precision}f}%"
+
+    def format_average_sum(self, precision: int = 0) -> str:
+        """Format the total sum of average shares with configured precision, or '—' if no data."""
+        if self.average_sum is None:
+            return "—"
+        return f"{self.average_sum * 100.0:.{precision}f}%"
+
+
+@dataclass(frozen=True)
+class CupsHourlyMetrics:
+    """Hourly self-consumption and energy metrics for an individual CUPS."""
+
+    timestamp: str
+    hour: int
+    cups: str
+    beta: float
+    consumption_kwh: float
+    generation_allocated_kwh: float
+    self_consumed_kwh: float
+    surplus_kwh: float
+    grid_demand_kwh: float
+    self_consumption_rate: float
+    solar_coverage_rate: float
+
+
+@dataclass
+class HourlyOptimizationResult:
+    """Full hourly optimization results including 24-hour diurnal profile and time-series balance."""
+
+    profile_matrix: HourlyProfileMatrix
+    time_series_df: pd.DataFrame
+    metrics: list[CupsHourlyMetrics] = field(default_factory=list)
+
+
+@dataclass
 class OptimizationResult:
     """Full optimization results across all evaluated months.
 
@@ -139,6 +222,7 @@ class OptimizationResult:
         total_summary: Aggregate metrics across the entire evaluated time horizon.
         baselines: Comparison results computed with alternative baseline strategies.
         cups_list: List of CUPS participating in the community.
+        hourly_result: Full hourly optimization results (diurnal profile & time-series) if calculated.
     """
 
     strategy: str
@@ -146,6 +230,7 @@ class OptimizationResult:
     total_summary: CommunityMonthlyMetrics
     baselines: dict[str, OptimizationResult] = field(default_factory=dict)
     cups_list: list[str] = field(default_factory=list)
+    hourly_result: HourlyOptimizationResult | None = None
 
     def build_matrix(self) -> CoefficientsMatrix:
         """Construct the 12-month calendar coefficients matrix (January to December)."""

@@ -12,7 +12,10 @@ from scipy.sparse import dok_matrix
 from src.ingestion.schema import AlignedDataset, EsdError
 from src.optimization.models import (
     CommunityMonthlyMetrics,
+    CupsHourlyMetrics,
     CupsMonthlyMetrics,
+    HourlyOptimizationResult,
+    HourlyProfileMatrix,
     OptimizationResult,
     OptimizationStrategy,
 )
@@ -408,6 +411,165 @@ class DistributionOptimizer:
         return monthly_results
 
     @classmethod
+    def compute_hourly_optimization(
+        cls,
+        aligned_dataset: AlignedDataset,
+        strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL,
+        precision: int = 0,
+    ) -> HourlyOptimizationResult:
+        """Compute 24-hour diurnal distribution profile and full hourly time-series balance.
+
+        Args:
+            aligned_dataset: Ingested and aligned dataset containing hourly timestamps.
+            strategy: Primary optimization strategy ('optimal', 'consumption_share', 'equal').
+            precision: Share percentage precision (0, 1, or 2 decimal places).
+
+        Returns:
+            HourlyOptimizationResult containing HourlyProfileMatrix and time_series_df.
+        """
+        aligned_df = aligned_dataset.data
+        cups_list = aligned_dataset.cups_list
+        n_cups = len(cups_list)
+
+        hours_str = [f"{h:02d}" for h in range(24)]
+
+        if aligned_df.empty or n_cups == 0:
+            empty_matrix = HourlyProfileMatrix(
+                cups_list=cups_list,
+                hours=hours_str,
+                matrix={c: dict.fromkeys(hours_str) for c in cups_list},
+                hourly_sums=dict.fromkeys(hours_str),
+                average_shares=dict.fromkeys(cups_list),
+                average_sum=None,
+            )
+            return HourlyOptimizationResult(
+                profile_matrix=empty_matrix,
+                time_series_df=pd.DataFrame(),
+                metrics=[],
+            )
+
+        # -------------------------------------------------------------------------
+        # 1. 24-Hour Diurnal Profile Matrix (Hours 00:00 to 23:00)
+        # -------------------------------------------------------------------------
+        dt_index = pd.to_datetime(aligned_df.index)
+        hour_series = dt_index.hour
+
+        matrix: dict[str, dict[str, float | None]] = {c: {} for c in cups_list}
+        hourly_sums: dict[str, float | None] = {}
+        hourly_gen_totals: dict[str, float] = {}
+
+        for h in range(24):
+            h_str = f"{h:02d}"
+            mask = hour_series == h
+            subset = aligned_df.loc[mask]
+
+            if subset.empty:
+                for c in cups_list:
+                    matrix[c][h_str] = None
+                hourly_sums[h_str] = None
+                hourly_gen_totals[h_str] = 0.0
+            else:
+                c_h = subset[cups_list].values
+                g_h = subset["generation_kwh"].values
+                betas_h = cls.calculate_betas(c_h, g_h, strategy=strategy, precision=precision)
+                hourly_gen_totals[h_str] = float(np.sum(g_h))
+                for i, c in enumerate(cups_list):
+                    matrix[c][h_str] = float(betas_h[i])
+                hourly_sums[h_str] = round(float(np.sum(betas_h)), 6)
+
+        # Diurnal generation-weighted average share across all 24 hours
+        tot_gen = sum(hourly_gen_totals.values())
+        average_shares: dict[str, float | None] = {}
+        if tot_gen > 0:
+            for c in cups_list:
+                weighted_sum = sum(
+                    (matrix[c][h_str] or 0.0) * hourly_gen_totals[h_str]
+                    for h_str in hours_str
+                    if matrix[c][h_str] is not None
+                )
+                average_shares[c] = weighted_sum / tot_gen
+        else:
+            for c in cups_list:
+                valid_vals = [
+                    matrix[c][h_str] for h_str in hours_str if matrix[c][h_str] is not None
+                ]
+                average_shares[c] = (sum(valid_vals) / len(valid_vals)) if valid_vals else None
+
+        avg_sum = (
+            round(sum(v for v in average_shares.values() if v is not None), 6)
+            if average_shares
+            else None
+        )
+
+        profile_matrix = HourlyProfileMatrix(
+            cups_list=cups_list,
+            hours=hours_str,
+            matrix=matrix,
+            hourly_sums=hourly_sums,
+            average_shares=average_shares,
+            average_sum=avg_sum,
+        )
+
+        # -------------------------------------------------------------------------
+        # 2. Full Time-Series Hourly Evaluation & Balance
+        # -------------------------------------------------------------------------
+        timestamps = aligned_df.index.tolist()
+        t_steps = len(timestamps)
+        c_arr = aligned_df[cups_list].values
+        g_arr = aligned_df["generation_kwh"].values
+
+        if strategy == OptimizationStrategy.EQUAL:
+            raw_betas = np.full((t_steps, n_cups), 1.0 / n_cups)
+        else:
+            c_row_sums = np.sum(c_arr, axis=1, keepdims=True)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                raw_betas = np.where(c_row_sums > 0, c_arr / c_row_sums, 1.0 / n_cups)
+
+        # Apply exact Hare-Niemeyer rounding row-by-row
+        rounded_betas = np.zeros_like(raw_betas)
+        for t in range(t_steps):
+            rounded_betas[t] = cls._round_betas(raw_betas[t], precision=precision)
+
+        allocated_gen = g_arr[:, np.newaxis] * rounded_betas
+        self_consumed = np.minimum(c_arr, allocated_gen)
+        surplus = np.maximum(0.0, allocated_gen - self_consumed)
+        grid_demand = np.maximum(0.0, c_arr - self_consumed)
+
+        comm_consumption = np.sum(c_arr, axis=1)
+        comm_self_consumed = np.sum(self_consumed, axis=1)
+        comm_surplus = np.maximum(0.0, g_arr - comm_self_consumed)
+        comm_grid = np.maximum(0.0, comm_consumption - comm_self_consumed)
+
+        ts_data: dict[str, object] = {
+            "timestamp": timestamps,
+            "date": dt_index.strftime("%Y-%m-%d").tolist(),
+            "hour": dt_index.hour.tolist(),
+            "generation_kwh": np.round(g_arr, 4).tolist(),
+            "community_consumption_kwh": np.round(comm_consumption, 4).tolist(),
+            "community_self_consumed_kwh": np.round(comm_self_consumed, 4).tolist(),
+            "community_surplus_kwh": np.round(comm_surplus, 4).tolist(),
+            "community_grid_demand_kwh": np.round(comm_grid, 4).tolist(),
+        }
+
+        metrics: list[CupsHourlyMetrics] = []
+        for i, cups in enumerate(cups_list):
+            ts_data[f"{cups}_beta"] = np.round(rounded_betas[:, i], 4).tolist()
+            ts_data[f"{cups}_share_pct"] = np.round(rounded_betas[:, i] * 100.0, precision).tolist()
+            ts_data[f"{cups}_consumption_kwh"] = np.round(c_arr[:, i], 4).tolist()
+            ts_data[f"{cups}_allocated_kwh"] = np.round(allocated_gen[:, i], 4).tolist()
+            ts_data[f"{cups}_self_consumed_kwh"] = np.round(self_consumed[:, i], 4).tolist()
+            ts_data[f"{cups}_surplus_kwh"] = np.round(surplus[:, i], 4).tolist()
+            ts_data[f"{cups}_grid_demand_kwh"] = np.round(grid_demand[:, i], 4).tolist()
+
+        ts_df = pd.DataFrame(ts_data)
+
+        return HourlyOptimizationResult(
+            profile_matrix=profile_matrix,
+            time_series_df=ts_df,
+            metrics=metrics,
+        )
+
+    @classmethod
     def optimize_dataset(
         cls,
         aligned_dataset: AlignedDataset,
@@ -415,6 +577,7 @@ class DistributionOptimizer:
         include_baselines: bool = True,
         precision: int | None = None,
         require_full_month: bool = True,
+        compute_hourly: bool = False,
     ) -> OptimizationResult:
         """Run optimization for an upcoming calendar year (January to December).
 
@@ -424,9 +587,10 @@ class DistributionOptimizer:
             include_baselines: If True, also computes results for baseline strategies.
             precision: Share percentage precision (0, 1, or 2 decimals). If None, uses configured setting.
             require_full_month: If True, skips months that do not have at least one complete month of data.
+            compute_hourly: If True, computes 24-hour diurnal profile and full hourly time-series balance.
 
         Returns:
-            OptimizationResult containing 12-month calendar prevision, total summary, and baselines.
+            OptimizationResult containing 12-month calendar prevision, total summary, baselines, and optional hourly_result.
         """
         from src.config import get_precision, validate_share_precision
 
@@ -465,12 +629,21 @@ class DistributionOptimizer:
                         cups_list=cups_list,
                     )
 
+        hourly_result: HourlyOptimizationResult | None = None
+        if compute_hourly:
+            hourly_result = cls.compute_hourly_optimization(
+                aligned_dataset=aligned_dataset,
+                strategy=strategy,
+                precision=active_precision,
+            )
+
         return OptimizationResult(
             strategy=strategy.value,
             monthly_results=monthly_results,
             total_summary=total_summary,
             baselines=baselines,
             cups_list=cups_list,
+            hourly_result=hourly_result,
         )
 
     @staticmethod

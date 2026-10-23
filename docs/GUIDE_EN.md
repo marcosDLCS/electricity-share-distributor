@@ -82,15 +82,23 @@ The core deliverable of `esd` is the **Regulatory Distribution Share Matrix** ([
       Regulatory allocation schedule (RD 244/2019) • Sum per month: 100%
 ```
 
-### 2. Multi-Format Output Files (`.output/`)
+### 2. The Diurnal Hourly Distribution Share Profile (`--hourly` / `-H`)
+When passing the `--hourly` (or `-H`) flag, or running `--view hourly`, `esd` calculates and outputs the diurnal hourly distribution schedule:
+- **24-Hour Diurnal Schedule:** Optimal coefficients ($\beta_{i, h}$) computed for each hour of the day (00:00 to 23:00) across all evaluated dates, with each hour summing strictly to $100\%$.
+- **80-Column Terminal Compliance:** Rich tables automatically split into two 12-hour panels (00:00–11:00 and 12:00–23:00) on standard 80-column screens to ensure zero text wrapping.
+- **Hourly Time-Series Export:** Produces timestamped hourly datasets recording instantaneous allocation coefficients and energy balances (self-consumed, surplus, grid demand).
+
+### 3. Multi-Format Output Files (`.output/`)
 Running `esd calculate` automatically generates timestamped artifacts:
 
 | Generated File | Format | Purpose |
 | :--- | :--- | :--- |
 | `*_esd_coefficients_matrix.csv` | CSV (`;` delimited) | Ready-to-import spreadsheet table for direct submission to the utility distributor (DSO). |
 | `*_esd_optimization_summary.md` | Markdown | Executive report containing the signed schedule annex for the collective self-consumption agreement. |
-| `*_esd_coefficients.csv` | CSV (`;` delimited) | Detailed hourly and monthly energy metrics (kWh self-consumed, surplus, grid demand) per CUPS. |
+| `*_esd_coefficients.csv` | CSV (`;` delimited) | Detailed monthly energy metrics (kWh self-consumed, surplus, grid demand) per CUPS. |
 | `*_esd_results.json` | JSON | Machine-readable structural data export for API integrations. |
+| `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Complete hourly time-series metrics and coefficients per CUPS (generated when `--hourly` is active). |
+| `*_esd_hourly_profile_matrix.csv` | CSV (`;` delimited) | 24-hour diurnal profile matrix ready for variable coefficient filing under Orden TED/1247/2021. |
 
 ---
 
@@ -100,15 +108,15 @@ To inspect or extend the codebase, use this map to trace directly from concepts 
 
 | Architecture Layer | Core Module | Key Classes / Functions | Primary Responsibility |
 | :--- | :--- | :--- | :--- |
-| **CLI & Commands** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `init_command`, `doctor_command` | Typer command routing, parameter parsing, and execution dispatch. |
+| **CLI & Commands** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `init_command`, `doctor_command` | Typer command routing, parameter parsing (`--hourly`), and execution dispatch. |
 | **Configuration** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision` | Settings persistence (`.esd_config.json`) and path resolution. |
 | **Internationalization** | [`src/i18n.py`](../src/i18n.py) | `t()`, `TRANSLATIONS` | English and Spanish dictionary lookups with string interpolation. |
 | **Ingestion: Consumption** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | DATADIS hourly CSV discovery, encoding detection, and parsing. |
 | **Ingestion: Generation** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `HuaweiGenerationLoader` | Huawei FusionSolar `.xlsx` parsing and extraction. |
 | **Ingestion: Doctor** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Pre-flight gap detection, inactive meter alerts, and date overlap verification. |
 | **Ingestion: Alignment** | [`src/ingestion/aligner.py`](../src/ingestion/aligner.py) | `TimeSeriesAligner` | Hourly timestamp intersection, missing value imputation, and DST management. |
-| **Optimization: Models** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `OptimizationResult` | Consolidated matrix structure and community balance dataclasses. |
-| **Optimization: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | SciPy HiGHS LP formulation, baseline comparisons, and Hare-Niemeyer rounding. |
-| **Presentation: Views** | [`src/presentation/views.py`](../src/presentation/views.py) | `render_coefficients_matrix_table` | Rich terminal tables, adaptive 80-column formatting, and visual progress bars. |
-| **Presentation: Exports** | [`src/presentation/export.py`](../src/presentation/export.py) | `export_all`, `export_coefficients_matrix_csv` | Markdown summary generator, CSV exporter, and JSON serialization. |
+| **Optimization: Models** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Consolidated matrix structures, diurnal hourly profiles, and community balance dataclasses. |
+| **Optimization: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | SciPy HiGHS LP formulation, diurnal profile solver, baseline comparisons, and Hare-Niemeyer rounding. |
+| **Presentation: Views** | [`src/presentation/views.py`](../src/presentation/views.py) | `render_coefficients_matrix_table`, `render_hourly_profile_table` | Rich terminal tables, adaptive 80-column formatting, and diurnal profile views. |
+| **Presentation: Exports** | [`src/presentation/export.py`](../src/presentation/export.py) | `export_all`, `export_hourly_shares_csv`, `export_hourly_profile_matrix_csv` | Markdown summary generator, CSV exporters, and JSON serialization. |
 | **Security & Privacy** | [`src/security.py`](../src/security.py) | `CupsPrivacyChecker`, `scan_git_history` | GDPR enforcement and synthetic CUPS verification harness. |

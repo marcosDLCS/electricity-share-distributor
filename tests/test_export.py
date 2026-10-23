@@ -11,6 +11,8 @@ from src.ingestion.schema import IngestionSummary
 from src.optimization.models import (
     CommunityMonthlyMetrics,
     CupsMonthlyMetrics,
+    HourlyOptimizationResult,
+    HourlyProfileMatrix,
     OptimizationResult,
     OptimizationStrategy,
 )
@@ -18,6 +20,8 @@ from src.presentation.export import (
     export_all,
     export_coefficients_csv,
     export_coefficients_matrix_csv,
+    export_hourly_profile_matrix_csv,
+    export_hourly_shares_csv,
     export_results_json,
     export_summary_markdown,
 )
@@ -194,3 +198,76 @@ def test_export_all_filtering(tmp_path: Path) -> None:
     # None
     paths_none = export_all(opt_result, meta, tmp_path, formats="table")
     assert len(paths_none) == 0
+
+
+def test_export_hourly_files(tmp_path: Path) -> None:
+    opt_result, meta = create_dummy_optimization_result()
+    cups_list = ["ES0021000000000001AA", "ES0021000000000002BB"]
+    hours = [f"{h:02d}" for h in range(24)]
+
+    profile_matrix = HourlyProfileMatrix(
+        cups_list=cups_list,
+        hours=hours,
+        matrix={
+            cups_list[0]: dict.fromkeys(hours, 0.6),
+            cups_list[1]: dict.fromkeys(hours, 0.4),
+        },
+        hourly_sums=dict.fromkeys(hours, 1.0),
+        average_shares={cups_list[0]: 0.6, cups_list[1]: 0.4},
+        average_sum=1.0,
+    )
+    ts_df = pd.DataFrame(
+        {
+            "timestamp": [f"2026-05-01 {h}:00:00" for h in hours],
+            "date": ["2026-05-01"] * 24,
+            "hour": list(range(24)),
+            "generation_kwh": [5.0] * 24,
+            "community_consumption_kwh": [4.0] * 24,
+            "community_self_consumed_kwh": [4.0] * 24,
+            "community_surplus_kwh": [1.0] * 24,
+            "community_grid_demand_kwh": [0.0] * 24,
+            f"{cups_list[0]}_beta": [0.6] * 24,
+            f"{cups_list[0]}_share_pct": [60.0] * 24,
+            f"{cups_list[1]}_beta": [0.4] * 24,
+            f"{cups_list[1]}_share_pct": [40.0] * 24,
+        }
+    )
+    opt_result.hourly_result = HourlyOptimizationResult(
+        profile_matrix=profile_matrix,
+        time_series_df=ts_df,
+    )
+
+    # Export hourly CSV files directly
+    shares_path = export_hourly_shares_csv(opt_result, tmp_path, timestamp="20260531_120000")
+    assert shares_path.exists()
+    shares_content = shares_path.read_text(encoding="utf-8")
+    assert "ES0021000000000001AA_beta" in shares_content
+
+    matrix_path = export_hourly_profile_matrix_csv(
+        opt_result, tmp_path, precision=0, timestamp="20260531_120000"
+    )
+    assert matrix_path.exists()
+    matrix_content = matrix_path.read_text(encoding="utf-8")
+    assert "cups;00;01;02" in matrix_content
+    assert "TOTAL;100%;100%" in matrix_content
+
+    # export_all with formats='csv' should export 4 CSVs
+    exported = export_all(opt_result, meta, tmp_path, formats="csv")
+    assert len(exported) == 4
+    file_names = [p.name for p in exported]
+    assert any("_esd_hourly_shares.csv" in n for n in file_names)
+    assert any("_esd_hourly_profile_matrix.csv" in n for n in file_names)
+
+    # export_all with json should serialize hourly profile
+    json_paths = export_all(opt_result, meta, tmp_path, formats="json")
+    assert len(json_paths) == 1
+    with open(json_paths[0], encoding="utf-8") as f:
+        data = json.load(f)
+    assert "hourly_profile" in data
+    assert data["hourly_profile"]["hours"] == hours
+
+    # export_all with markdown should render hourly section
+    md_paths = export_all(opt_result, meta, tmp_path, formats="markdown")
+    assert len(md_paths) == 1
+    md_content = md_paths[0].read_text(encoding="utf-8")
+    assert "Diurnal Distribution Share Profile" in md_content
