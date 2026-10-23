@@ -216,22 +216,31 @@ def test_export_hourly_files(tmp_path: Path) -> None:
         average_shares={cups_list[0]: 0.6, cups_list[1]: 0.4},
         average_sum=1.0,
     )
-    ts_df = pd.DataFrame(
-        {
-            "timestamp": [f"2026-05-01 {h}:00:00" for h in hours],
-            "date": ["2026-05-01"] * 24,
-            "hour": list(range(24)),
-            "generation_kwh": [5.0] * 24,
-            "community_consumption_kwh": [4.0] * 24,
-            "community_self_consumed_kwh": [4.0] * 24,
-            "community_surplus_kwh": [1.0] * 24,
-            "community_grid_demand_kwh": [0.0] * 24,
-            f"{cups_list[0]}_beta": [0.6] * 24,
-            f"{cups_list[0]}_share_pct": [60.0] * 24,
-            f"{cups_list[1]}_beta": [0.4] * 24,
-            f"{cups_list[1]}_share_pct": [40.0] * 24,
-        }
-    )
+    ts_rows = []
+    for h in hours:
+        ts_rows.append(
+            {
+                "timestamp": f"2026-05-01 {h}:00:00",
+                "hour": int(h),
+                "cups": cups_list[0],
+                "consumption_kwh": 2.4,
+                "generation_kwh": 5.0,
+                "share_pct": "60%",
+                "estimated_share_pct": "60%",
+            }
+        )
+        ts_rows.append(
+            {
+                "timestamp": f"2026-05-01 {h}:00:00",
+                "hour": int(h),
+                "cups": cups_list[1],
+                "consumption_kwh": 1.6,
+                "generation_kwh": 5.0,
+                "share_pct": "40%",
+                "estimated_share_pct": "40%",
+            }
+        )
+    ts_df = pd.DataFrame(ts_rows)
     opt_result.hourly_result = HourlyOptimizationResult(
         profile_matrix=profile_matrix,
         time_series_df=ts_df,
@@ -241,7 +250,11 @@ def test_export_hourly_files(tmp_path: Path) -> None:
     shares_path = export_hourly_shares_csv(opt_result, tmp_path, timestamp="20260531_120000")
     assert shares_path.exists()
     shares_content = shares_path.read_text(encoding="utf-8")
-    assert "ES0021000000000001AA_beta" in shares_content
+    assert (
+        "timestamp;hour;cups;consumption_kwh;generation_kwh;share_pct;estimated_share_pct"
+        in shares_content
+    )
+    assert "ES0021000000000001AA" in shares_content
 
     matrix_path = export_hourly_profile_matrix_csv(
         opt_result, tmp_path, precision=0, timestamp="20260531_120000"

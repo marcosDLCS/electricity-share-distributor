@@ -87,7 +87,7 @@ El resultado principal de `esd` es la **Matriz Regulatoria de Coeficientes de Re
 Al indicar el parámetro `--hourly` (o `-H`), o ejecutar con `--view hourly`, `esd` calcula y visualiza el perfil de reparto diario por horas:
 - **Horario Diario de 24 Horas:** Coeficientes óptimos ($\beta_{i, h}$) calculados para cada hora del día (00:00 a 23:00) a lo largo de todos los días evaluados, sumando exactamente el $100\%$ en cada hora.
 - **Compatibilidad con Terminales de 80 Columnas:** Las tablas Rich se dividen automáticamente en dos paneles de 12 horas (00:00–11:00 y 12:00–23:00) en pantallas estándar para evitar saltos o desbordamientos.
-- **Exportación de Series Temporales Horarias:** Genera archivos CSV con la serie temporal completa hora a hora, con coeficientes instantáneos y balances de energía (autoconsumo, excedentes, demanda de red).
+- **Exportación de Series Temporales Horarias:** Genera archivos CSV simplificados con la serie temporal hora a hora (`timestamp;hour;cups;consumption_kwh;generation_kwh;share_pct;estimated_share_pct`), registrando el porcentaje de reparto horario real y el porcentaje estimado resistente a caídas por días nublados.
 
 ### 3. Archivos e Informes Exportados (`.output/`)
 La ejecución de `esd calculate` genera automáticamente entregables fechados:
@@ -98,7 +98,7 @@ La ejecución de `esd calculate` genera automáticamente entregables fechados:
 | `*_esd_optimization_summary.md` | Markdown | Informe ejecutivo y anexo documental listo para la firma del acuerdo de reparto por la comunidad. |
 | `*_esd_coefficients.csv` | CSV (delimitado por `;`) | Balance mensual completo (kWh autoconsumidos, excedentes, demanda de red) por CUPS. |
 | `*_esd_results.json` | JSON | Estructura de datos completa serializada para integraciones API o análisis posterior. |
-| `*_esd_hourly_shares.csv` | CSV (delimitado por `;`) | Serie temporal horaria completa con balances y coeficientes por CUPS (generada con `--hourly`). |
+| `*_esd_hourly_shares.csv` | CSV (delimitado por `;`) | Serie temporal horaria simplificada (`timestamp;hour;cups;consumption_kwh;generation_kwh;share_pct;estimated_share_pct`). |
 | `*_esd_hourly_profile_matrix.csv` | CSV (delimitado por `;`) | Matriz de perfil diario de 24 horas para coeficientes variables según Orden TED/1247/2021. |
 
 ---

@@ -12,7 +12,6 @@ from scipy.sparse import dok_matrix
 from src.ingestion.schema import AlignedDataset, EsdError
 from src.optimization.models import (
     CommunityMonthlyMetrics,
-    CupsHourlyMetrics,
     CupsMonthlyMetrics,
     HourlyOptimizationResult,
     HourlyProfileMatrix,
@@ -530,43 +529,39 @@ class DistributionOptimizer:
         for t in range(t_steps):
             rounded_betas[t] = cls._round_betas(raw_betas[t], precision=precision)
 
-        allocated_gen = g_arr[:, np.newaxis] * rounded_betas
-        self_consumed = np.minimum(c_arr, allocated_gen)
-        surplus = np.maximum(0.0, allocated_gen - self_consumed)
-        grid_demand = np.maximum(0.0, c_arr - self_consumed)
+        # Build simplified long-format hourly time series
+        ts_rows: list[dict[str, object]] = []
+        for t in range(t_steps):
+            ts_str = timestamps[t]
+            h_int = int(dt_index[t].hour)
+            h_str = f"{h_int:02d}"
+            gen_val = round(float(g_arr[t]), 4)
 
-        comm_consumption = np.sum(c_arr, axis=1)
-        comm_self_consumed = np.sum(self_consumed, axis=1)
-        comm_surplus = np.maximum(0.0, g_arr - comm_self_consumed)
-        comm_grid = np.maximum(0.0, comm_consumption - comm_self_consumed)
+            for i, cups in enumerate(cups_list):
+                cons_val = round(float(c_arr[t, i]), 4)
+                actual_share = f"{rounded_betas[t, i] * 100:.{precision}f}%"
+                est_share = profile_matrix.format_cell(cups, h_str, precision=precision)
+                if est_share == "—":
+                    est_share = actual_share
 
-        ts_data: dict[str, object] = {
-            "timestamp": timestamps,
-            "date": dt_index.strftime("%Y-%m-%d").tolist(),
-            "hour": dt_index.hour.tolist(),
-            "generation_kwh": np.round(g_arr, 4).tolist(),
-            "community_consumption_kwh": np.round(comm_consumption, 4).tolist(),
-            "community_self_consumed_kwh": np.round(comm_self_consumed, 4).tolist(),
-            "community_surplus_kwh": np.round(comm_surplus, 4).tolist(),
-            "community_grid_demand_kwh": np.round(comm_grid, 4).tolist(),
-        }
+                ts_rows.append(
+                    {
+                        "timestamp": ts_str,
+                        "hour": h_int,
+                        "cups": cups,
+                        "consumption_kwh": cons_val,
+                        "generation_kwh": gen_val,
+                        "share_pct": actual_share,
+                        "estimated_share_pct": est_share,
+                    }
+                )
 
-        metrics: list[CupsHourlyMetrics] = []
-        for i, cups in enumerate(cups_list):
-            ts_data[f"{cups}_beta"] = np.round(rounded_betas[:, i], 4).tolist()
-            ts_data[f"{cups}_share_pct"] = np.round(rounded_betas[:, i] * 100.0, precision).tolist()
-            ts_data[f"{cups}_consumption_kwh"] = np.round(c_arr[:, i], 4).tolist()
-            ts_data[f"{cups}_allocated_kwh"] = np.round(allocated_gen[:, i], 4).tolist()
-            ts_data[f"{cups}_self_consumed_kwh"] = np.round(self_consumed[:, i], 4).tolist()
-            ts_data[f"{cups}_surplus_kwh"] = np.round(surplus[:, i], 4).tolist()
-            ts_data[f"{cups}_grid_demand_kwh"] = np.round(grid_demand[:, i], 4).tolist()
-
-        ts_df = pd.DataFrame(ts_data)
+        ts_df = pd.DataFrame(ts_rows)
 
         return HourlyOptimizationResult(
             profile_matrix=profile_matrix,
             time_series_df=ts_df,
-            metrics=metrics,
+            metrics=[],
         )
 
     @classmethod

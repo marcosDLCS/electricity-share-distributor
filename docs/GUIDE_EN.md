@@ -86,7 +86,7 @@ The core deliverable of `esd` is the **Regulatory Distribution Share Matrix** ([
 When passing the `--hourly` (or `-H`) flag, or running `--view hourly`, `esd` calculates and outputs the diurnal hourly distribution schedule:
 - **24-Hour Diurnal Schedule:** Optimal coefficients ($\beta_{i, h}$) computed for each hour of the day (00:00 to 23:00) across all evaluated dates, with each hour summing strictly to $100\%$.
 - **80-Column Terminal Compliance:** Rich tables automatically split into two 12-hour panels (00:00–11:00 and 12:00–23:00) on standard 80-column screens to ensure zero text wrapping.
-- **Hourly Time-Series Export:** Produces timestamped hourly datasets recording instantaneous allocation coefficients and energy balances (self-consumed, surplus, grid demand).
+- **Hourly Time-Series Export:** Produces simplified timestamped hourly datasets recording each CUPS's hourly consumption, PV generation, actual share percentage (`share_pct`), and cloud-resistant estimated share percentage (`estimated_share_pct`).
 
 ### 3. Multi-Format Output Files (`.output/`)
 Running `esd calculate` automatically generates timestamped artifacts:
@@ -97,7 +97,7 @@ Running `esd calculate` automatically generates timestamped artifacts:
 | `*_esd_optimization_summary.md` | Markdown | Executive report containing the signed schedule annex for the collective self-consumption agreement. |
 | `*_esd_coefficients.csv` | CSV (`;` delimited) | Detailed monthly energy metrics (kWh self-consumed, surplus, grid demand) per CUPS. |
 | `*_esd_results.json` | JSON | Machine-readable structural data export for API integrations. |
-| `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Complete hourly time-series metrics and coefficients per CUPS (generated when `--hourly` is active). |
+| `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Simplified hourly time-series (`timestamp;hour;cups;consumption_kwh;generation_kwh;share_pct;estimated_share_pct`). |
 | `*_esd_hourly_profile_matrix.csv` | CSV (`;` delimited) | 24-hour diurnal profile matrix ready for variable coefficient filing under Orden TED/1247/2021. |
 
 ---

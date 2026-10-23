@@ -480,23 +480,25 @@ def test_compute_hourly_optimization() -> None:
 
     # Time series DataFrame checks
     ts_df = hourly_res.time_series_df
-    assert len(ts_df) == 24
-    assert "timestamp" in ts_df.columns
-    assert "generation_kwh" in ts_df.columns
-    assert f"{cups_list[0]}_beta" in ts_df.columns
-    assert f"{cups_list[1]}_beta" in ts_df.columns
+    assert len(ts_df) == 24 * len(cups_list)
+    expected_cols = [
+        "timestamp",
+        "hour",
+        "cups",
+        "consumption_kwh",
+        "generation_kwh",
+        "share_pct",
+        "estimated_share_pct",
+    ]
+    assert list(ts_df.columns) == expected_cols
 
-    # Row-by-row beta sums strictly equal 1.0
-    for _idx, row in ts_df.iterrows():
-        b1 = row[f"{cups_list[0]}_beta"]
-        b2 = row[f"{cups_list[1]}_beta"]
-        assert np.isclose(b1 + b2, 1.0, atol=1e-4)
-
-        # Check self-consumed energy conservation
-        sc1 = row[f"{cups_list[0]}_self_consumed_kwh"]
-        surplus1 = row[f"{cups_list[0]}_surplus_kwh"]
-        alloc1 = row[f"{cups_list[0]}_allocated_kwh"]
-        assert np.isclose(sc1 + surplus1, alloc1, atol=1e-4)
+    # Check for each timestamp that share percentages sum to 100%
+    for ts in timestamps:
+        ts_slice = ts_df[ts_df["timestamp"] == ts]
+        shares = [float(s.replace("%", "")) for s in ts_slice["share_pct"]]
+        assert np.isclose(sum(shares), 100.0, atol=1e-3)
+        est_shares = [float(s.replace("%", "")) for s in ts_slice["estimated_share_pct"]]
+        assert np.isclose(sum(est_shares), 100.0, atol=1e-3)
 
 
 def test_hourly_precision_rounding() -> None:
