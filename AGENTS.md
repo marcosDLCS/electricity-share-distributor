@@ -6,7 +6,7 @@ Welcome to **Electricity Share Distributor** (`esd`). This document serves as th
 
 ## 1. 🎯 Project Overview & Mission
 
-`electricity-share-distributor` (`esd`) is a high-performance Python CLI utility designed to determine optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic installations (*autoconsumo colectivo*) in Spain under **Real Decreto 244/2019**.
+`electricity-share-distributor` (`esd`) is a high-performance Python CLI utility designed to determine optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic installations (*autoconsumo colectivo*) across shared common services in a homeowners association (*comunidad de propietarios*) in Spain (e.g. central aerothermal heating, pool, garage, portals, elevators) under **Real Decreto 244/2019**. It is **not** meant to distribute private domestic consumption.
 
 It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/datadis-analyzer).
 
