@@ -77,6 +77,18 @@ class HuaweiGenerationLoader:
                 f"File {file_path.name} does not contain 'Rendimiento FV' or 'Rendimiento del inversor' column."
             )
 
+        # Locate consumption column if present (e.g. 'Consumo (kWh)', 'Consumption (kWh)')
+        cons_col = None
+        for col in df.columns:
+            c_low = col.lower()
+            if (
+                c_low.startswith("consumo")
+                or "consumo (kwh)" in c_low
+                or c_low.startswith("consumption")
+            ):
+                cons_col = col
+                break
+
         # Drop rows where timestamp is NaN
         clean_df = df.dropna(subset=[ts_col]).copy()
 
@@ -86,12 +98,17 @@ class HuaweiGenerationLoader:
         # Parse generation values
         gen_values = pd.to_numeric(clean_df[gen_col], errors="coerce").fillna(0.0)
 
-        result_df = pd.DataFrame(
-            {
-                "timestamp": timestamps,
-                "generation_kwh": gen_values,
-            }
-        )
+        data_dict: dict[str, object] = {
+            "timestamp": timestamps,
+            "generation_kwh": gen_values,
+        }
+        if cons_col:
+            cons_values = pd.to_numeric(
+                clean_df[cons_col].astype(str).str.replace(",", "."), errors="coerce"
+            )
+            data_dict["consumption_kwh"] = cons_values
+
+        result_df = pd.DataFrame(data_dict)
 
         # Filter out header or invalid timestamp rows
         valid_mask = result_df["timestamp"].str.match(r"^\d{4}-\d{2}-\d{2}")
@@ -103,7 +120,8 @@ class HuaweiGenerationLoader:
         """Load, validate, and deduplicate all generation reports in the directory.
 
         Returns:
-            DataFrame with columns ['timestamp', 'generation_kwh'] sorted chronologically.
+            DataFrame with columns ['timestamp', 'generation_kwh'] (and optionally
+            'consumption_kwh' if present in the reports) sorted chronologically.
         """
         files = self.discover_files()
         dfs = []
@@ -112,10 +130,14 @@ class HuaweiGenerationLoader:
 
         combined = pd.concat(dfs, ignore_index=True)
 
-        # Deduplicate timestamps across overlapping reports, keeping max generation if values differ
+        # Deduplicate timestamps across overlapping reports, keeping max values
+        agg_rules: dict[str, str] = {"generation_kwh": "max"}
+        if "consumption_kwh" in combined.columns:
+            agg_rules["consumption_kwh"] = "max"
+
         combined = (
-            combined.groupby("timestamp", as_index=False)["generation_kwh"]
-            .max()
+            combined.groupby("timestamp", as_index=False)
+            .agg(agg_rules)
             .sort_values("timestamp")
             .reset_index(drop=True)
         )

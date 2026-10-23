@@ -101,6 +101,13 @@ La ejecución de `esd calculate` genera automáticamente entregables fechados:
 | `*_esd_hourly_shares.csv` | CSV (delimitado por `;`) | Serie temporal horaria simplificada (`timestamp;hour;cups;consumption_kwh;generation_kwh;share_pct;estimated_share_pct`). |
 | `*_esd_hourly_profile_matrix.csv` | CSV (delimitado por `;`) | Matriz de perfil diario de 24 horas para coeficientes variables según Orden TED/1247/2021. |
 
+### 4. Reconciliación y Curado de Series Temporales (`esd curate`)
+Al ejecutar `esd curate`, la herramienta lleva a cabo una reconciliación completa entre las curvas de red de DATADIS y los registros de generación de Huawei FusionSolar:
+- **Reconciliación de CUPS Principal tras Inversor:** En comunidades donde la planta solar FV está conectada físicamente tras el contador de un punto principal (identificado con `"primary": true` en [`.input/cups/cups.json`](../.input/cups/cups.json)), DATADIS registra 0,0 kWh (falsos ceros) en las horas diurnas de generación al reflejar únicamente intercambios netos de red. `esd curate` obtiene el consumo total real desde la curva `Consumo (kWh)` de Huawei, recuperando la demanda física oculta.
+- **Usos Funcionales de CUPS:** Incorpora la descripción funcional (ej. `"piscina"`, `"Garaje"`, `"Portal 1"`, `"Aerotermia"`) procedente de `cups.json` en cada intervalo horario.
+- **Entregables Curados (`.curated/`):**
+  - `curated.csv`: Tabla plana en formato largo con marca temporal canónica (`timestamp,generation,cups_id,use,consumption,primary,reconciled`).
+
 ---
 
 ## 5. 🗺️ Mapa de Código y Trazabilidad
@@ -109,15 +116,16 @@ Para inspeccionar o ampliar el código fuente, utilice la siguiente tabla de cor
 
 | Capa Arquitectónica | Módulo | Clases / Funciones Clave | Responsabilidad |
 | :--- | :--- | :--- | :--- |
-| **CLI e Interfaz** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `init_command`, `doctor_command` | Enrutamiento de comandos Typer, validación de parámetros (`--hourly`) y flujo general. |
+| **CLI e Interfaz** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `curate_command`, `doctor_command`, `init_command` | Enrutamiento de comandos Typer, validación de parámetros (`--hourly`, `--delimiter`) y flujo general. |
 | **Configuración** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision` | Persistencia de ajustes en `.esd_config.json` y rutas de trabajo. |
 | **Internacionalización** | [`src/i18n.py`](../src/i18n.py) | `t()`, `TRANSLATIONS` | Diccionarios bilingües inglés/español con interpolación de variables. |
 | **Ingesta: Consumo** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | Localización, lectura y normalización de archivos CSV de DATADIS. |
-| **Ingesta: Generación** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `HuaweiGenerationLoader` | Lectura de libros Excel `.xlsx` de Huawei FusionSolar. |
+| **Ingesta: Generación** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `HuaweiGenerationLoader` | Lectura de libros Excel `.xlsx` de Huawei FusionSolar (producción y consumo de carga). |
 | **Ingesta: Diagnóstico** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Detección previa de huecos, contadores inactivos y comprobación de solapes. |
 | **Ingesta: Alineación** | [`src/ingestion/aligner.py`](../src/ingestion/aligner.py) | `TimeSeriesAligner` | Sincronización temporal horaria, imputación de nulos y cambios de hora DST. |
+| **Curado y Reconciliación** | [`src/curation/`](../src/curation) | `DataCurator`, `CuratedDataset` | Reconciliación de falsos ceros, cruce de metadatos de CUPS y generación de CSV curado. |
 | **Optimización: Modelos** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Estructuras de datos matriciales, perfiles horarios diarios y métricas de balances. |
 | **Optimización: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Formulación PL en SciPy HiGHS, optimizador diario, comparativas y redondeo Hare-Niemeyer. |
-| **Presentación: Vistas** | [`src/presentation/views.py`](../src/presentation/views.py) | `render_coefficients_matrix_table`, `render_hourly_profile_table` | Tablas Rich para terminales de 80 columnas y vistas de perfil horario. |
+| **Presentación: Vistas** | [`src/presentation/views.py`](../src/presentation/views.py) | `render_coefficients_matrix_table`, `render_curate_summary`, `render_hourly_profile_table` | Tablas Rich para terminales de 80 columnas y vistas de resumen de curado. |
 | **Presentación: Exportación** | [`src/presentation/export.py`](../src/presentation/export.py) | `export_all`, `export_hourly_shares_csv`, `export_hourly_profile_matrix_csv` | Generación de informes en Markdown, exportación a CSV y volcado en JSON. |
 | **Seguridad y Privacidad** | [`src/security.py`](../src/security.py) | `CupsPrivacyChecker`, `scan_git_history` | Protección LOPD/RGPD y verificación estricta de CUPS sintéticos. |

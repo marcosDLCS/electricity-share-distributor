@@ -12,7 +12,10 @@ from typing import Final
 DEFAULT_INPUT_DIR: Final[Path] = Path(".input")
 DEFAULT_CONSUMPTION_DIR: Final[Path] = Path(".input/consumption")
 DEFAULT_GENERATION_DIR: Final[Path] = Path(".input/generation")
+DEFAULT_CUPS_DIR: Final[Path] = Path(".input/cups")
+DEFAULT_CUPS_CONFIG_PATH: Final[Path] = Path(".input/cups/cups.json")
 DEFAULT_OUTPUT_DIR: Final[Path] = Path(".output")
+DEFAULT_CURATED_DIR: Final[Path] = Path(".curated")
 CONFIG_FILE_PATH: Final[Path] = Path(".esd_config.json")
 
 # Default precision for share distribution percentages (0, 1, or 2 decimals)
@@ -81,6 +84,8 @@ class AppConfig:
     consumption_dir: str = ".input/consumption"
     generation_dir: str = ".input/generation"
     output_dir: str = ".output"
+    curated_dir: str = ".curated"
+    cups_config_path: str = ".input/cups/cups.json"
     initialized_at: str | None = None
     version: str | None = None
 
@@ -141,6 +146,8 @@ def load_config(path: Path | None = None) -> AppConfig:
             consumption_dir=data.get("consumption_dir", ".input/consumption"),
             generation_dir=data.get("generation_dir", ".input/generation"),
             output_dir=data.get("output_dir", ".output"),
+            curated_dir=data.get("curated_dir", ".curated"),
+            cups_config_path=data.get("cups_config_path", ".input/cups/cups.json"),
             initialized_at=data.get("initialized_at"),
             version=data.get("version"),
         )
@@ -237,11 +244,13 @@ def ensure_directories(
     consumption_path = Path(cfg.consumption_dir)
     generation_path = Path(cfg.generation_dir)
     output_path = Path(cfg.output_dir)
+    curated_path = Path(cfg.curated_dir)
 
     input_path.mkdir(parents=True, exist_ok=True)
     consumption_path.mkdir(parents=True, exist_ok=True)
     generation_path.mkdir(parents=True, exist_ok=True)
     output_path.mkdir(parents=True, exist_ok=True)
+    curated_path.mkdir(parents=True, exist_ok=True)
 
     return input_path, consumption_path, generation_path, output_path
 

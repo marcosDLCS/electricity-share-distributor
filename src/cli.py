@@ -9,6 +9,7 @@ import typer
 
 from src.config import (
     DEFAULT_CONSUMPTION_DIR,
+    DEFAULT_CURATED_DIR,
     DEFAULT_GENERATION_DIR,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_SHARE_PRECISION,
@@ -25,6 +26,7 @@ from src.config import (
     set_precision,
     validate_share_precision,
 )
+from src.curation import DataCurator
 from src.i18n import t
 from src.ingestion import (
     DatadisConsumptionLoader,
@@ -41,6 +43,7 @@ from src.presentation.views import (
     render_coefficients_matrix_table,
     render_community_summary,
     render_config_view,
+    render_curate_summary,
     render_doctor_report,
     render_export_success,
     render_help,
@@ -204,6 +207,99 @@ def doctor_command(
     render_doctor_report(report, verbose=verbose, lang=active_lang)
 
     if not report.can_calculate:
+        sys.exit(1)
+
+
+@app.command(name="curate")
+def curate_command(
+    consumption_dir: Path = typer.Option(
+        DEFAULT_CONSUMPTION_DIR,
+        "--consumption-dir",
+        "-c",
+        help="Path to folder containing DATADIS hourly consumption CSV files.",
+    ),
+    generation_dir: Path = typer.Option(
+        DEFAULT_GENERATION_DIR,
+        "--generation-dir",
+        "-g",
+        help="Path to folder containing Huawei FusionSolar generation Excel files.",
+    ),
+    cups_file: Path | None = typer.Option(
+        None,
+        "--cups-file",
+        "-C",
+        help="Path to cups.json configuration file specifying CUPS uses and primary flags.",
+    ),
+    curated_dir: Path = typer.Option(
+        DEFAULT_CURATED_DIR,
+        "--curated-dir",
+        "-o",
+        help="Path to directory where curated CSV files will be written.",
+    ),
+    name: str = typer.Option(
+        "curated",
+        "--name",
+        "-n",
+        help="Base filename for generated curated export (e.g. 'curated' produces curated.csv).",
+    ),
+    delimiter: str = typer.Option(
+        ",",
+        "--delimiter",
+        "-d",
+        help="CSV delimiter character (',' or ';'). Defaults to ','.",
+    ),
+    year: int | None = typer.Option(
+        None,
+        "--year",
+        "-y",
+        help="Optional calendar year filter (e.g. 2026).",
+    ),
+    month: int | None = typer.Option(
+        None,
+        "--month",
+        "-m",
+        help="Optional month filter (1-12).",
+    ),
+    lang: str | None = typer.Option(
+        None,
+        "--lang",
+        "-l",
+        help="Language override for messages ('en' or 'es').",
+    ),
+) -> None:
+    """Reconcile DATADIS and Huawei time-series data and export curated CSV file."""
+    active_lang = normalize_language_code(lang) if lang else get_language()
+
+    if not is_initialized():
+        render_not_initialized_warning(lang=active_lang)
+
+    try:
+        with console.status(f"[bold cyan]{t('status_curating', lang=active_lang)}[/bold cyan]"):
+            curator = DataCurator(
+                consumption_dir=consumption_dir,
+                generation_dir=generation_dir,
+                cups_config_path=cups_file,
+                curated_dir=curated_dir,
+            )
+            dataset = curator.curate(year=year, month=month)
+            csv_path = curator.export_csv(
+                dataset,
+                curated_dir=curated_dir,
+                base_name=name,
+                delimiter=delimiter,
+            )
+
+        render_curate_summary(
+            dataset=dataset,
+            csv_path=csv_path,
+            lang=active_lang,
+        )
+
+    except EsdError as err:
+        console.print(f"\n[bold red]Error:[/bold red] {err}\n")
+        sys.exit(1)
+    except Exception as exc:
+        console.print(f"\n[bold red]Unexpected error:[/bold red] {exc}\n")
         sys.exit(1)
 
 

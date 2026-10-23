@@ -100,6 +100,13 @@ Running `esd calculate` automatically generates timestamped artifacts:
 | `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Simplified hourly time-series (`timestamp;hour;cups;consumption_kwh;generation_kwh;share_pct;estimated_share_pct`). |
 | `*_esd_hourly_profile_matrix.csv` | CSV (`;` delimited) | 24-hour diurnal profile matrix ready for variable coefficient filing under Orden TED/1247/2021. |
 
+### 4. Data Reconciliation & Time-Series Curation (`esd curate`)
+When running `esd curate`, the tool performs full data reconciliation between DATADIS grid curves and Huawei FusionSolar generation exports:
+- **Primary CUPS Behind-the-Meter Reconciliation:** In installations where the solar PV plant is wired directly behind one primary supply point (configured with `"primary": true` in [`.input/cups/cups.json`](../.input/cups/cups.json)), DATADIS reports 0.0 kWh (fake zeros) during daylight hours because the meter only records net grid exchange. `esd curate` extracts the actual total load from Huawei's `Consumo (kWh)` curve, recovering hidden consumption and establishing true physical demand.
+- **CUPS Functional Uses:** Maps functional descriptions (e.g. `"piscina"`, `"Garaje"`, `"Portal 1"`, `"Aerotermia"`) from `cups.json` into every hourly reading.
+- **Curated Deliverables (`.curated/`):**
+  - `curated.csv`: Flat long-format table with canonical timestamp (`timestamp,generation,cups_id,use,consumption,primary,reconciled`).
+
 ---
 
 ## 5. 🗺️ Code Map & Traceability Reference
@@ -108,15 +115,16 @@ To inspect or extend the codebase, use this map to trace directly from concepts 
 
 | Architecture Layer | Core Module | Key Classes / Functions | Primary Responsibility |
 | :--- | :--- | :--- | :--- |
-| **CLI & Commands** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `init_command`, `doctor_command` | Typer command routing, parameter parsing (`--hourly`), and execution dispatch. |
+| **CLI & Commands** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `curate_command`, `doctor_command`, `init_command` | Typer command routing, parameter parsing (`--hourly`, `--delimiter`), and dispatch. |
 | **Configuration** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision` | Settings persistence (`.esd_config.json`) and path resolution. |
 | **Internationalization** | [`src/i18n.py`](../src/i18n.py) | `t()`, `TRANSLATIONS` | English and Spanish dictionary lookups with string interpolation. |
 | **Ingestion: Consumption** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | DATADIS hourly CSV discovery, encoding detection, and parsing. |
-| **Ingestion: Generation** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `HuaweiGenerationLoader` | Huawei FusionSolar `.xlsx` parsing and extraction. |
+| **Ingestion: Generation** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `HuaweiGenerationLoader` | Huawei FusionSolar `.xlsx` parsing (generation yield and load consumption). |
 | **Ingestion: Doctor** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Pre-flight gap detection, inactive meter alerts, and date overlap verification. |
 | **Ingestion: Alignment** | [`src/ingestion/aligner.py`](../src/ingestion/aligner.py) | `TimeSeriesAligner` | Hourly timestamp intersection, missing value imputation, and DST management. |
+| **Curation & Reconciliation** | [`src/curation/`](../src/curation) | `DataCurator`, `CuratedDataset` | Fake-zero reconciliation, CUPS metadata lookup, and curated CSV export. |
 | **Optimization: Models** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Consolidated matrix structures, diurnal hourly profiles, and community balance dataclasses. |
 | **Optimization: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | SciPy HiGHS LP formulation, diurnal profile solver, baseline comparisons, and Hare-Niemeyer rounding. |
-| **Presentation: Views** | [`src/presentation/views.py`](../src/presentation/views.py) | `render_coefficients_matrix_table`, `render_hourly_profile_table` | Rich terminal tables, adaptive 80-column formatting, and diurnal profile views. |
+| **Presentation: Views** | [`src/presentation/views.py`](../src/presentation/views.py) | `render_coefficients_matrix_table`, `render_curate_summary`, `render_hourly_profile_table` | Rich terminal tables, adaptive 80-column formatting, and curation summary views. |
 | **Presentation: Exports** | [`src/presentation/export.py`](../src/presentation/export.py) | `export_all`, `export_hourly_shares_csv`, `export_hourly_profile_matrix_csv` | Markdown summary generator, CSV exporters, and JSON serialization. |
 | **Security & Privacy** | [`src/security.py`](../src/security.py) | `CupsPrivacyChecker`, `scan_git_history` | GDPR enforcement and synthetic CUPS verification harness. |

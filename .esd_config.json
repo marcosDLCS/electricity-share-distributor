@@ -5,6 +5,8 @@
   "consumption_dir": ".input/consumption",
   "generation_dir": ".input/generation",
   "output_dir": ".output",
-  "initialized_at": "2026-10-23T20:50:18.841817",
-  "version": "2026.10.020"
+  "curated_dir": ".curated",
+  "cups_config_path": ".input/cups/cups.json",
+  "initialized_at": "2026-10-23T23:58:36.238548",
+  "version": "2026.10.023"
 }

@@ -41,6 +41,7 @@ IGNORED_DIRS: set[str] = {
     "__pycache__",
     ".input",
     ".output",
+    ".curated",
     "build",
     "dist",
     "electricity_share_distributor.egg-info",
