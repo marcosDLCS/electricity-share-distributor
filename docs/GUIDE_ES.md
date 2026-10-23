@@ -25,7 +25,7 @@ Cuando una comunidad de propietarios instala paneles solares en la cubierta, la 
 1. **Aerotermia Central / Calefacción y Agua Caliente (*Aerotermia / Calefacción Central / ACS*):** Por lo general, el mayor centro de consumo eléctrico de los edificios modernos.
 2. **Piscina Comunitaria y Sala Social (*Piscina y Sala Comunitaria*):** Motores de filtración, depuradoras, iluminación y consumo estival.
 3. **Garajes Subterráneos (*Garaje*):** Sistemas de ventilación forzada continua, detectores y extractores de monóxido y alumbrado permanente.
-4. **Portales, Escaleras y Ascensores (*Portales 1, 3, 5, 7, 9, escaleras, ascensores*):** Iluminación de rellanos, telefonillos y tracción de ascensores.
+4. **Zonas Comunes, Escaleras y Ascensores (*Ascensores, escaleras, alumbrado general*):** Iluminación de accesos, telefonillos y tracción de ascensores.
 
 ---
 
@@ -41,7 +41,7 @@ Bajo el **Real Decreto 244/2019** y la **Orden TED/1247/2021**:
 ### Por qué el Reparto Ingenuo Provoca Grandes Pérdidas Económicas:
 Podría parecer sencillo repartir la energía solar a partes iguales (por ejemplo, el $12,5\%$ a cada uno de 8 contadores comunitarios) o según el gasto de la factura anual. Sin embargo, esto provoca un enorme despilfarro:
 - **El Desajuste Estacional (Piscina frente a Calefacción):** En enero, la depuradora de la piscina está apagada o funciona mínimos minutos al día, mientras que las bombas de calor de la aerotermia central trabajan sin descanso para calentar el edificio. Asignar cuotas solares a la piscina en invierno vierte esa valiosa energía a la red de la calle como excedente a precio de saldo, mientras la calefacción central se ve forzada a comprar electricidad carísima de la red.
-- **El Desajuste Diario (Portales frente a Garajes y Aerotermia):** Los portales consumen muy poca potencia base (luces LED de bajo consumo e interfonos), mientras que la aerotermia central tiene grandes picos de compresores en las horas centrales del día. Un reparto a partes iguales deja a los portales con excedentes solares desaprovechados y deja desabastecida a la calefacción central.
+- **El Desajuste Diario (Alumbrado frente a Garajes y Aerotermia):** La iluminación común consume muy poca potencia base (luces LED de bajo consumo e interfonos), mientras que la aerotermia central tiene grandes picos de compresores en las horas centrales del día. Un reparto a partes iguales deja a los circuitos de alumbrado con excedentes solares desaprovechados y deja desabastecida a la calefacción central.
 
 **Cómo lo soluciona `esd`:** El motor de optimización analiza las curvas horarias de todos los suministros comunitarios y calcula matemáticamente los coeficientes exactos que maximizan el aprovechamiento solar dentro de la comunidad, reduciendo al máximo la factura eléctrica total que pagan los propietarios.
 
@@ -63,14 +63,14 @@ graph LR
 
 1. **Dentro del Edificio:** En las horas de sol, la aerotermia se alimenta directamente de la electricidad limpia que baja de las placas de la azotea.
 2. **En el Contador de la Distribuidora (DATADIS):** El contador de la calle solo mide la electricidad que entra desde la red exterior. Al cubrirse el consumo internamente con energía solar, el contador de red no detecta paso de corriente y anota **0,0 kWh**.
-3. **La Trampa:** Si optimizamos basándonos solo en los datos de la distribuidora, ¡la instalación principal de la comunidad parecería completamente inactiva durante el día! El algoritmo cometería el grave error de quitarle cuota solar al mayor consumidor del edificio para dársela a suministros pequeños (como portales) que no tienen capacidad de aprovecharla.
+3. **La Trampa:** Si optimizamos basándonos solo en los datos de la distribuidora, ¡la instalación principal de la comunidad parecería completamente inactiva durante el día! El algoritmo cometería el grave error de quitarle cuota solar al mayor consumidor del edificio para dársela a suministros pequeños (como el alumbrado de accesos) que no tienen capacidad de aprovecharla.
 
 ### Cómo Reconcilia la Realidad `esd curate`
 El motor de curado ([`src/curation/`](../src/curation)) combina dos fuentes de datos independientes para recuperar el consumo físico real:
 
 1. **Datos de Red (DATADIS):** Consumo horario importado de la red para cada contador comunitario.
-2. **Datos del Inversor Solar (Huawei FusionSolar):** El analizador de energía (*smart meter*) del inversor mide tanto la producción solar como la *demanda eléctrica total real* del equipo conectado a él.
-3. **Nombres de Servicios ([`.input/cups/cups.json`](../.input/cups/cups.json)):** Asocia los códigos técnicos CUPS de 20 caracteres con descripciones legibles (ej. `"Aerotermia"`, `"Piscina"`, `"Garaje"`, `"Portal 1"`), e indica cuál es el punto de conexión principal (`"primary": true`).
+2. **Datos del Inversor Solar:** El analizador de energía (*smart meter*) del inversor mide tanto la producción solar como la *demanda eléctrica total real* del equipo conectado a él.
+3. **Nombres de Servicios ([`.input/cups/cups.json`](../.input/cups/cups.json)):** Asocia los códigos técnicos CUPS de 20 caracteres con descripciones legibles (ej. `"Aerotermia"`, `"Piscina"`, `"Garaje"`, `"Alumbrado"`), e indica cuál es el punto de conexión principal (`"primary": true`).
 
 Cuando el contador de la calle marca cero (o un valor artificialmente bajo) mientras el inversor certifica que la instalación estuvo funcionando, `esd curate` **reemplaza el falso cero por el consumo físico real de la máquina**.
 
@@ -112,7 +112,7 @@ Las distribuidoras eléctricas rechazan de plano las tablas de coeficientes si l
 En días de tormenta, la producción solar puede caer bruscamente. Si los motores del ascensor arrancan en un momento puntual de sol débil, calcular porcentajes instantáneos en ese día le asignaría un porcentaje desproporcionado (como el 95%) que no refleja su patrón habitual.
 - El perfil diario de 24 horas (`--hourly`) calcula el patrón típico consolidado en todos los días observados.
 - Ofrece tanto el porcentaje horario real (`share_pct`) como el porcentaje estimado regulatorio (`estimated_share_pct`) conforme a la Orden TED/1247/2021.
-- **Horas nocturnas con producción exactamente cero:** En las horas nocturnas sin ninguna producción solar, se asigna siempre el 100% del reparto al CUPS principal de la instalación (y 0% al resto de servicios). Esto evita repartir cuotas ficticias de energía inexistente entre portales o garajes, garantizando a la vez una suma reglamentaria exactamente del 100%.
+- **Horas nocturnas con producción exactamente cero:** En las horas nocturnas sin ninguna producción solar, se asigna siempre el 100% del reparto al CUPS principal de la instalación (y 0% al resto de servicios). Esto evita repartir cuotas ficticias de energía inexistente entre circuitos menores de alumbrado o auxiliares, garantizando a la vez una suma reglamentaria exactamente del 100%.
 
 ---
 
@@ -129,7 +129,7 @@ graph TD
 ```
 
 ### Paso 1: Comprobar la Salud de los Datos (`esd doctor`)
-Revisa todos los archivos CSV de DATADIS y los informes Excel de Huawei para detectar huecos, contadores inactivos y solapamientos antes de realizar cálculos:
+Revisa todos los archivos CSV de DATADIS y los informes Excel del inversor solar para detectar huecos, contadores inactivos y solapamientos antes de realizar cálculos:
 ```bash
 esd doctor
 ```
@@ -185,7 +185,7 @@ Para desarrolladores y agentes autónomos que naveguen por la base de código:
 | **Configuración** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision` | Persistencia de ajustes (`.esd_config.json`) y resolución de rutas. |
 | **Localización** | [`src/i18n.py`](../src/i18n.py) | `t()`, `TRANSLATIONS` | Diccionario bilingüe inglés/español con soporte de interpolación. |
 | **Ingesta: Consumo** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | Búsqueda de CSVs de DATADIS, detección de codificación y lectura. |
-| **Ingesta: Producción** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `HuaweiGenerationLoader` | Procesamiento de informes `.xlsx` de Huawei FusionSolar (producción y demanda). |
+| **Ingesta: Producción** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `SolarGenerationLoader` | Procesamiento de informes `.xlsx` del inversor solar (producción y demanda). |
 | **Ingesta: Auditoría** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Diagnóstico de huecos, detección de contadores inactivos y solapamientos. |
 | **Curado y Reconciliación** | [`src/curation/`](../src/curation) | `DataCurator`, `CuratedDataset` | Reconciliación de falsos ceros, cruce de metadatos de CUPS y exportación CSV. |
 | **Optimización: Modelos** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Estructuras matriciales, perfiles horarios diarios y métricas comunitarias. |

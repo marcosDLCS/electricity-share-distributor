@@ -6,12 +6,12 @@ Welcome to **Electricity Share Distributor** (`esd`). This document serves as th
 
 ## 1. 🎯 Project Overview & Mission
 
-`electricity-share-distributor` (`esd`) is a high-performance Python CLI utility designed to determine optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic installations (*autoconsumo colectivo*) across shared common services in a homeowners association (*comunidad de propietarios*) in Spain (e.g. central aerothermal heating, pool, garage, portals, elevators) under **Real Decreto 244/2019**. It is **not** meant to distribute private domestic consumption.
+`electricity-share-distributor` (`esd`) is a high-performance Python CLI utility designed to determine optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic installations (*autoconsumo colectivo*) across shared common services in a homeowners association (*comunidad de propietarios*) in Spain (e.g. central aerothermal heating, pool, garage, elevators, general lighting) under **Real Decreto 244/2019**. It is **not** meant to distribute private domestic consumption.
 
 It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/datadis-analyzer).
 
 ### Core Capabilities:
-- **📥 Dual Time-Series Ingestion:** Ingests DATADIS hourly consumption CSVs per CUPS and Huawei FusionSolar PV generation Excel reports.
+- **📥 Dual Time-Series Ingestion:** Ingests DATADIS hourly consumption CSVs per CUPS and solar inverter PV generation Excel reports.
 - **⏱️ Time-Series Alignment & Normalization:** Aligns disparate timestamps, accounting for daylight saving time (DST) transitions, missing intervals, and Spanish electricity meter conventions.
 - **🧮 Optimal $\beta_i$ Allocation Engine:** Formulates and solves linear programming (LP) models to find monthly distribution coefficients ($\sum \beta_i \le 1.0$ or $100\%$) that maximize collective self-consumption and minimize unused solar surplus spilled to the grid.
 - **📊 Rich Terminal UI:** Renders clear tabular views, summary metrics, and visual share bars formatted for 80-column terminals.
@@ -25,7 +25,7 @@ It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/da
 The codebase is organized into focused, modular layers with clean separation of concerns:
 - **CLI & Dispatch (`src/cli.py`):** Typer application orchestrating command dispatch, parameter validation, and user workflow.
 - **Configuration & Localization (`src/config.py`, `src/i18n.py`):** Persistent settings (`.esd_config.json`) and bilingual English/Spanish lookup engine.
-- **Ingestion & Alignment (`src/ingestion/`):** DATADIS CSV loader, Huawei Excel loader, `DataDoctor` pre-flight auditor, and DST-aware `TimeSeriesAligner`.
+- **Ingestion & Alignment (`src/ingestion/`):** DATADIS CSV loader, solar inverter Excel loader, `DataDoctor` pre-flight auditor, and DST-aware `TimeSeriesAligner`.
 - **Curation & Reconciliation (`src/curation/`):** Primary CUPS fake-zero load reconciliation, metadata enrichment, and canonical long-format CSV curation.
 - **Optimization Core (`src/optimization/`):** RD 244/2019 linear programming solver (`scipy.optimize.linprog`), baseline comparisons, Hare-Niemeyer exact rounding, and multi-year calendar prevision engine.
 - **Presentation & Reporting (`src/presentation/`):** Rich 80-column terminal tables, views, and multi-format exporters (CSV, JSON, Markdown).
@@ -63,7 +63,7 @@ The codebase is organized into focused, modular layers with clean separation of 
 4. **DATADIS Time Series:**
    - Hours 01:00–24:00 (hour 01:00 = interval 00:00–01:00).
    - Values are hourly kWh consumption per CUPS.
-5. **Huawei FusionSolar Generation:**
+5. **Solar Inverter Generation:**
    - Timestamps `YYYY-MM-DD HH:MM:SS`. Column `Rendimiento FV (kWh)` or `Rendimiento del inversor (kWh)`.
 
 ---

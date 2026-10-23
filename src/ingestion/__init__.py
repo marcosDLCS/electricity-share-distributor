@@ -3,7 +3,7 @@
 from src.ingestion.aligner import TimeSeriesAligner
 from src.ingestion.consumption import DatadisConsumptionLoader
 from src.ingestion.doctor import DataDoctor, DoctorReport, GapInterval, SeriesCheckResult
-from src.ingestion.generation import HuaweiGenerationLoader
+from src.ingestion.generation import HuaweiGenerationLoader, SolarGenerationLoader
 from src.ingestion.schema import (
     AlignedDataset,
     AlignmentError,
@@ -27,6 +27,7 @@ __all__ = [
     "IngestionSummary",
     "ParseError",
     "SeriesCheckResult",
+    "SolarGenerationLoader",
     "TimeSeriesAligner",
     "ValidationError",
 ]

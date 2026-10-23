@@ -3,7 +3,7 @@
 > Optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic self-consumption (*autoconsumo colectivo*) across shared community services in Spain under **Real Decreto 244/2019**.
 
 [![Python](https://img.shields.io/badge/Python-3.14+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.10.027-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.10.028-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-SciPy%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -11,7 +11,7 @@
 [![Pre-commit](https://img.shields.io/badge/Pre--commit-Enabled-brightgreen?style=flat&logo=pre-commit&logoColor=white)](https://pre-commit.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat)](LICENSE)
 
-`electricity-share-distributor` (`esd`) is a high-performance Python CLI utility designed to determine optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic installations (*autoconsumo colectivo*) across the shared common elements of a homeowners association (*comunidad de propietarios*) in Spain (such as central aerothermal heating, swimming pool, garage, portals, and elevators). It is **not** meant for dividing solar energy among private domestic apartments.
+`electricity-share-distributor` (`esd`) is a high-performance Python CLI utility designed to determine optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic installations (*autoconsumo colectivo*) across the shared common elements of a homeowners association (*comunidad de propietarios*) in Spain (such as central aerothermal heating, swimming pool, garage ventilation, common area lighting, and elevators). It is **not** meant for dividing solar energy among private domestic apartments.
 
 It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/datadis-analyzer).
 
@@ -23,7 +23,7 @@ It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/da
 
 ## 🚀 Key Capabilities
 
-- **📥 Dual Time-Series Ingestion:** DATADIS hourly consumption curves (per CUPS) and Huawei FusionSolar generation Excel workbooks (`.xlsx`).
+- **📥 Dual Time-Series Ingestion:** DATADIS hourly consumption curves (per CUPS) and solar inverter generation Excel workbooks (`.xlsx`).
 - **⏱️ Time-Series Alignment & DST:** Synchronizes disparate timestamps across leap years, missing intervals, and European DST switches (23h spring leap, 25h autumn transition).
 - **🧮 Regulatory Optimization Engine:** Solves monthly linear programming models under **Real Decreto 244/2019** via `scipy.optimize.linprog(method='highs')`, finding optimal $\beta_i$ coefficients ($\sum \beta_i \le 1.0$) that maximize collective self-consumption.
 - **📋 Annual Prevision Distribution Matrix:** Formulates a 12-month calendar schedule (Jan–Dec) for an upcoming operating year, skipping incomplete months (`—`) and pooling multi-year observations with $1/K$ energy scaling.
@@ -134,7 +134,7 @@ esd init --lang es
 ### 3. Place Input Files
 
 - Put DATADIS hourly CSV files into `.input/consumption/` (one file per CUPS, or bulk exports).
-- Put Huawei FusionSolar `.xlsx` generation reports into `.input/generation/`.
+- Put solar inverter `.xlsx` generation reports into `.input/generation/`.
 
 ### 4. Run Optimization
 
@@ -182,7 +182,7 @@ esd doctor --verbose
 | Option | Flag | Description | Default |
 | :--- | :--- | :--- | :--- |
 | `--consumption-dir` | `-c` | Folder containing DATADIS hourly consumption CSVs | `.input/consumption` |
-| `--generation-dir` | `-g` | Folder containing Huawei FusionSolar generation Excel files | `.input/generation` |
+| `--generation-dir` | `-g` | Folder containing solar inverter generation Excel files | `.input/generation` |
 | `--verbose` | `-v` | Show complete list of all detected missing intervals | `False` |
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |
 
@@ -227,7 +227,7 @@ esd version
 ## 📁 Supported Ingestion Formats
 
 1. **DATADIS Consumption Files (`.input/consumption/*.csv`):** Auto-detects delimiters (`;`, `,`, `\t`), decimal formats (`0,152` / `0.152`), character encodings (`utf-8`, `latin-1`), and standardizes Spanish 01:00–24:00 billing hours.
-2. **Huawei FusionSolar Generation Files (`.input/generation/*.xlsx`):** Ingests inverter and plant generation reports, extracting PV yield (`Rendimiento FV` or `Rendimiento del inversor`) and standardizing timestamps.
+2. **Solar Inverter Generation Files (`.input/generation/*.xlsx`):** Ingests inverter and plant generation reports, extracting PV yield (`Rendimiento FV` or `Rendimiento del inversor`) and standardizing timestamps.
 
 ---
 
