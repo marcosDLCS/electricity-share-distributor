@@ -186,8 +186,28 @@ esd doctor --verbose
 | `--verbose` | `-v` | Show complete list of all detected missing intervals | `False` |
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |
 
+### `esd weather`
+Downloads hourly historical weather data (temperature, cloud cover, WMO weather code) from the Open-Meteo Archive API into `.input/weather/` for an entire calendar year at specified coordinates. If a file already exists for that year, it is automatically overwritten (`weather_{year}.csv`):
+
+```bash
+# Download hourly weather for Madrid in 2024
+esd weather --year 2024 --latitude 40.4168 --longitude -3.7038
+
+# Using configured coordinates
+esd weather -y 2024
+```
+
+| Option | Flag | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--year` | `-y` | Calendar year to download (required) | — |
+| `--latitude` | `--lat` | Geographical latitude coordinate (-90 to 90) | From config |
+| `--longitude` | `--lon` | Geographical longitude coordinate (-180 to 180) | From config |
+| `--weather-dir` | `-w` | Destination folder for weather CSV files | `.input/weather` |
+| `--timezone` | `-tz` | Timezone for hourly timestamps | `auto` |
+| `--lang` | `-l` | Language override (`en` or `es`) | From config |
+
 ### `esd init`
-Sets up project directory hierarchy (`.input/consumption`, `.input/generation`, `.output`) and default `.esd_config.json`. Defaults to English (`en`) and zero precision (`0`).
+Sets up project directory hierarchy (`.input/consumption`, `.input/generation`, `.input/weather`, `.output`) and default `.esd_config.json`. Defaults to English (`en`) and zero precision (`0`).
 
 ```bash
 esd init [--lang en|es] [--precision 0|1|2]
@@ -203,8 +223,11 @@ esd config
 # Set default application language to Spanish
 esd config --lang es
 
+# Save community geographical coordinates for weather queries
+esd config --latitude 40.4168 --longitude -3.7038
+
 # Update default data directories
-esd config --consumption-dir /path/to/consumption --generation-dir /path/to/generation
+esd config --consumption-dir /path/to/consumption --generation-dir /path/to/generation --weather-dir /path/to/weather
 ```
 
 ### `esd cleanup`
@@ -228,6 +251,7 @@ esd version
 
 1. **DATADIS Consumption Files (`.input/consumption/*.csv`):** Auto-detects delimiters (`;`, `,`, `\t`), decimal formats (`0,152` / `0.152`), character encodings (`utf-8`, `latin-1`), and standardizes Spanish 01:00–24:00 billing hours.
 2. **Solar Inverter Generation Files (`.input/generation/*.xlsx`):** Ingests inverter and plant generation reports, extracting PV yield (`Rendimiento FV` or `Rendimiento del inversor`) and standardizing timestamps.
+3. **Open-Meteo Hourly Weather Files (`.input/weather/weather_YYYY.csv`):** Standardized CSVs containing hourly records with columns `timestamp,temperature,cloud_cover,weather_code`.
 
 ---
 

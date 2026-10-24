@@ -12,6 +12,7 @@ from typing import Final
 DEFAULT_INPUT_DIR: Final[Path] = Path(".input")
 DEFAULT_CONSUMPTION_DIR: Final[Path] = Path(".input/consumption")
 DEFAULT_GENERATION_DIR: Final[Path] = Path(".input/generation")
+DEFAULT_WEATHER_DIR: Final[Path] = Path(".input/weather")
 DEFAULT_CUPS_DIR: Final[Path] = Path(".input/cups")
 DEFAULT_CUPS_CONFIG_PATH: Final[Path] = Path(".input/cups/cups.json")
 DEFAULT_OUTPUT_DIR: Final[Path] = Path(".output")
@@ -72,8 +73,13 @@ class AppConfig:
         share_precision: Decimal places for distribution percentage shares (0, 1, or 2).
         input_dir: Base input folder path.
         consumption_dir: Folder containing DATADIS hourly consumption CSVs.
-        generation_dir: Folder containing Huawei/FusionSolar generation Excel reports.
+        generation_dir: Folder containing solar inverter generation Excel reports.
+        weather_dir: Folder containing Open-Meteo hourly weather CSV reports.
         output_dir: Folder for output reports, exports, and visualizations.
+        curated_dir: Folder where curated datasets are written.
+        cups_config_path: Path to CUPS descriptions and primary flags configuration JSON.
+        latitude: Optional default geographical latitude coordinate for weather queries.
+        longitude: Optional default geographical longitude coordinate for weather queries.
         initialized_at: ISO timestamp recording when 'esd init' was successfully run.
         version: Application version recorded at initialization time (CalVer YYYY.MM.NNN).
     """
@@ -83,9 +89,12 @@ class AppConfig:
     input_dir: str = ".input"
     consumption_dir: str = ".input/consumption"
     generation_dir: str = ".input/generation"
+    weather_dir: str = ".input/weather"
     output_dir: str = ".output"
     curated_dir: str = ".curated"
     cups_config_path: str = ".input/cups/cups.json"
+    latitude: float | None = None
+    longitude: float | None = None
     initialized_at: str | None = None
     version: str | None = None
 
@@ -145,9 +154,12 @@ def load_config(path: Path | None = None) -> AppConfig:
             input_dir=data.get("input_dir", ".input"),
             consumption_dir=data.get("consumption_dir", ".input/consumption"),
             generation_dir=data.get("generation_dir", ".input/generation"),
+            weather_dir=data.get("weather_dir", ".input/weather"),
             output_dir=data.get("output_dir", ".output"),
             curated_dir=data.get("curated_dir", ".curated"),
             cups_config_path=data.get("cups_config_path", ".input/cups/cups.json"),
+            latitude=data.get("latitude"),
+            longitude=data.get("longitude"),
             initialized_at=data.get("initialized_at"),
             version=data.get("version"),
         )
@@ -230,11 +242,16 @@ def get_precision(path: Path | None = None) -> int:
     return load_config(path).share_precision
 
 
+def get_weather_dir(path: Path | None = None) -> Path:
+    """Retrieve the configured weather directory path."""
+    return Path(load_config(path).weather_dir)
+
+
 def ensure_directories(
     config: AppConfig | None = None,
     config_path: Path | None = None,
 ) -> tuple[Path, Path, Path, Path]:
-    """Ensure that the input, consumption, generation, and output directories exist on disk.
+    """Ensure that the input, consumption, generation, weather, and output directories exist on disk.
 
     Returns:
         Tuple of (input_dir, consumption_dir, generation_dir, output_dir).
@@ -245,10 +262,12 @@ def ensure_directories(
     generation_path = Path(cfg.generation_dir)
     output_path = Path(cfg.output_dir)
     curated_path = Path(cfg.curated_dir)
+    weather_path = Path(cfg.weather_dir)
 
     input_path.mkdir(parents=True, exist_ok=True)
     consumption_path.mkdir(parents=True, exist_ok=True)
     generation_path.mkdir(parents=True, exist_ok=True)
+    weather_path.mkdir(parents=True, exist_ok=True)
     output_path.mkdir(parents=True, exist_ok=True)
     curated_path.mkdir(parents=True, exist_ok=True)
 

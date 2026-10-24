@@ -31,6 +31,7 @@ from src.i18n import t
 from src.ingestion import (
     DataDoctor,
     EsdError,
+    OpenMeteoWeatherDownloader,
 )
 from src.optimization import DistributionOptimizer, OptimizationStrategy
 from src.presentation.console import console
@@ -51,6 +52,7 @@ from src.presentation.views import (
     render_not_initialized_warning,
     render_strategy_comparison_table,
     render_version,
+    render_weather_result,
 )
 from src.version import get_version
 
@@ -300,6 +302,80 @@ def curate_command(
         sys.exit(1)
 
 
+@app.command(name="weather")
+def weather_command(
+    year: int = typer.Option(
+        ...,
+        "--year",
+        "-y",
+        help="Calendar year to download hourly weather data for (e.g. 2024).",
+    ),
+    latitude: float | None = typer.Option(
+        None,
+        "--latitude",
+        "--lat",
+        help="Geographical latitude coordinate (e.g. 40.4168). Overrides configured latitude.",
+    ),
+    longitude: float | None = typer.Option(
+        None,
+        "--longitude",
+        "--lon",
+        help="Geographical longitude coordinate (e.g. -3.7038). Overrides configured longitude.",
+    ),
+    weather_dir: Path | None = typer.Option(
+        None,
+        "--weather-dir",
+        "-w",
+        help="Directory to store downloaded weather CSV files. Defaults to .input/weather.",
+    ),
+    timezone: str = typer.Option(
+        "auto",
+        "--timezone",
+        "-tz",
+        help="Timezone for hourly timestamps (default: 'auto').",
+    ),
+    lang: str | None = typer.Option(
+        None,
+        "--lang",
+        "-l",
+        help="Language override for messages ('en' or 'es').",
+    ),
+) -> None:
+    """Download hourly weather data (temperature, cloud cover, weather code) from Open-Meteo into .input/weather."""
+    active_lang = normalize_language_code(lang) if lang else get_language()
+    cfg = load_config()
+
+    lat = latitude if latitude is not None else cfg.latitude
+    lon = longitude if longitude is not None else cfg.longitude
+
+    if lat is None or lon is None:
+        console.print(f"[bold red]Error:[/bold red] {t('err_coords_required', lang=active_lang)}")
+        sys.exit(1)
+
+    target_weather_dir = weather_dir or Path(cfg.weather_dir)
+
+    try:
+        with console.status(
+            f"[bold cyan]{t('status_weather', lang=active_lang, year=year)}[/bold cyan]"
+        ):
+            downloader = OpenMeteoWeatherDownloader(weather_dir=target_weather_dir)
+            _, _, result = downloader.download_year(
+                year=year,
+                latitude=lat,
+                longitude=lon,
+                timezone=timezone,
+            )
+
+        render_weather_result(result, lang=active_lang)
+
+    except EsdError as err:
+        console.print(f"\n[bold red]Error:[/bold red] {err}\n")
+        sys.exit(1)
+    except Exception as exc:
+        console.print(f"\n[bold red]Unexpected error:[/bold red] {exc}\n")
+        sys.exit(1)
+
+
 @app.command(name="calculate")
 def calculate_command(
     consumption_dir: Path = typer.Option(
@@ -534,6 +610,24 @@ def config_command(
         "-g",
         help="Update default generation directory path.",
     ),
+    weather_dir: Path | None = typer.Option(
+        None,
+        "--weather-dir",
+        "-w",
+        help="Update default weather directory path.",
+    ),
+    latitude: float | None = typer.Option(
+        None,
+        "--latitude",
+        "--lat",
+        help="Update default latitude coordinate.",
+    ),
+    longitude: float | None = typer.Option(
+        None,
+        "--longitude",
+        "--lon",
+        help="Update default longitude coordinate.",
+    ),
     output_dir: Path | None = typer.Option(
         None,
         "--output-dir",
@@ -564,6 +658,25 @@ def config_command(
         modified = True
     if generation_dir is not None:
         cfg.generation_dir = str(generation_dir)
+        modified = True
+    if weather_dir is not None:
+        cfg.weather_dir = str(weather_dir)
+        modified = True
+    if latitude is not None:
+        if not (-90.0 <= latitude <= 90.0):
+            console.print(
+                f"[bold red]Error:[/bold red] Latitude must be between -90.0 and 90.0 (got {latitude})."
+            )
+            sys.exit(1)
+        cfg.latitude = latitude
+        modified = True
+    if longitude is not None:
+        if not (-180.0 <= longitude <= 180.0):
+            console.print(
+                f"[bold red]Error:[/bold red] Longitude must be between -180.0 and 180.0 (got {longitude})."
+            )
+            sys.exit(1)
+        cfg.longitude = longitude
         modified = True
     if output_dir is not None:
         cfg.output_dir = str(output_dir)

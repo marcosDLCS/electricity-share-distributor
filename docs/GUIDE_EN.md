@@ -142,7 +142,14 @@ esd curate
 > [!TIP]
 > **Automatic Curation:** You do not even need to run `esd curate` manually! When you run `esd calculate`, the tool checks if `.curated/curated.csv` exists. If it's missing, it automatically curates the data first.
 
-### Step 3: Calculate Optimal Community Shares (`esd calculate`)
+### Step 3: Fetch Hourly Weather Data (`esd weather`)
+Optionally download historical hourly weather (temperature, cloud cover, WMO weather codes) from Open-Meteo into `.input/weather/weather_YYYY.csv` for your community's coordinates:
+```bash
+# Download hourly weather for a specific year and coordinates
+esd weather --year 2024 --latitude 40.4168 --longitude -3.7038
+```
+
+### Step 4: Calculate Optimal Community Shares (`esd calculate`)
 Solves the optimal distribution schedule and displays clean 80-column terminal tables:
 ```bash
 # Calculate full 12-month calendar schedule
@@ -181,15 +188,16 @@ For developers and autonomous agents navigating the codebase:
 
 | Architecture Layer | Module | Key Classes / Functions | Responsibility |
 | :--- | :--- | :--- | :--- |
-| **CLI & Commands** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `curate_command`, `doctor_command` | Typer command routing, parameter validation, and user workflow dispatch. |
-| **Configuration** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision` | Settings persistence (`.esd_config.json`) and folder resolution. |
+| **CLI & Commands** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `curate_command`, `weather_command`, `doctor_command` | Typer command routing, parameter validation, and user workflow dispatch. |
+| **Configuration** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision`, `get_weather_dir` | Settings persistence (`.esd_config.json`) and folder resolution. |
 | **Localization** | [`src/i18n.py`](../src/i18n.py) | `t()`, `TRANSLATIONS` | English and Spanish dictionary lookups with string interpolation. |
 | **Ingestion: Consumption** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | DATADIS CSV discovery, encoding detection, and reading. |
 | **Ingestion: Generation** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `SolarGenerationLoader` | Solar inverter `.xlsx` report parsing (solar production and load demand). |
+| **Ingestion: Weather** | [`src/ingestion/weather.py`](../src/ingestion/weather.py) | `OpenMeteoWeatherDownloader`, `WeatherLoader` | Open-Meteo Archive API downloader, WMO weather codes, and weather CSV ingestion. |
 | **Ingestion: Audit** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Pre-flight gap detection, inactive meter alerts, and date overlap verification. |
 | **Curation & Reconciliation** | [`src/curation/`](../src/curation) | `DataCurator`, `CuratedDataset` | Fake-zero reconciliation, CUPS metadata lookup, and curated CSV export. |
 | **Optimization: Models** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Matrix structures, diurnal profiles, and community metrics. |
 | **Optimization: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Linear programming solver, diurnal profile engine, baselines, and Hare-Niemeyer rounding. |
-| **Presentation: Views** | [`src/presentation/views.py`](../src/presentation/views.py) | `render_coefficients_matrix_table`, `render_community_summary` | Rich terminal tables, adaptive 80-column formatting, and curation summaries. |
+| **Presentation: Views** | [`src/presentation/views.py`](../src/presentation/views.py) | `render_coefficients_matrix_table`, `render_weather_result` | Rich terminal tables, adaptive 80-column formatting, and curation summaries. |
 | **Presentation: Exports** | [`src/presentation/export.py`](../src/presentation/export.py) | `export_all`, `export_hourly_shares_csv` | Markdown summary generation, CSV spreadsheets, and JSON serialization. |
 | **Security & Privacy** | [`src/security.py`](../src/security.py) | `CupsPrivacyChecker`, `scan_git_history` | GDPR enforcement and synthetic CUPS verification harness. |

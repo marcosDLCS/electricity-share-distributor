@@ -13,8 +13,15 @@ from src.ingestion.schema import (
     ParseError,
     ValidationError,
 )
+from src.ingestion.weather import (
+    WMO_WEATHER_CODES,
+    OpenMeteoWeatherDownloader,
+    WeatherDownloadResult,
+    WeatherLoader,
+)
 
 __all__ = [
+    "WMO_WEATHER_CODES",
     "AlignedDataset",
     "AlignmentError",
     "DataDoctor",
@@ -25,9 +32,12 @@ __all__ = [
     "HuaweiGenerationLoader",
     "IngestionError",
     "IngestionSummary",
+    "OpenMeteoWeatherDownloader",
     "ParseError",
     "SeriesCheckResult",
     "SolarGenerationLoader",
     "TimeSeriesAligner",
     "ValidationError",
+    "WeatherDownloadResult",
+    "WeatherLoader",
 ]

@@ -4,9 +4,12 @@
   "input_dir": ".input",
   "consumption_dir": ".input/consumption",
   "generation_dir": ".input/generation",
+  "weather_dir": ".input/weather",
   "output_dir": ".output",
   "curated_dir": ".curated",
   "cups_config_path": ".input/cups/cups.json",
-  "initialized_at": "2026-10-24T01:40:10.122185",
-  "version": "2026.10.028"
+  "latitude": null,
+  "longitude": null,
+  "initialized_at": "2026-10-24T10:07:04.201670",
+  "version": "2026.10.030"
 }

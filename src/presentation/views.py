@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from src.curation.models import CuratedDataset
     from src.ingestion.doctor import DoctorReport, GapInterval
     from src.ingestion.schema import IngestionSummary
+    from src.ingestion.weather import WeatherDownloadResult
     from src.optimization.models import (
         CommunityMonthlyMetrics,
         HourlyOptimizationResult,
@@ -87,6 +88,10 @@ def render_help(lang: str | None = None) -> None:
     cmd_table.add_row(
         "cleanup",
         t("cmd_cleanup_desc", lang=lang),
+    )
+    cmd_table.add_row(
+        "weather",
+        t("cmd_weather_desc", lang=lang),
     )
     cmd_table.add_row(
         "help",
@@ -243,6 +248,51 @@ def render_community_summary(
         Panel(
             grid,
             title=f"[bold bright_cyan]{t('title_community_summary', lang=lang)}[/bold bright_cyan]",
+            border_style="cyan",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
+    )
+    console.print()
+
+
+def render_weather_result(
+    result: WeatherDownloadResult,
+    lang: str | None = None,
+) -> None:
+    """Render rich summary card for downloaded Open-Meteo hourly weather data."""
+    grid = Table.grid(expand=True, padding=(0, 2))
+    grid.add_column(ratio=1)
+    grid.add_column(ratio=1)
+    grid.add_column(ratio=1)
+
+    lat_str = f"{abs(result.latitude):.4f}°{'N' if result.latitude >= 0 else 'S'}"
+    lon_str = f"{abs(result.longitude):.4f}°{'E' if result.longitude >= 0 else 'W'}"
+    coords_text = f"{lat_str}, {lon_str}"
+
+    grid.add_row(
+        f"[dim]{t('weather_lbl_coords', lang=lang)}[/dim]\n[bold green]{coords_text}[/bold green]",
+        f"[dim]{t('weather_lbl_year', lang=lang)}[/dim]\n[bold yellow]{result.year}[/bold yellow] [dim]({result.total_hours:,} hrs)[/dim]",
+        f"[dim]{t('weather_lbl_period', lang=lang)}[/dim]\n[white]{result.start_date} ➔ {result.end_date}[/white]",
+    )
+
+    temp_summary = f"{result.avg_temperature:.1f}°C [dim]({result.min_temperature:.1f} / {result.max_temperature:.1f})[/dim]"
+    cloud_summary = f"{result.avg_cloud_cover:.1f}%"
+    dest_str = f"{result.file_path.name}"
+    if result.overwritten:
+        dest_str += f" {t('weather_overwritten', lang=lang)}"
+
+    grid.add_row(
+        f"[dim]{t('weather_lbl_temp', lang=lang)} (Avg / Min / Max)[/dim]\n[bold bright_cyan]{temp_summary}[/bold bright_cyan]",
+        f"[dim]{t('weather_lbl_cloud', lang=lang)}[/dim]\n[bold white]{cloud_summary}[/bold white]",
+        f"[dim]{t('weather_lbl_dest', lang=lang)}[/dim]\n[dim]{dest_str}[/dim]",
+    )
+
+    console.print()
+    console.print(
+        Panel(
+            grid,
+            title=f"[bold bright_cyan]{t('title_weather', lang=lang)}[/bold bright_cyan]",
             border_style="cyan",
             box=box.ROUNDED,
             padding=(1, 2),
@@ -745,7 +795,14 @@ def render_config_view(cfg: AppConfig, lang: str | None = None) -> None:
     table.add_row("share_precision", f"{cfg.share_precision} {prec_unit}")
     table.add_row("consumption_dir", str(cfg.consumption_dir))
     table.add_row("generation_dir", str(cfg.generation_dir))
+    table.add_row("weather_dir", str(cfg.weather_dir))
     table.add_row("output_dir", str(cfg.output_dir))
+    coords_val = (
+        f"{cfg.latitude}, {cfg.longitude}"
+        if cfg.latitude is not None and cfg.longitude is not None
+        else "—"
+    )
+    table.add_row("coordinates", coords_val)
     table.add_row("initialized_at", str(cfg.initialized_at or "—"))
     table.add_row("version", str(cfg.version or "—"))
 

@@ -142,7 +142,14 @@ esd curate
 > [!TIP]
 > **Curado Automático:** ¡Ni siquiera es necesario ejecutar `esd curate` manualmente! Al ejecutar `esd calculate`, la herramienta detecta si `.curated/curated.csv` existe y, si no está presente, lanza el curado de forma automática.
 
-### Paso 3: Calcular el Reparto Comunitario Óptimo (`esd calculate`)
+### Paso 3: Descarga de Datos Meteorológicos Horarios (`esd weather`)
+Descarga opcionalmente datos meteorológicos históricos horarios (temperatura, nubosidad, códigos meteorológicos OMM) de Open-Meteo en `.input/weather/weather_YYYY.csv` para las coordenadas de la comunidad:
+```bash
+# Descargar datos meteorológicos horarios para un año y coordenadas concretas
+esd weather --year 2024 --latitude 40.4168 --longitude -3.7038
+```
+
+### Paso 4: Calcular el Reparto Comunitario Óptimo (`esd calculate`)
 Resuelve el reparto óptimo y presenta tablas claras adaptadas a terminales de 80 columnas:
 ```bash
 # Calcular el calendario completo de 12 meses
@@ -181,15 +188,16 @@ Para desarrolladores y agentes autónomos que naveguen por la base de código:
 
 | Capa Arquitectónica | Módulo | Clases / Funciones Clave | Responsabilidad |
 | :--- | :--- | :--- | :--- |
-| **CLI y Comandos** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `curate_command`, `doctor_command` | Enrutamiento de comandos Typer, validación de parámetros y flujo de ejecución. |
-| **Configuración** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision` | Persistencia de ajustes (`.esd_config.json`) y resolución de rutas. |
+| **CLI y Comandos** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `curate_command`, `weather_command`, `doctor_command` | Enrutamiento de comandos Typer, validación de parámetros y flujo de ejecución. |
+| **Configuración** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision`, `get_weather_dir` | Persistencia de ajustes (`.esd_config.json`) y resolución de rutas. |
 | **Localización** | [`src/i18n.py`](../src/i18n.py) | `t()`, `TRANSLATIONS` | Diccionario bilingüe inglés/español con soporte de interpolación. |
 | **Ingesta: Consumo** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | Búsqueda de CSVs de DATADIS, detección de codificación y lectura. |
 | **Ingesta: Producción** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `SolarGenerationLoader` | Procesamiento de informes `.xlsx` del inversor solar (producción y demanda). |
+| **Ingesta: Meteorología** | [`src/ingestion/weather.py`](../src/ingestion/weather.py) | `OpenMeteoWeatherDownloader`, `WeatherLoader` | Descargador API Open-Meteo Archive, códigos OMM e ingesta de CSV meteorológicos. |
 | **Ingesta: Auditoría** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Diagnóstico de huecos, detección de contadores inactivos y solapamientos. |
 | **Curado y Reconciliación** | [`src/curation/`](../src/curation) | `DataCurator`, `CuratedDataset` | Reconciliación de falsos ceros, cruce de metadatos de CUPS y exportación CSV. |
 | **Optimización: Modelos** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Estructuras matriciales, perfiles horarios diarios y métricas comunitarias. |
 | **Optimización: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Programación lineal (HiGHS), perfil horario, comparativas y redondeo Hare-Niemeyer. |
-| **Presentación: Vistas** | [`src/presentation/views.py`](../src/presentation/views.py) | `render_coefficients_matrix_table`, `render_community_summary` | Tablas Rich en consola, maquetación de 80 columnas y resúmenes de curado. |
+| **Presentación: Vistas** | [`src/presentation/views.py`](../src/presentation/views.py) | `render_coefficients_matrix_table`, `render_weather_result` | Tablas Rich en consola, maquetación de 80 columnas y resúmenes de curado. |
 | **Presentación: Exportación** | [`src/presentation/export.py`](../src/presentation/export.py) | `export_all`, `export_hourly_shares_csv` | Generación de informes en Markdown, hojas CSV y exportación a JSON. |
 | **Seguridad y Privacidad** | [`src/security.py`](../src/security.py) | `CupsPrivacyChecker`, `scan_git_history` | Control de cumplimiento RGPD y verificación de CUPS sintéticos. |
