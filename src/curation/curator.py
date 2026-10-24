@@ -70,6 +70,11 @@ def dataframe_to_aligned_dataset(
         raise CurationError(f"Curated dataset is missing required columns: {sorted(missing_cols)}")
 
     df_clean = df.copy()
+    for num_col in ("consumption", "generation"):
+        if num_col in df_clean.columns and df_clean[num_col].dtype == object:
+            df_clean[num_col] = (
+                df_clean[num_col].astype(str).str.replace(",", ".", regex=False).str.strip()
+            )
     df_clean["consumption"] = pd.to_numeric(df_clean["consumption"], errors="coerce").fillna(0.0)
     df_clean["generation"] = pd.to_numeric(df_clean["generation"], errors="coerce").fillna(0.0)
 
@@ -543,7 +548,7 @@ class DataCurator:
         dataset: CuratedDataset,
         curated_dir: Path | str,
         base_name: str = "curated",
-        delimiter: str = ",",
+        delimiter: str = ";",
     ) -> Path:
         """Export curated dataset to a clean CSV file.
 
@@ -551,7 +556,7 @@ class DataCurator:
             dataset: The CuratedDataset to export.
             curated_dir: Directory where the CSV file should be written.
             base_name: File basename without extension (e.g. 'curated').
-            delimiter: CSV delimiter character (defaults to ',').
+            delimiter: CSV delimiter character (defaults to ';').
 
         Returns:
             Path to the generated CSV file.
@@ -561,7 +566,8 @@ class DataCurator:
 
         csv_file = out_path / f"{base_name}.csv"
         df = dataset.to_dataframe()
-        df.to_csv(csv_file, index=False, sep=delimiter, encoding="utf-8")
+        decimal_char = "," if delimiter == ";" else "."
+        df.to_csv(csv_file, index=False, sep=delimiter, decimal=decimal_char, encoding="utf-8")
 
         return csv_file
 
@@ -569,14 +575,14 @@ class DataCurator:
         self,
         force: bool = False,
         base_name: str = "curated",
-        delimiter: str = ",",
+        delimiter: str = ";",
     ) -> Path:
         """Ensure that a curated CSV file exists, generating it if missing or forced.
 
         Args:
             force: If True, re-runs curation even if the curated CSV already exists.
             base_name: Base filename (defaults to 'curated').
-            delimiter: CSV separator (defaults to ',').
+            delimiter: CSV separator (defaults to ';').
 
         Returns:
             Path to the verified curated CSV file.
@@ -590,7 +596,8 @@ class DataCurator:
         if not force and csv_path.exists() and csv_path.stat().st_size > 0:
             try:
                 first_line = csv_path.read_text(encoding="utf-8").splitlines()[0]
-                cols = [c.strip() for c in first_line.split(",")]
+                sep = delimiter if delimiter in first_line else (";" if ";" in first_line else ",")
+                cols = [c.strip() for c in first_line.split(sep)]
                 if (
                     "temperature" in cols
                     and "cloud_cover" in cols
@@ -655,8 +662,14 @@ class DataCurator:
             )
             sep = ";" if ";" in first_line else ","
 
+        decimal_char = "," if sep == ";" else "."
         try:
-            df = pd.read_csv(path, sep=sep, dtype={"cups_id": str, "timestamp": str})
+            df = pd.read_csv(
+                path,
+                sep=sep,
+                decimal=decimal_char,
+                dtype={"cups_id": str, "timestamp": str},
+            )
         except Exception as err:
             raise CurationError(f"Failed to read curated CSV '{path}': {err}") from err
 

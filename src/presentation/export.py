@@ -70,8 +70,8 @@ def export_coefficients_csv(
                 {
                     "month": c.month,
                     "cups": c.cups,
-                    "beta": f"{c.beta:.4f}",
-                    "share_pct": f"{c.beta * 100:.{prec}f}",
+                    "beta": f"{c.beta:.4f}".replace(".", ","),
+                    "share_pct": f"{c.beta * 100:.{prec}f}".replace(".", ","),
                     "consumption_kwh": round(c.consumption_kwh, 2),
                     "generation_allocated_kwh": round(c.generation_allocated_kwh, 2),
                     "self_consumed_kwh": round(c.self_consumed_kwh, 2),
@@ -83,7 +83,7 @@ def export_coefficients_csv(
             )
 
     df = pd.DataFrame(rows)
-    df.to_csv(file_path, index=False, sep=";")
+    df.to_csv(file_path, index=False, sep=";", decimal=",")
     return file_path
 
 
@@ -108,19 +108,19 @@ def export_coefficients_matrix_csv(
     for cups in matrix.cups_list:
         row_dict: dict[str, object] = {"cups": cups}
         for m in matrix.months:
-            row_dict[m] = matrix.format_cell(cups, m, precision=prec)
-        row_dict["annual_average"] = matrix.format_annual(cups, precision=prec)
+            row_dict[m] = matrix.format_cell(cups, m, precision=prec).replace(".", ",")
+        row_dict["annual_average"] = matrix.format_annual(cups, precision=prec).replace(".", ",")
         rows.append(row_dict)
 
     # Total row
     total_dict: dict[str, object] = {"cups": "TOTAL"}
     for m in matrix.months:
-        total_dict[m] = matrix.format_month_sum(m, precision=prec)
-    total_dict["annual_average"] = matrix.format_annual_sum(precision=prec)
+        total_dict[m] = matrix.format_month_sum(m, precision=prec).replace(".", ",")
+    total_dict["annual_average"] = matrix.format_annual_sum(precision=prec).replace(".", ",")
     rows.append(total_dict)
 
     df = pd.DataFrame(rows)
-    df.to_csv(file_path, index=False, sep=";")
+    df.to_csv(file_path, index=False, sep=";", decimal=",")
     return file_path
 
 
@@ -147,7 +147,11 @@ def export_hourly_shares_csv(
             ascending=[True] * len(sort_cols),
         ).reset_index(drop=True)
 
-    df.to_csv(file_path, index=False, sep=";")
+        for col in ["share_pct", "estimated_share_pct"]:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.replace(".", ",", regex=False)
+
+    df.to_csv(file_path, index=False, sep=";", decimal=",")
     return file_path
 
 
@@ -175,19 +179,19 @@ def export_hourly_profile_matrix_csv(
     for cups in matrix.cups_list:
         row_dict: dict[str, object] = {"cups": cups}
         for h_str in matrix.hours:
-            row_dict[h_str] = matrix.format_cell(cups, h_str, precision=prec)
-        row_dict["average"] = matrix.format_average(cups, precision=prec)
+            row_dict[h_str] = matrix.format_cell(cups, h_str, precision=prec).replace(".", ",")
+        row_dict["average"] = matrix.format_average(cups, precision=prec).replace(".", ",")
         rows.append(row_dict)
 
     # Total row
     total_dict: dict[str, object] = {"cups": "TOTAL"}
     for h_str in matrix.hours:
-        total_dict[h_str] = matrix.format_hour_sum(h_str, precision=prec)
-    total_dict["average"] = matrix.format_average_sum(precision=prec)
+        total_dict[h_str] = matrix.format_hour_sum(h_str, precision=prec).replace(".", ",")
+    total_dict["average"] = matrix.format_average_sum(precision=prec).replace(".", ",")
     rows.append(total_dict)
 
     df = pd.DataFrame(rows)
-    df.to_csv(file_path, index=False, sep=";")
+    df.to_csv(file_path, index=False, sep=";", decimal=",")
     return file_path
 
 

@@ -245,10 +245,10 @@ def curate_command(
         help="Base filename for generated curated export (e.g. 'curated' produces curated.csv).",
     ),
     delimiter: str = typer.Option(
-        ",",
+        ";",
         "--delimiter",
         "-d",
-        help="CSV delimiter character (',' or ';'). Defaults to ','.",
+        help="CSV delimiter character (';' or ','). Defaults to ';'.",
     ),
     year: int | None = typer.Option(
         None,

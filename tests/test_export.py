@@ -92,7 +92,7 @@ def test_export_csv(tmp_path: Path) -> None:
     csv_path = export_coefficients_csv(opt_result, tmp_path, timestamp="20260531_120000")
     assert csv_path.exists()
 
-    df = pd.read_csv(csv_path, sep=";")
+    df = pd.read_csv(csv_path, sep=";", decimal=",")
     assert len(df) == 2
     assert "month" in df.columns
     assert "cups" in df.columns
@@ -108,7 +108,7 @@ def test_export_coefficients_matrix_csv(tmp_path: Path) -> None:
     assert csv_path.exists()
     assert csv_path.name == "20260531_120000_esd_coefficients_matrix.csv"
 
-    df = pd.read_csv(csv_path, sep=";")
+    df = pd.read_csv(csv_path, sep=";", decimal=",")
     # 2 CUPS rows + 1 TOTAL row
     assert len(df) == 3
     expected_cols = ["cups"] + [f"{m:02d}" for m in range(1, 13)] + ["annual_average"]
@@ -116,16 +116,16 @@ def test_export_coefficients_matrix_csv(tmp_path: Path) -> None:
 
     # Verify CUPS rows
     assert df.iloc[0]["cups"] == "ES0021000000000001AA"
-    assert df.iloc[0]["05"] == "60.0%"
+    assert df.iloc[0]["05"] == "60,0%"
     assert df.iloc[0]["01"] == "—"
     assert df.iloc[1]["cups"] == "ES0021000000000002BB"
-    assert df.iloc[1]["05"] == "40.0%"
+    assert df.iloc[1]["05"] == "40,0%"
     assert df.iloc[1]["01"] == "—"
 
     # Verify TOTAL row
     assert df.iloc[2]["cups"] == "TOTAL"
-    assert df.iloc[2]["05"] == "100.0%"
-    assert df.iloc[2]["annual_average"] == "100.0%"
+    assert df.iloc[2]["05"] == "100,0%"
+    assert df.iloc[2]["annual_average"] == "100,0%"
 
 
 def test_export_json(tmp_path: Path) -> None:
@@ -293,3 +293,82 @@ def test_export_hourly_files(tmp_path: Path) -> None:
     assert len(md_paths) == 1
     md_content = md_paths[0].read_text(encoding="utf-8")
     assert "Diurnal Distribution Share Profile" in md_content
+
+
+def test_export_csvs_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
+    """Verify that all CSV outputs use ';' as separator and ',' for decimals without thousand separators."""
+    opt_result, meta = create_dummy_optimization_result()
+    cups_list = ["ES0021000000000001AA", "ES0021000000000002BB"]
+    hours = [f"{h:02d}" for h in range(24)]
+
+    profile_matrix = HourlyProfileMatrix(
+        cups_list=cups_list,
+        hours=hours,
+        matrix={
+            cups_list[0]: dict.fromkeys(hours, 0.625),
+            cups_list[1]: dict.fromkeys(hours, 0.375),
+        },
+        hourly_sums=dict.fromkeys(hours, 1.0),
+        average_shares={cups_list[0]: 0.625, cups_list[1]: 0.375},
+        average_sum=1.0,
+    )
+    ts_rows = []
+    for h in hours:
+        ts_rows.append(
+            {
+                "timestamp": f"2026-05-01 {h}:00:00",
+                "hour": int(h),
+                "cups": cups_list[0],
+                "use": "Heating",
+                "consumption_kwh": 1234.56,
+                "generation_kwh": 5000.78,
+                "share_pct": "62.5%",
+                "estimated_share_pct": "62.5%",
+            }
+        )
+    opt_result.hourly_result = HourlyOptimizationResult(
+        profile_matrix=profile_matrix,
+        time_series_df=pd.DataFrame(ts_rows),
+    )
+
+    csv_paths = export_all(opt_result, meta, tmp_path, formats="csv", precision=2)
+    assert len(csv_paths) == 4
+
+    for p in csv_paths:
+        text = p.read_text(encoding="utf-8")
+        lines = text.strip().splitlines()
+        # Header has semicolon
+        assert ";" in lines[0]
+        # Data rows have semicolon
+        for line in lines[1:]:
+            assert ";" in line
+            # Verify no thousand separators (e.g. no 1,234.56 or 1.234,56)
+            for part in line.split(";"):
+                # No 1,234 or 1.234 style thousand grouping
+                assert not (part.count(",") > 1 or ("," in part and "." in part))
+
+    # Check coefficients CSV specific values
+    coeff_path = next(p for p in csv_paths if "_esd_coefficients.csv" in p.name)
+    coeff_text = coeff_path.read_text(encoding="utf-8")
+    assert "0,6000" in coeff_text
+    assert "0,4000" in coeff_text
+    assert "60,00" in coeff_text
+
+    # Check matrix CSV specific values
+    matrix_path = next(p for p in csv_paths if "_esd_coefficients_matrix.csv" in p.name)
+    matrix_text = matrix_path.read_text(encoding="utf-8")
+    assert "60,00%" in matrix_text
+    assert "100,00%" in matrix_text
+
+    # Check hourly shares CSV specific values
+    shares_path = next(p for p in csv_paths if "_esd_hourly_shares.csv" in p.name)
+    shares_text = shares_path.read_text(encoding="utf-8")
+    assert "1234,56" in shares_text
+    assert "5000,78" in shares_text
+    assert "62,5%" in shares_text
+
+    # Check hourly profile matrix CSV specific values
+    h_matrix_path = next(p for p in csv_paths if "_esd_hourly_profile_matrix.csv" in p.name)
+    h_matrix_text = h_matrix_path.read_text(encoding="utf-8")
+    assert "62,50%" in h_matrix_text
+    assert "37,50%" in h_matrix_text

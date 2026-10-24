@@ -235,11 +235,11 @@ def test_curation_exports_csv(tmp_path: Path) -> None:
     csv_lines = csv_path.read_text(encoding="utf-8").strip().splitlines()
     assert len(csv_lines) == 25  # 1 header + 24 rows
     header = csv_lines[0]
-    assert header == "timestamp,generation,cups_id,use,consumption,temperature,cloud_cover"
-    assert "date" not in header.split(",")
-    assert "hour" not in header.split(",")
-    assert "primary" not in header.split(",")
-    assert "reconciled" not in header.split(",")
+    assert header == "timestamp;generation;cups_id;use;consumption;temperature;cloud_cover"
+    assert "date" not in header.split(";")
+    assert "hour" not in header.split(";")
+    assert "primary" not in header.split(";")
+    assert "reconciled" not in header.split(";")
     assert pri_cups in csv_lines[1]
     assert "Comunidad" in csv_lines[1]
     assert "2026-05-01 00:00:00" in csv_lines[1]
@@ -577,7 +577,7 @@ def test_curation_with_existing_weather_data(tmp_path: Path) -> None:
     assert rec_noon.cloud_cover == 35
 
     csv_path = curator.export_csv(dataset, curated_dir=curated_dir, base_name="weather_curated")
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, sep=";", decimal=",")
     assert "temperature" in df.columns
     assert "cloud_cover" in df.columns
     assert "primary" not in df.columns
@@ -700,7 +700,7 @@ def test_curation_without_coordinates_leaves_weather_empty(tmp_path: Path) -> No
     assert dataset.records[0].cloud_cover is None
 
     csv_path = curator.export_csv(dataset, curated_dir=curated_dir, base_name="empty_weather")
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, sep=";", decimal=",")
     assert "temperature" in df.columns
     assert "cloud_cover" in df.columns
     assert df["temperature"].isna().all()
@@ -838,7 +838,7 @@ def test_curation_csv_ordering_by_date_and_use(tmp_path: Path) -> None:
     dataset = curator.curate()
     csv_path = curator.export_csv(dataset, curated_dir=curated_dir, base_name="curated_sorted")
 
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, sep=";", decimal=",")
     timestamps = df["timestamp"].unique()
     assert len(timestamps) == 24
     # Ensure timestamps are strictly non-decreasing
@@ -849,3 +849,48 @@ def test_curation_csv_ordering_by_date_and_use(tmp_path: Path) -> None:
         ts_slice = df[df["timestamp"] == ts]
         uses = ts_slice["use"].tolist()
         assert uses == ["Aerotermia", "Garaje", "Portal 1"]
+
+
+def test_curated_csv_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
+    """Verify curated.csv uses ';' delimiter, ',' decimal, no thousand separator, and loads back cleanly."""
+    cons_dir = tmp_path / "consumption"
+    gen_dir = tmp_path / "generation"
+    curated_dir = tmp_path / "curated"
+    cons_dir.mkdir()
+    gen_dir.mkdir()
+    curated_dir.mkdir()
+
+    cups_id = "ES0021000000000001AA"
+    create_mock_datadis_csv(cons_dir / f"{cups_id}.csv", cups_id)
+    create_mock_huawei_excel(gen_dir / "gen.xlsx")
+
+    curator = DataCurator(
+        consumption_dir=cons_dir,
+        generation_dir=gen_dir,
+        curated_dir=curated_dir,
+    )
+    csv_file = curator.ensure_curated(force=True)
+    assert csv_file.exists()
+
+    content = csv_file.read_text(encoding="utf-8")
+    lines = content.strip().splitlines()
+    header = lines[0]
+    assert header == "timestamp;generation;cups_id;use;consumption;temperature;cloud_cover"
+
+    # Check a sample line: should contain ';' separator and ',' decimal (e.g. '0,0' or '2,5')
+    sample_line = lines[1]
+    assert ";" in sample_line
+    parts = sample_line.split(";")
+    assert len(parts) == 7
+    # Verify no thousand separators (e.g. no '.' within numeric values when ',' is decimal)
+    # Check that generation and consumption parse as float with comma decimal
+    gen_val = float(parts[1].replace(",", "."))
+    cons_val = float(parts[4].replace(",", "."))
+    assert isinstance(gen_val, float)
+    assert isinstance(cons_val, float)
+
+    # Verify load_aligned_dataset reconstructs properly
+    aligned = curator.load_aligned_dataset(csv_file)
+    assert aligned.cups_list == [cups_id]
+    assert len(aligned.data) > 0
+    assert float(aligned.data[cups_id].iloc[0]) == cons_val

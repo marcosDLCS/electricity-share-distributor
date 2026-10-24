@@ -75,11 +75,11 @@ El motor de curado ([`src/curation/`](../src/curation)) combina dos fuentes de d
 Cuando el contador de la calle marca cero (o un valor artificialmente bajo) mientras el inversor certifica que la instalación estuvo funcionando, `esd curate` **reemplaza el falso cero por el consumo físico real de la máquina**.
 
 ### El Resultado Curado (`.curated/curated.csv`)
-El entregable es una tabla única, estandarizada y limpia:
+El entregable es una tabla única, estandarizada y limpia (con delimitador `;`, coma `,` para decimales y sin separadores de miles):
 ```csv
-timestamp,generation,cups_id,use,consumption,temperature,cloud_cover
-2026-05-01 12:00:00,12.5,ES0021000000000001AA,Aerotermia,8.5,21.4,12
-2026-05-01 12:00:00,12.5,ES0021000000000002BB,Garaje,1.2,21.4,12
+timestamp;generation;cups_id;use;consumption;temperature;cloud_cover
+2026-05-01 12:00:00;12,5;ES0021000000000001AA;Aerotermia;8,5;21,4;12
+2026-05-01 12:00:00;12,5;ES0021000000000002BB;Garaje;1,2;21,4;12
 ```
 Para el suministro principal de la instalación, `esd` adopta siempre el mayor consumo entre la distribuidora (DATADIS) y el sensor de potencia del inversor solar ($\max(C_{\text{DATADIS}}, C_{\text{inversor}})$). Esto garantiza registrar la demanda real y completa de la instalación eliminando los falsos ceros. El archivo CSV se encuentra ordenado cronológicamente por marca de tiempo (fecha/hora) y, dentro de cada hora, alfabéticamente por uso del suministro. Además, cada intervalo horario incorpora el contexto meteorológico local (`temperature` en °C y porcentaje de nubosidad `cloud_cover` de 0 a 100%). Si los datos meteorológicos no están disponibles localmente en `.input/weather/`, `esd curate` ejecuta automáticamente la consulta a Open-Meteo utilizando la ubicación por defecto de la comunidad en `.input/cups/cups.json`.
 

@@ -75,11 +75,11 @@ The curation engine ([`src/curation/`](../src/curation)) reconciles two separate
 Whenever the utility meter reports zero (or artificially low power) while the inverter confirms that the equipment was actively running, `esd curate` **replaces the fake zero with the real load consumption**.
 
 ### The Curated Result (`.curated/curated.csv`)
-The output is a single, clean, standardized table:
+The output is a single, clean, standardized table (using `;` as delimiter and `,` for decimals without thousands separators):
 ```csv
-timestamp,generation,cups_id,use,consumption,temperature,cloud_cover
-2026-05-01 12:00:00,12.5,ES0021000000000001AA,Aerotermia,8.5,21.4,12
-2026-05-01 12:00:00,12.5,ES0021000000000002BB,Garaje,1.2,21.4,12
+timestamp;generation;cups_id;use;consumption;temperature;cloud_cover
+2026-05-01 12:00:00;12,5;ES0021000000000001AA;Aerotermia;8,5;21,4;12
+2026-05-01 12:00:00;12,5;ES0021000000000002BB;Garaje;1,2;21,4;12
 ```
 For the primary installation point, `esd` always adopts the higher consumption between the utility (DATADIS) and the solar inverter smart power sensor ($\max(C_{\text{DATADIS}}, C_{\text{inverter}})$). This guarantees full equipment demand is captured while avoiding fake zero underreporting. The CSV is ordered chronologically by timestamp (date/hour) and within each timestamp alphabetically by facility use. Furthermore, each hourly record includes local weather context (`temperature` in °C and `cloud_cover` percentage from 0 to 100%). If weather data is not already stored locally in `.input/weather/`, `esd curate` automatically queries Open-Meteo using the community's default location from `.input/cups/cups.json`.
 
