@@ -10,11 +10,11 @@ def calculate_solar_efficiency(
     hour: int,
     temperature: float | None = None,
     cloud_cover: float | int | None = None,
-) -> float:
-    """Calculate hourly solar efficiency index (scale 1.0 to 100.0) based on weather and solar geometry.
+) -> int:
+    """Calculate hourly solar efficiency index (scale 1 to 100) based on weather and solar geometry.
 
     Formula:
-        SEI = clip(100.0 * f_cloud * f_temp * f_season * f_hour, 1.0, 100.0)
+        SEI = clip(round(100.0 * f_cloud * f_temp * f_season * f_hour), 1, 100)
 
     Components:
         1. Cloud Optical Attenuation (f_cloud):
@@ -49,7 +49,7 @@ def calculate_solar_efficiency(
         cloud_cover: Cloud cover percentage (0-100), or None.
 
     Returns:
-        Solar efficiency index rounded to 1 decimal place (1.0 to 100.0).
+        Solar efficiency index as a plain integer (1 to 100).
     """
     # 1. Cloud attenuation factor
     cc = (
@@ -81,4 +81,4 @@ def calculate_solar_efficiency(
         f_hour = 0.65
 
     raw_score = 100.0 * f_cloud * f_temp * f_season * f_hour
-    return round(max(1.0, min(100.0, raw_score)), 1)
+    return round(max(1.0, min(100.0, raw_score)))

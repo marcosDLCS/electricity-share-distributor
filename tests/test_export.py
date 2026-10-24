@@ -228,7 +228,7 @@ def test_export_hourly_files(tmp_path: Path) -> None:
                 "generation_kwh": 5.0,
                 "share_pct": "60%",
                 "estimated_share_pct": "60%",
-                "solar_efficiency": 75.5,
+                "solar_efficiency": 75,
             }
         )
         ts_rows.append(
@@ -241,7 +241,7 @@ def test_export_hourly_files(tmp_path: Path) -> None:
                 "generation_kwh": 5.0,
                 "share_pct": "40%",
                 "estimated_share_pct": "40%",
-                "solar_efficiency": 75.5,
+                "solar_efficiency": 75,
             }
         )
     ts_df = pd.DataFrame(ts_rows)
@@ -326,7 +326,7 @@ def test_export_csvs_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
                 "generation_kwh": 5000.78,
                 "share_pct": "62.5%",
                 "estimated_share_pct": "62.5%",
-                "solar_efficiency": 82.4,
+                "solar_efficiency": 82,
             }
         )
     opt_result.hourly_result = HourlyOptimizationResult(
@@ -369,7 +369,7 @@ def test_export_csvs_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
     assert "1234,56" in shares_text
     assert "5000,78" in shares_text
     assert "62,5%" in shares_text
-    assert "82,4" in shares_text
+    assert "82" in shares_text
 
     # Check hourly profile matrix CSV specific values
     h_matrix_path = next(p for p in csv_paths if "_esd_hourly_profile_matrix.csv" in p.name)

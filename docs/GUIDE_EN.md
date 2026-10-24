@@ -115,10 +115,10 @@ On cloudy or stormy days, solar production can drop to near zero. If elevator mo
 - **Night Hours with Exact Zero Generation:** In night hours where solar generation is exactly zero, 100% of the share is assigned to the primary installation CUPS (and 0% to other facilities). This avoids distributing meaningless fractions of zero energy across lighting or small circuits while maintaining an exact regulatory 100% sum.
 
 ### 7. Photovoltaic Solar Efficiency Index (SEI)
-In the hourly calculation (`--hourly`), each record includes a dedicated `solar_efficiency` metric (scale 1.0 to 100.0) evaluated **strictly for hours with active solar generation** ($G_h > 0$). During night or zero-generation intervals, the field is left empty.
+In the hourly calculation (`--hourly`), each record includes a dedicated `solar_efficiency` metric as a plain integer without decimals. For hours with active solar generation ($G_h > 0$), it yields an index from **1 to 100**. For hours without generation (or nighttime intervals), it is set to **0**.
 
 The index models real-world photovoltaic performance and optical solar geometry based on Open-Meteo local weather archives:
-$$\text{SEI} = \text{clip}\left(100.0 \times f_{\text{cloud}} \times f_{\text{temp}} \times f_{\text{season}} \times f_{\text{hour}}, \; 1.0, \; 100.0\right)$$
+$$\text{SEI} = \begin{cases} \text{clip}\left(\text{round}\left(100.0 \times f_{\text{cloud}} \times f_{\text{temp}} \times f_{\text{season}} \times f_{\text{hour}}\right), \; 1, \; 100\right) & \text{if } G_h > 0 \\ 0 & \text{if } G_h = 0 \end{cases}$$
 
 - **Cloud Optical Attenuation ($f_{\text{cloud}}$):** Captures non-linear direct beam extinction through atmospheric cloud layers while preserving ~25% diffuse ambient irradiance under overcast skies:
   $$f_{\text{cloud}} = 1.0 - 0.75 \times \left(\frac{CC}{100.0}\right)^{1.2}$$
@@ -195,7 +195,7 @@ Running `esd calculate` generates ready-to-use artifacts in `.output/`:
 | `*_esd_optimization_summary.md` | Markdown | Executive summary report including the community agreement annex ready for community board review. |
 | `*_esd_coefficients.csv` | CSV (`;` delimited) | Detailed breakdown per CUPS: monthly self-consumed kWh, solar surplus, and remaining grid demand. |
 | `*_esd_results.json` | JSON | Machine-readable data file for software integrations and community dashboards. |
-| `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Full hourly time-series recording consumption, generation, shares, and the Solar Efficiency Index (1-100 for generation hours), ordered by timestamp and use. |
+| `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Full hourly time-series recording consumption, generation, shares, and the Solar Efficiency Index (integer 1-100 for generation hours, 0 without generation), ordered by timestamp and use. |
 | `*_esd_hourly_profile_matrix.csv` | CSV (`;` delimited) | 24-hour diurnal table for variable hourly coefficient filing under Spanish regulation (Orden TED/1247/2021). |
 
 ---

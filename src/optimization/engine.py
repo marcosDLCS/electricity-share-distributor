@@ -587,8 +587,8 @@ class DistributionOptimizer:
             gen_val = round(float(g_arr[t]), 4)
             is_zero_gen = (pri_idx is not None) and (g_arr[t] <= 1e-6)
 
-            # Solar efficiency index: only computed for hours with solar generation (> 1e-6)
-            efficiency_val: float | None = None
+            # Solar efficiency index: integer (1-100) for hours with generation (> 1e-6), 0 for hours without generation
+            efficiency_val: int = 0
             if g_arr[t] > 1e-6:
                 t_temp = (
                     float(temp_series.iloc[t])

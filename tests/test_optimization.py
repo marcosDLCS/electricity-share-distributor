@@ -494,13 +494,13 @@ def test_compute_hourly_optimization() -> None:
     ]
     assert list(ts_df.columns) == expected_cols
 
-    # Check that solar_efficiency is populated only for hours with generation
+    # Check that solar_efficiency is integer (1-100) for hours with generation and 0 for zero generation
     for _, row in ts_df.iterrows():
         if row["generation_kwh"] > 0:
-            assert pd.notna(row["solar_efficiency"])
-            assert 1.0 <= float(row["solar_efficiency"]) <= 100.0
+            assert int(row["solar_efficiency"]) == row["solar_efficiency"]
+            assert 1 <= row["solar_efficiency"] <= 100
         else:
-            assert pd.isna(row["solar_efficiency"])
+            assert row["solar_efficiency"] == 0
 
     # Check for each timestamp that share percentages sum to 100%
     for ts in timestamps:

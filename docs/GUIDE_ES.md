@@ -115,10 +115,10 @@ En días de tormenta, la producción solar puede caer bruscamente. Si los motore
 - **Horas nocturnas con producción exactamente cero:** En las horas nocturnas sin ninguna producción solar, se asigna siempre el 100% del reparto al CUPS principal de la instalación (y 0% al resto de servicios). Esto evita repartir cuotas ficticias de energía inexistente entre circuitos menores de alumbrado o auxiliares, garantizando a la vez una suma reglamentaria exactamente del 100%.
 
 ### 7. Índice de Eficiencia Solar Fotovoltaica (SEI)
-En el cálculo horario (`--hourly`), cada fila incorpora una métrica dedicada de `solar_efficiency` (escala 1,0 a 100,0) calculada **estrictamente para las horas con generación solar activa** ($G_h > 0$). Durante la noche o en intervalos con generación nula, el campo permanece vacío.
+En el cálculo horario (`--hourly`), cada fila incorpora una métrica dedicada de `solar_efficiency` como un número entero sin decimales. Para las horas con generación solar activa ($G_h > 0$), proporciona un índice de **1 a 100**. Para las horas sin generación (o intervalos nocturnos), se fija en **0**.
 
 El índice modela el rendimiento físico fotovoltaico y la geometría óptica solar a partir de los datos meteorológicos locales de Open-Meteo:
-$$\text{SEI} = \text{clip}\left(100.0 \times f_{\text{cloud}} \times f_{\text{temp}} \times f_{\text{season}} \times f_{\text{hour}}, \; 1.0, \; 100.0\right)$$
+$$\text{SEI} = \begin{cases} \text{clip}\left(\text{round}\left(100.0 \times f_{\text{cloud}} \times f_{\text{temp}} \times f_{\text{season}} \times f_{\text{hour}}\right), \; 1, \; 100\right) & \text{si } G_h > 0 \\ 0 & \text{si } G_h = 0 \end{cases}$$
 
 - **Atenuación Óptica por Nubosidad ($f_{\text{cloud}}$):** Modela la extinción no lineal de la radiación directa a través de capas nubosas, reteniendo aproximadamente un 25% de radiación difusa incluso bajo cielos completamente cubiertos:
   $$f_{\text{cloud}} = 1.0 - 0.75 \times \left(\frac{CC}{100.0}\right)^{1.2}$$
@@ -195,7 +195,7 @@ Al ejecutar `esd calculate`, se generan automáticamente los archivos en `.outpu
 | `*_esd_optimization_summary.md` | Markdown | Informe ejecutivo completo con el anexo del acuerdo de reparto comunitario listo para la firma de la junta de propietarios. |
 | `*_esd_coefficients.csv` | CSV (delimitado por `;`) | Desglose detallado por CUPS: kWh autoconsumidos, excedentes vertidos y demanda remanente de red. |
 | `*_esd_results.json` | JSON | Archivo de datos estructurado para integraciones informáticas o cuadros de mando comunitarios. |
-| `*_esd_hourly_shares.csv` | CSV (delimitado por `;`) | Serie temporal horaria con consumo, producción, cuotas y el Índice de Eficiencia Solar (1-100 en horas de generación), ordenada por fecha y uso. |
+| `*_esd_hourly_shares.csv` | CSV (delimitado por `;`) | Serie temporal horaria con consumo, producción, cuotas y el Índice de Eficiencia Solar (entero 1-100 en horas de generación, 0 sin generación), ordenada por fecha y uso. |
 | `*_esd_hourly_profile_matrix.csv` | CSV (delimitado por `;`) | Tabla diaria de 24 horas para presentar coeficientes variables según la Orden TED/1247/2021. |
 
 ---
