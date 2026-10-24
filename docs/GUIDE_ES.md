@@ -114,6 +114,21 @@ En días de tormenta, la producción solar puede caer bruscamente. Si los motore
 - Ofrece tanto el porcentaje horario real (`share_pct`) como el porcentaje estimado regulatorio (`estimated_share_pct`) conforme a la Orden TED/1247/2021.
 - **Horas nocturnas con producción exactamente cero:** En las horas nocturnas sin ninguna producción solar, se asigna siempre el 100% del reparto al CUPS principal de la instalación (y 0% al resto de servicios). Esto evita repartir cuotas ficticias de energía inexistente entre circuitos menores de alumbrado o auxiliares, garantizando a la vez una suma reglamentaria exactamente del 100%.
 
+### 7. Índice de Eficiencia Solar Fotovoltaica (SEI)
+En el cálculo horario (`--hourly`), cada fila incorpora una métrica dedicada de `solar_efficiency` (escala 1,0 a 100,0) calculada **estrictamente para las horas con generación solar activa** ($G_h > 0$). Durante la noche o en intervalos con generación nula, el campo permanece vacío.
+
+El índice modela el rendimiento físico fotovoltaico y la geometría óptica solar a partir de los datos meteorológicos locales de Open-Meteo:
+$$\text{SEI} = \text{clip}\left(100.0 \times f_{\text{cloud}} \times f_{\text{temp}} \times f_{\text{season}} \times f_{\text{hour}}, \; 1.0, \; 100.0\right)$$
+
+- **Atenuación Óptica por Nubosidad ($f_{\text{cloud}}$):** Modela la extinción no lineal de la radiación directa a través de capas nubosas, reteniendo aproximadamente un 25% de radiación difusa incluso bajo cielos completamente cubiertos:
+  $$f_{\text{cloud}} = 1.0 - 0.75 \times \left(\frac{CC}{100.0}\right)^{1.2}$$
+- **Degradación Térmica de Célula ($f_{\text{temp}}$):** Reproduce el coeficiente térmico de potencia característico de las células de silicio ($-0,4\% / ^\circ\text{C}$ respecto a $20^\circ\text{C}$ ambiente de referencia). Mañanas frías y despejadas ofrecen una mejora de rendimiento (hasta $+8\%$), mientras que el calor extremo del mediodía estival degrada la tensión de los paneles:
+  $$f_{\text{temp}} = \text{clip}\left(1.0 - 0.004 \times (T_{\text{amb}} - 20.0), \; 0.80, \; 1.08\right)$$
+- **Elevación Solar Estacional ($f_{\text{season}}$):** Modela la declinación solar anual y la masa de aire atmosférica en latitudes de la Península Ibérica (36°N–43°N), alcanzando su cénit en el solsticio de verano (junio/julio ~ 1,00) y su mínimo en el de invierno (diciembre/enero ~ 0,70):
+  $$f_{\text{season}} = 0.85 + 0.15 \times \cos\left(\frac{2\pi \times (m - 6.5)}{12.0}\right)$$
+- **Ángulo Cénit Diurno ($f_{\text{hour}}$):** Refleja la curva diurna de elevación solar y el ángulo de incidencia sobre paneles de cubierta con inclinación fija, alcanzando el máximo en el mediodía solar (13:00–14:00 en España) con mínimas pérdidas por reflexión de Fresnel, y reduciéndose en horas rasantes:
+  $$f_{\text{hour}} = \begin{cases} 0.70 + 0.30 \times \sin\left(\pi \times \frac{h - 6.0}{15.0}\right) & \text{si } 6 \le h \le 21 \\ 0.65 & \text{en otro caso} \end{cases}$$
+
 ---
 
 ## 5. 🚀 Flujo Práctico de Uso y Comandos
@@ -180,7 +195,7 @@ Al ejecutar `esd calculate`, se generan automáticamente los archivos en `.outpu
 | `*_esd_optimization_summary.md` | Markdown | Informe ejecutivo completo con el anexo del acuerdo de reparto comunitario listo para la firma de la junta de propietarios. |
 | `*_esd_coefficients.csv` | CSV (delimitado por `;`) | Desglose detallado por CUPS: kWh autoconsumidos, excedentes vertidos y demanda remanente de red. |
 | `*_esd_results.json` | JSON | Archivo de datos estructurado para integraciones informáticas o cuadros de mando comunitarios. |
-| `*_esd_hourly_shares.csv` | CSV (delimitado por `;`) | Serie temporal horaria con consumo, producción y cuota real frente a cuota estimada, ordenada por fecha y uso (alfabéticamente). |
+| `*_esd_hourly_shares.csv` | CSV (delimitado por `;`) | Serie temporal horaria con consumo, producción, cuotas y el Índice de Eficiencia Solar (1-100 en horas de generación), ordenada por fecha y uso. |
 | `*_esd_hourly_profile_matrix.csv` | CSV (delimitado por `;`) | Tabla diaria de 24 horas para presentar coeficientes variables según la Orden TED/1247/2021. |
 
 ---

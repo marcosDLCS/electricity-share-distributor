@@ -106,6 +106,14 @@ def dataframe_to_aligned_dataset(
     # Combine into aligned DataFrame
     aligned_df = pivot_cons.copy()
     aligned_df["generation_kwh"] = gen_series.loc[aligned_df.index]
+    if "temperature" in df_clean.columns:
+        aligned_df["temperature"] = (
+            df_clean.groupby("timestamp")["temperature"].first().loc[aligned_df.index]
+        )
+    if "cloud_cover" in df_clean.columns:
+        aligned_df["cloud_cover"] = (
+            df_clean.groupby("timestamp")["cloud_cover"].first().loc[aligned_df.index]
+        )
     aligned_df = aligned_df.sort_index()
 
     # Extract CUPS functional uses if available

@@ -10,6 +10,7 @@ import scipy.optimize as opt
 from scipy.sparse import dok_matrix
 
 from src.ingestion.schema import AlignedDataset, EsdError
+from src.optimization.efficiency import calculate_solar_efficiency
 from src.optimization.models import (
     CommunityMonthlyMetrics,
     CupsMonthlyMetrics,
@@ -573,14 +574,38 @@ class DistributionOptimizer:
             except Exception:
                 cups_uses = {}
 
+        temp_series = aligned_df["temperature"] if "temperature" in aligned_df.columns else None
+        cloud_series = aligned_df["cloud_cover"] if "cloud_cover" in aligned_df.columns else None
+
         # Build simplified long-format hourly time series
         ts_rows: list[dict[str, object]] = []
         for t in range(t_steps):
             ts_str = timestamps[t]
             h_int = int(dt_index[t].hour)
+            m_int = int(dt_index[t].month)
             h_str = f"{h_int:02d}"
             gen_val = round(float(g_arr[t]), 4)
             is_zero_gen = (pri_idx is not None) and (g_arr[t] <= 1e-6)
+
+            # Solar efficiency index: only computed for hours with solar generation (> 1e-6)
+            efficiency_val: float | None = None
+            if g_arr[t] > 1e-6:
+                t_temp = (
+                    float(temp_series.iloc[t])
+                    if temp_series is not None and pd.notna(temp_series.iloc[t])
+                    else None
+                )
+                t_cloud = (
+                    float(cloud_series.iloc[t])
+                    if cloud_series is not None and pd.notna(cloud_series.iloc[t])
+                    else None
+                )
+                efficiency_val = calculate_solar_efficiency(
+                    month=m_int,
+                    hour=h_int,
+                    temperature=t_temp,
+                    cloud_cover=t_cloud,
+                )
 
             for i, cups in enumerate(cups_list):
                 cons_val = round(float(c_arr[t, i]), 4)
@@ -605,6 +630,7 @@ class DistributionOptimizer:
                         "generation_kwh": gen_val,
                         "share_pct": actual_share,
                         "estimated_share_pct": est_share,
+                        "solar_efficiency": efficiency_val,
                     }
                 )
 

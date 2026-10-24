@@ -114,6 +114,21 @@ On cloudy or stormy days, solar production can drop to near zero. If elevator mo
 - It provides both the actual share (`share_pct`) and a cloud-resilient estimated share (`estimated_share_pct`) formatted for filing under Orden TED/1247/2021.
 - **Night Hours with Exact Zero Generation:** In night hours where solar generation is exactly zero, 100% of the share is assigned to the primary installation CUPS (and 0% to other facilities). This avoids distributing meaningless fractions of zero energy across lighting or small circuits while maintaining an exact regulatory 100% sum.
 
+### 7. Photovoltaic Solar Efficiency Index (SEI)
+In the hourly calculation (`--hourly`), each record includes a dedicated `solar_efficiency` metric (scale 1.0 to 100.0) evaluated **strictly for hours with active solar generation** ($G_h > 0$). During night or zero-generation intervals, the field is left empty.
+
+The index models real-world photovoltaic performance and optical solar geometry based on Open-Meteo local weather archives:
+$$\text{SEI} = \text{clip}\left(100.0 \times f_{\text{cloud}} \times f_{\text{temp}} \times f_{\text{season}} \times f_{\text{hour}}, \; 1.0, \; 100.0\right)$$
+
+- **Cloud Optical Attenuation ($f_{\text{cloud}}$):** Captures non-linear direct beam extinction through atmospheric cloud layers while preserving ~25% diffuse ambient irradiance under overcast skies:
+  $$f_{\text{cloud}} = 1.0 - 0.75 \times \left(\frac{CC}{100.0}\right)^{1.2}$$
+- **Cell Temperature Derating ($f_{\text{temp}}$):** Reflects standard silicon PV power temperature coefficients ($-0.4\% / ^\circ\text{C}$ relative to $20^\circ\text{C}$ ambient reference). Cold bright mornings provide an efficiency boost (up to $+8\%$), whereas summer midday heat causes thermal semiconductor degradation:
+  $$f_{\text{temp}} = \text{clip}\left(1.0 - 0.004 \times (T_{\text{amb}} - 20.0), \; 0.80, \; 1.08\right)$$
+- **Seasonal Solar Elevation ($f_{\text{season}}$):** Models solar declination and atmospheric air mass path length across Spanish latitudes (36°N–43°N), peaking near the summer solstice (June/July ~ 1.00) and reaching its minimum during winter solstice (December/January ~ 0.70):
+  $$f_{\text{season}} = 0.85 + 0.15 \times \cos\left(\frac{2\pi \times (m - 6.5)}{12.0}\right)$$
+- **Diurnal Solar Zenith Angle ($f_{\text{hour}}$):** Models the diurnal solar arc and cosine incidence angle on fixed rooftop panels, peaking around solar noon (13:00–14:00 in Spain) with minimal optical reflection, and tapering during morning and evening grazing angles:
+  $$f_{\text{hour}} = \begin{cases} 0.70 + 0.30 \times \sin\left(\pi \times \frac{h - 6.0}{15.0}\right) & \text{if } 6 \le h \le 21 \\ 0.65 & \text{otherwise} \end{cases}$$
+
 ---
 
 ## 5. 🚀 Practical Workflow & Commands
@@ -180,7 +195,7 @@ Running `esd calculate` generates ready-to-use artifacts in `.output/`:
 | `*_esd_optimization_summary.md` | Markdown | Executive summary report including the community agreement annex ready for community board review. |
 | `*_esd_coefficients.csv` | CSV (`;` delimited) | Detailed breakdown per CUPS: monthly self-consumed kWh, solar surplus, and remaining grid demand. |
 | `*_esd_results.json` | JSON | Machine-readable data file for software integrations and community dashboards. |
-| `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Full hourly time-series recording consumption, generation, and actual vs. estimated shares, ordered first by date and then by use (alphabetically). |
+| `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Full hourly time-series recording consumption, generation, shares, and the Solar Efficiency Index (1-100 for generation hours), ordered by timestamp and use. |
 | `*_esd_hourly_profile_matrix.csv` | CSV (`;` delimited) | 24-hour diurnal table for variable hourly coefficient filing under Spanish regulation (Orden TED/1247/2021). |
 
 ---
