@@ -143,9 +143,12 @@ esd curate
 > **Curado Automático:** ¡Ni siquiera es necesario ejecutar `esd curate` manualmente! Al ejecutar `esd calculate`, la herramienta detecta si `.curated/curated.csv` existe y, si no está presente, lanza el curado de forma automática.
 
 ### Paso 3: Descarga de Datos Meteorológicos Horarios (`esd weather`)
-Descarga opcionalmente datos meteorológicos históricos horarios (temperatura, nubosidad, códigos meteorológicos OMM) de Open-Meteo en `.input/weather/weather_YYYY.csv` para las coordenadas de la comunidad:
+Descarga datos meteorológicos históricos horarios (temperatura, nubosidad, códigos meteorológicos OMM) de Open-Meteo en `.input/weather/{YYYY}_{lat}_{lon}_weather.csv`. El año es el único parámetro obligatorio: si no se proporcionan coordenadas en la CLI, `esd weather` inspecciona automáticamente `cups.json`, deduplica las ubicaciones repetidas entre servicios de un mismo edificio y descarga cada coordenada única una sola vez:
 ```bash
-# Descargar datos meteorológicos horarios para un año y coordenadas concretas
+# Descarga automática para todas las ubicaciones únicas definidas en cups.json
+esd weather --year 2024
+
+# O especificar coordenadas personalizadas de forma explícita
 esd weather --year 2024 --latitude 40.4168 --longitude -3.7038
 ```
 

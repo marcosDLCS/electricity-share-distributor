@@ -72,6 +72,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status_curating_auto": "Curated data not found or custom inputs provided. Reconciling and curating time-series data...",
         "status_loading_curated": "Loading curated time-series from {curated_path}...",
         "status_weather": "Fetching hourly weather data from Open-Meteo for year {year}...",
+        "status_weather_coord": "Fetching hourly weather data from Open-Meteo for year {year} at {coords}...",
         "prompt_lang": "Select language preference ('en' for English, 'es' for Spanish)",
         "prompt_precision": "Select share percentage precision (0, 1, or 2 decimal places)",
         # Table & View Labels
@@ -86,7 +87,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "weather_lbl_dest": "Destination File",
         "weather_file_saved": "Saved to {path} ({hours} hourly records)",
         "weather_overwritten": "[yellow](overwritten existing file)[/yellow]",
-        "err_coords_required": "Coordinates are required: specify --latitude and --longitude, or configure them via 'esd config --latitude <lat> --longitude <lon>'.",
+        "err_coords_required": "Coordinates are required: specify --latitude and --longitude, provide coordinates in cups.json, or configure them via 'esd config --latitude <lat> --longitude <lon>'.",
         "err_weather_download": "Failed to download weather data from Open-Meteo: {error}",
         "curate_success_title": "✓ Curation & Data Reconciliation Complete",
         "lbl_reconciled_hours": "Reconciled Hours (Fake Zeros Fixed)",
@@ -314,6 +315,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "status_curating_auto": "Datos curados no encontrados o entradas personalizadas. Reconciliando y curando series temporales...",
         "status_loading_curated": "Cargando series temporales curadas desde {curated_path}...",
         "status_weather": "Descargando datos meteorológicos horarios de Open-Meteo para el año {year}...",
+        "status_weather_coord": "Descargando datos meteorológicos horarios de Open-Meteo para el año {year} en {coords}...",
         "prompt_lang": "Seleccione idioma preferido ('en' para inglés, 'es' para español)",
         "prompt_precision": "Seleccione precisión de porcentaje de reparto (0, 1 o 2 decimales)",
         # Table & View Labels
@@ -328,7 +330,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "weather_lbl_dest": "Archivo de Destino",
         "weather_file_saved": "Guardado en {path} ({hours} registros horarios)",
         "weather_overwritten": "[yellow](archivo existente sobrescrito)[/yellow]",
-        "err_coords_required": "Se requieren coordenadas: especifique --latitude y --longitude, o configúrelas con 'esd config --latitude <lat> --longitude <lon>'.",
+        "err_coords_required": "Se requieren coordenadas: especifique --latitude y --longitude, indique coordenadas en cups.json, o configúrelas con 'esd config --latitude <lat> --longitude <lon>'.",
         "err_weather_download": "Error al descargar datos meteorológicos de Open-Meteo: {error}",
         "curate_success_title": "✓ Reconciliación y Curado de Datos Completado",
         "lbl_reconciled_hours": "Horas Reconciliadas (Ceros Falsos Corregidos)",

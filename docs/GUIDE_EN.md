@@ -143,9 +143,12 @@ esd curate
 > **Automatic Curation:** You do not even need to run `esd curate` manually! When you run `esd calculate`, the tool checks if `.curated/curated.csv` exists. If it's missing, it automatically curates the data first.
 
 ### Step 3: Fetch Hourly Weather Data (`esd weather`)
-Optionally download historical hourly weather (temperature, cloud cover, WMO weather codes) from Open-Meteo into `.input/weather/weather_YYYY.csv` for your community's coordinates:
+Download historical hourly weather (temperature, cloud cover, WMO weather codes) from Open-Meteo into `.input/weather/{YYYY}_{lat}_{lon}_weather.csv`. Year is the only mandatory parameter: if coordinates are not provided on the CLI, `esd weather` automatically inspects `cups.json`, deduplicates repeated locations across facilities in the same building, and downloads each unique coordinate once:
 ```bash
-# Download hourly weather for a specific year and coordinates
+# Automatically discover and download weather for all unique locations in cups.json
+esd weather --year 2024
+
+# Or specify custom coordinates explicitly
 esd weather --year 2024 --latitude 40.4168 --longitude -3.7038
 ```
 

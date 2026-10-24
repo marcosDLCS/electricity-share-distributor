@@ -247,6 +247,37 @@ def get_weather_dir(path: Path | None = None) -> Path:
     return Path(load_config(path).weather_dir)
 
 
+def resolve_cups_config_path(
+    custom_path: Path | str | None = None,
+    config: AppConfig | None = None,
+) -> Path | None:
+    """Find existing cups.json configuration file path.
+
+    Checks:
+    1. custom_path (if provided)
+    2. config.cups_config_path (if configured)
+    3. DEFAULT_CUPS_CONFIG_PATH (.input/cups/cups.json)
+    4. .input/cups.json
+    5. cups.json
+    """
+    candidates: list[Path] = []
+    if custom_path:
+        candidates.append(Path(custom_path))
+    if config and config.cups_config_path:
+        candidates.append(Path(config.cups_config_path))
+    candidates.extend(
+        [
+            DEFAULT_CUPS_CONFIG_PATH,
+            Path(".input/cups.json"),
+            Path("cups.json"),
+        ]
+    )
+    for cp in candidates:
+        if cp.exists() and cp.is_file():
+            return cp
+    return None
+
+
 def ensure_directories(
     config: AppConfig | None = None,
     config_path: Path | None = None,

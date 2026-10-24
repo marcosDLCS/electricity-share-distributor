@@ -18,6 +18,9 @@ from src.ingestion.weather import (
     OpenMeteoWeatherDownloader,
     WeatherDownloadResult,
     WeatherLoader,
+    extract_coordinates_from_cups_data,
+    extract_coordinates_from_cups_file,
+    format_weather_filename,
 )
 
 __all__ = [
@@ -40,4 +43,7 @@ __all__ = [
     "ValidationError",
     "WeatherDownloadResult",
     "WeatherLoader",
+    "extract_coordinates_from_cups_data",
+    "extract_coordinates_from_cups_file",
+    "format_weather_filename",
 ]

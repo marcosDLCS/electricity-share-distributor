@@ -187,10 +187,13 @@ esd doctor --verbose
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |
 
 ### `esd weather`
-Downloads hourly historical weather data (temperature, cloud cover, WMO weather code) from the Open-Meteo Archive API into `.input/weather/` for an entire calendar year at specified coordinates. If a file already exists for that year, it is automatically overwritten (`weather_{year}.csv`):
+Downloads hourly historical weather data (temperature, cloud cover, WMO weather code) from the Open-Meteo Archive API into `.input/weather/` for an entire calendar year. The year is the only mandatory parameter: if coordinates are not provided on the CLI, `esd weather` automatically inspects `cups.json` (`.input/cups/cups.json`), deduplicates any repeated coordinates across supply points, and downloads a concise weather file for each unique location (`{year}_{lat}_{lon}_weather.csv`, e.g. `2024_41.6745_-4.7272_weather.csv`). If a file already exists for that year and location, it is automatically overwritten:
 
 ```bash
-# Download hourly weather for Madrid in 2024
+# Download weather for all unique locations defined in cups.json (no duplicate downloads)
+esd weather --year 2024
+
+# Or specify custom coordinates explicitly:
 esd weather --year 2024 --latitude 40.4168 --longitude -3.7038
 
 # Using configured coordinates
@@ -199,9 +202,10 @@ esd weather -y 2024
 
 | Option | Flag | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--year` | `-y` | Calendar year to download (required) | — |
-| `--latitude` | `--lat` | Geographical latitude coordinate (-90 to 90) | From config |
-| `--longitude` | `--lon` | Geographical longitude coordinate (-180 to 180) | From config |
+| `--year` | `-y` | Calendar year to download (mandatory) | — |
+| `--latitude` | `--lat` | Geographical latitude coordinate (-90 to 90) | From cups.json or config |
+| `--longitude` | `--lon` | Geographical longitude coordinate (-180 to 180) | From cups.json or config |
+| `--cups-file` | `-C` | Path to custom cups.json file to extract coordinates from | `.input/cups/cups.json` |
 | `--weather-dir` | `-w` | Destination folder for weather CSV files | `.input/weather` |
 | `--timezone` | `-tz` | Timezone for hourly timestamps | `auto` |
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |
@@ -251,7 +255,7 @@ esd version
 
 1. **DATADIS Consumption Files (`.input/consumption/*.csv`):** Auto-detects delimiters (`;`, `,`, `\t`), decimal formats (`0,152` / `0.152`), character encodings (`utf-8`, `latin-1`), and standardizes Spanish 01:00–24:00 billing hours.
 2. **Solar Inverter Generation Files (`.input/generation/*.xlsx`):** Ingests inverter and plant generation reports, extracting PV yield (`Rendimiento FV` or `Rendimiento del inversor`) and standardizing timestamps.
-3. **Open-Meteo Hourly Weather Files (`.input/weather/weather_YYYY.csv`):** Standardized CSVs containing hourly records with columns `timestamp,temperature,cloud_cover,weather_code`.
+3. **Open-Meteo Hourly Weather Files (`.input/weather/{YYYY}_{lat}_{lon}_weather.csv`):** Standardized CSVs containing hourly records with columns `timestamp,temperature,cloud_cover,weather_code`.
 
 ---
 

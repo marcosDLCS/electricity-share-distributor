@@ -20,6 +20,9 @@ from src.ingestion.weather import (
     WMO_WEATHER_CODES,
     OpenMeteoWeatherDownloader,
     WeatherLoader,
+    extract_coordinates_from_cups_data,
+    extract_coordinates_from_cups_file,
+    format_weather_filename,
 )
 
 runner = CliRunner()
@@ -49,6 +52,59 @@ def _mock_open_meteo_response(
         },
     }
     return json.dumps(payload).encode("utf-8")
+
+
+# =========================================================================
+# Unit Tests: Filename and Coordinate Extraction Helpers
+# =========================================================================
+
+
+def test_format_weather_filename() -> None:
+    """format_weather_filename should produce concise {year}_{lat}_{lon}_weather.csv names."""
+    assert (
+        format_weather_filename(2024, 41.67454314, -4.72721283)
+        == "2024_41.6745_-4.7272_weather.csv"
+    )
+    assert format_weather_filename(2023, 40.4168, -3.7038) == "2023_40.4168_-3.7038_weather.csv"
+    assert format_weather_filename(2025, 40.0, 0.0) == "2025_40_0_weather.csv"
+
+
+def test_extract_coordinates_deduplication() -> None:
+    """Repeated coordinates in CUPS data must be deduplicated into unique entries."""
+    raw_data = [
+        {"cups": "ES0021000000000001AA", "lat": "41.67454314", "long": "-4.72721283"},
+        {"cups": "ES0021000000000002BB", "lat": "41.67454314", "long": "-4.72721283"},
+        {"cups": "ES0021000000000003CC", "lat": "41.67454314", "long": "-4.72721283"},
+        {"cups": "ES0021000000000004DD", "latitude": 40.4168, "longitude": -3.7038},
+        {"cups": "ES0021000000000005EE", "lat": 40.4168, "lon": -3.7038},  # duplicate
+        {"cups": "ES0021000000000006FF"},  # missing coords
+        {"cups": "ES0021000000000007GG", "lat": "invalid", "long": "bad"},  # invalid coords
+    ]
+
+    coords = extract_coordinates_from_cups_data(raw_data)
+    assert len(coords) == 2
+    assert coords[0] == (41.6745, -4.7272)
+    assert coords[1] == (40.4168, -3.7038)
+
+
+def test_extract_coordinates_from_cups_file(tmp_path: Path) -> None:
+    """extract_coordinates_from_cups_file reads and parses a JSON file on disk."""
+    cups_file = tmp_path / "cups.json"
+    cups_file.write_text(
+        json.dumps(
+            [
+                {"cups": "ES0021000000000001AA", "lat": "37.3891", "long": "-5.9845"},
+                {"cups": "ES0021000000000002BB", "lat": "37.3891", "long": "-5.9845"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    coords = extract_coordinates_from_cups_file(cups_file)
+    assert coords == [(37.3891, -5.9845)]
+
+    # Nonexistent file returns empty list
+    assert extract_coordinates_from_cups_file(tmp_path / "missing.json") == []
 
 
 # =========================================================================
@@ -133,7 +189,7 @@ def test_download_year_success_and_overwrite(tmp_path: Path) -> None:
         )
 
     assert out_file.exists()
-    assert out_file.name == "weather_2023.csv"
+    assert out_file.name == "2023_40.4168_-3.7038_weather.csv"
     assert len(df) == 24
     assert list(df.columns) == ["timestamp", "temperature", "cloud_cover", "weather_code"]
     assert result.overwritten is False
@@ -203,7 +259,7 @@ def test_weather_loader_discover_and_load(tmp_path: Path) -> None:
     weather_dir = tmp_path / "weather"
     weather_dir.mkdir()
 
-    csv_path = weather_dir / "weather_2024.csv"
+    csv_path = weather_dir / "2024_40.4168_-3.7038_weather.csv"
     csv_path.write_text(
         "timestamp,temperature,cloud_cover,weather_code\n"
         "2024-01-01 00:00:00,5.2,80,3\n"
@@ -232,7 +288,7 @@ def test_weather_loader_missing_year(tmp_path: Path) -> None:
 
 def test_weather_loader_missing_column(tmp_path: Path) -> None:
     """CSV missing required weather column raises IngestionError."""
-    csv_path = tmp_path / "weather_2024.csv"
+    csv_path = tmp_path / "2024_40.4168_-3.7038_weather.csv"
     csv_path.write_text(
         "timestamp,temperature,cloud_cover\n2024-01-01 00:00:00,5.2,80\n",
         encoding="utf-8",
@@ -247,13 +303,13 @@ def test_weather_loader_load_all(tmp_path: Path) -> None:
     weather_dir = tmp_path / "weather"
     weather_dir.mkdir()
 
-    f1 = weather_dir / "weather_2023.csv"
+    f1 = weather_dir / "2023_40.4168_-3.7038_weather.csv"
     f1.write_text(
         "timestamp,temperature,cloud_cover,weather_code\n2023-12-31 23:00:00,3.0,10,0\n",
         encoding="utf-8",
     )
 
-    f2 = weather_dir / "weather_2024.csv"
+    f2 = weather_dir / "2024_40.4168_-3.7038_weather.csv"
     f2.write_text(
         "timestamp,temperature,cloud_cover,weather_code\n2024-01-01 00:00:00,2.5,20,1\n",
         encoding="utf-8",
@@ -284,11 +340,21 @@ def test_cli_weather_missing_coordinates(tmp_path: Path) -> None:
     config_file = tmp_path / ".esd_config.json"
     save_config(AppConfig(latitude=None, longitude=None), path=config_file)
 
-    with patch("src.cli.load_config", return_value=load_config(config_file)):
+    with (
+        patch("src.cli.load_config", return_value=load_config(config_file)),
+        patch("src.cli.resolve_cups_config_path", return_value=None),
+    ):
         result = runner.invoke(app, ["weather", "--year", "2023"])
 
     assert result.exit_code != 0
     assert "Coordinates are required" in result.output
+
+
+def test_cli_weather_partial_coordinates_error() -> None:
+    """Providing only --latitude without --longitude exits with an error."""
+    result = runner.invoke(app, ["weather", "--year", "2023", "--latitude", "40.0"])
+    assert result.exit_code != 0
+    assert "Both --latitude and --longitude must be provided" in result.output
 
 
 def test_cli_weather_success_with_cli_coords(tmp_path: Path) -> None:
@@ -325,11 +391,53 @@ def test_cli_weather_success_with_cli_coords(tmp_path: Path) -> None:
     assert "OPEN-METEO HOURLY WEATHER INGESTION" in result.output
     assert "40.4168°N, 3.7038°W" in result.output
     assert "2023" in result.output
-    assert (weather_dir / "weather_2023.csv").exists()
+    assert (weather_dir / "2023_40.4168_-3.7038_weather.csv").exists()
+
+
+def test_cli_weather_uses_cups_file_deduplicated(tmp_path: Path) -> None:
+    """When coordinates not provided on CLI, reads cups.json and downloads each unique location once."""
+    weather_dir = tmp_path / "weather"
+    cups_file = tmp_path / "cups.json"
+    cups_file.write_text(
+        json.dumps(
+            [
+                {"cups": "ES0021000000000001AA", "lat": "41.67454314", "long": "-4.72721283"},
+                {"cups": "ES0021000000000002BB", "lat": "41.67454314", "long": "-4.72721283"},
+                {"cups": "ES0021000000000003CC", "lat": "41.67454314", "long": "-4.72721283"},
+                {"cups": "ES0021000000000004DD", "lat": "40.4168", "long": "-3.7038"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = _mock_open_meteo_response(hours_count=24)
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.__exit__.return_value = None
+
+    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+        result = runner.invoke(
+            app,
+            [
+                "weather",
+                "--year",
+                "2024",
+                "--cups-file",
+                str(cups_file),
+                "--weather-dir",
+                str(weather_dir),
+            ],
+        )
+
+    assert result.exit_code == 0
+    # Exactly 2 unique coordinates: exactly 2 downloads despite 4 entries in cups.json!
+    assert mock_urlopen.call_count == 2
+    assert (weather_dir / "2024_41.6745_-4.7272_weather.csv").exists()
+    assert (weather_dir / "2024_40.4168_-3.7038_weather.csv").exists()
 
 
 def test_cli_weather_uses_configured_coordinates(tmp_path: Path) -> None:
-    """Running weather command without CLI coords uses persisted coordinates from config."""
+    """Running weather command without CLI coords or cups.json uses persisted coordinates from config."""
     weather_dir = tmp_path / "weather"
     config_file = tmp_path / ".esd_config.json"
     save_config(
@@ -348,13 +456,14 @@ def test_cli_weather_uses_configured_coordinates(tmp_path: Path) -> None:
 
     with (
         patch("src.cli.load_config", return_value=load_config(config_file)),
+        patch("src.cli.resolve_cups_config_path", return_value=None),
         patch("urllib.request.urlopen", return_value=mock_resp),
     ):
         result = runner.invoke(app, ["weather", "--year", "2023"])
 
     assert result.exit_code == 0
     assert "37.3891°N, 5.9845°W" in result.output
-    assert (weather_dir / "weather_2023.csv").exists()
+    assert (weather_dir / "2023_37.3891_-5.9845_weather.csv").exists()
 
 
 def test_cli_weather_spanish_output(tmp_path: Path) -> None:

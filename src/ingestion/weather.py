@@ -8,11 +8,108 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import pandas as pd
 
 from src.ingestion.schema import IngestionError
+
+
+def format_weather_filename(year: int, latitude: float, longitude: float) -> str:
+    """Format concise weather CSV filename: {year}_{lat}_{lon}_weather.csv.
+
+    Example:
+        format_weather_filename(2024, 41.674543, -4.727212)
+        -> '2024_41.6745_-4.7272_weather.csv'
+    """
+    lat_str = f"{latitude:.4f}".rstrip("0").rstrip(".") or "0"
+    lon_str = f"{longitude:.4f}".rstrip("0").rstrip(".") or "0"
+    return f"{year}_{lat_str}_{lon_str}_weather.csv"
+
+
+def extract_coordinates_from_cups_data(
+    data: list[Any] | dict[str, Any],
+    precision: int = 4,
+) -> list[tuple[float, float]]:
+    """Extract and deduplicate geographical coordinates (lat, lon) from CUPS configuration.
+
+    Args:
+        data: Parsed JSON data (list of dictionaries or dictionary containing items).
+        precision: Decimal rounding precision for deduplication and concise filenames.
+
+    Returns:
+        List of unique (latitude, longitude) tuples.
+    """
+    items: list[Any] = []
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        for key in ("cups", "items", "data", "points"):
+            if isinstance(data.get(key), list):
+                items = data[key]
+                break
+        if not items:
+            items = [data]
+
+    unique_coords: list[tuple[float, float]] = []
+    seen: set[tuple[float, float]] = set()
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+
+        raw_lat = item.get("lat") or item.get("latitude") or item.get("latitud")
+        raw_lon = (
+            item.get("long")
+            or item.get("lon")
+            or item.get("lng")
+            or item.get("longitude")
+            or item.get("longitud")
+        )
+
+        if raw_lat is None or raw_lon is None:
+            continue
+
+        try:
+            lat_val = float(raw_lat)
+            lon_val = float(raw_lon)
+        except ValueError, TypeError:
+            continue
+
+        if not (-90.0 <= lat_val <= 90.0) or not (-180.0 <= lon_val <= 180.0):
+            continue
+
+        rounded_coord = (round(lat_val, precision), round(lon_val, precision))
+        if rounded_coord not in seen:
+            seen.add(rounded_coord)
+            unique_coords.append(rounded_coord)
+
+    return unique_coords
+
+
+def extract_coordinates_from_cups_file(
+    file_path: Path | str,
+    precision: int = 4,
+) -> list[tuple[float, float]]:
+    """Load CUPS JSON file and extract unique coordinates.
+
+    Args:
+        file_path: Path to cups.json file.
+        precision: Decimal rounding precision for deduplication.
+
+    Returns:
+        List of unique (latitude, longitude) tuples.
+    """
+    path = Path(file_path)
+    if not path.exists() or not path.is_file():
+        return []
+    try:
+        content = path.read_text(encoding="utf-8")
+        data = json.loads(content)
+        return extract_coordinates_from_cups_data(data, precision=precision)
+    except Exception:
+        return []
+
 
 # Official WMO weather code descriptions
 WMO_WEATHER_CODES: Final[dict[int, str]] = {
@@ -229,7 +326,8 @@ class OpenMeteoWeatherDownloader:
 
         # Ensure weather directory exists
         self.weather_dir.mkdir(parents=True, exist_ok=True)
-        out_file = self.weather_dir / f"weather_{year}.csv"
+        filename = format_weather_filename(year, latitude, longitude)
+        out_file = self.weather_dir / filename
         overwritten = out_file.exists()
 
         # Save to CSV (overwriting if it already exists)
@@ -285,27 +383,46 @@ class WeatherLoader:
             ]
         )
 
-    def load_year(self, year: int) -> pd.DataFrame:
-        """Load weather data for a specific calendar year.
+    def load_year(
+        self,
+        year: int,
+        latitude: float | None = None,
+        longitude: float | None = None,
+    ) -> pd.DataFrame:
+        """Load weather data for a specific calendar year and optional coordinates.
 
-        Looks for weather_{year}.csv or {year}.csv.
+        Looks for:
+        1. Exact coordinate file {year}_{lat}_{lon}_weather.csv (if coordinates specified)
+        2. Any {year}_*_weather.csv file
+        3. Legacy weather_{year}.csv or {year}.csv
         """
-        candidate1 = self.weather_dir / f"weather_{year}.csv"
-        candidate2 = self.weather_dir / f"{year}.csv"
+        candidates: list[Path] = []
+        if latitude is not None and longitude is not None:
+            exact_name = format_weather_filename(year, latitude, longitude)
+            candidates.append(self.weather_dir / exact_name)
 
-        target_file: Path | None = None
-        if candidate1.exists():
-            target_file = candidate1
-        elif candidate2.exists():
-            target_file = candidate2
+        if self.weather_dir.exists():
+            for f in sorted(self.weather_dir.iterdir()):
+                if not f.is_file() or f.suffix.lower() != ".csv" or f.name.startswith("."):
+                    continue
+                fname = f.name.lower()
+                year_str = str(year)
+                if (
+                    fname.startswith(f"{year_str}_")
+                    or fname.startswith(f"weather_{year_str}")
+                    or fname == f"{year_str}.csv"
+                ):
+                    if f not in candidates:
+                        candidates.append(f)
 
-        if target_file is None:
-            raise IngestionError(
-                f"No weather CSV found for year {year} in {self.weather_dir}. "
-                f"Run 'esd weather --year {year}' to download it."
-            )
+        for candidate in candidates:
+            if candidate.exists():
+                return self.parse_file(candidate)
 
-        return self.parse_file(target_file)
+        raise IngestionError(
+            f"No weather CSV found for year {year} in {self.weather_dir}. "
+            f"Run 'esd weather --year {year}' to download it."
+        )
 
     def parse_file(self, file_path: Path) -> pd.DataFrame:
         """Parse and validate a single weather CSV file."""

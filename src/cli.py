@@ -21,6 +21,7 @@ from src.config import (
     load_config,
     mark_initialized,
     normalize_language_code,
+    resolve_cups_config_path,
     save_config,
     set_language,
     set_precision,
@@ -32,6 +33,8 @@ from src.ingestion import (
     DataDoctor,
     EsdError,
     OpenMeteoWeatherDownloader,
+    WeatherDownloadResult,
+    extract_coordinates_from_cups_file,
 )
 from src.optimization import DistributionOptimizer, OptimizationStrategy
 from src.presentation.console import console
@@ -314,13 +317,19 @@ def weather_command(
         None,
         "--latitude",
         "--lat",
-        help="Geographical latitude coordinate (e.g. 40.4168). Overrides configured latitude.",
+        help="Geographical latitude coordinate (e.g. 40.4168). Overrides cups.json and config.",
     ),
     longitude: float | None = typer.Option(
         None,
         "--longitude",
         "--lon",
-        help="Geographical longitude coordinate (e.g. -3.7038). Overrides configured longitude.",
+        help="Geographical longitude coordinate (e.g. -3.7038). Overrides cups.json and config.",
+    ),
+    cups_file: Path | None = typer.Option(
+        None,
+        "--cups-file",
+        "-C",
+        help="Path to cups.json configuration file to extract coordinates from when not provided on CLI.",
     ),
     weather_dir: Path | None = typer.Option(
         None,
@@ -345,28 +354,53 @@ def weather_command(
     active_lang = normalize_language_code(lang) if lang else get_language()
     cfg = load_config()
 
-    lat = latitude if latitude is not None else cfg.latitude
-    lon = longitude if longitude is not None else cfg.longitude
+    # 1. Resolve coordinates to download
+    coords_to_download: list[tuple[float, float]] = []
 
-    if lat is None or lon is None:
+    if latitude is not None and longitude is not None:
+        coords_to_download = [(latitude, longitude)]
+    elif latitude is not None or longitude is not None:
+        console.print(
+            "[bold red]Error:[/bold red] Both --latitude and --longitude must be provided when specifying manual coordinates."
+        )
+        sys.exit(1)
+    else:
+        # Check cups.json configuration file
+        cups_path = resolve_cups_config_path(custom_path=cups_file, config=cfg)
+        if cups_path:
+            coords_to_download = extract_coordinates_from_cups_file(cups_path)
+
+        # Fallback to persistent configuration if cups.json didn't yield any coordinates
+        if not coords_to_download and cfg.latitude is not None and cfg.longitude is not None:
+            coords_to_download = [(cfg.latitude, cfg.longitude)]
+
+    if not coords_to_download:
         console.print(f"[bold red]Error:[/bold red] {t('err_coords_required', lang=active_lang)}")
         sys.exit(1)
 
     target_weather_dir = weather_dir or Path(cfg.weather_dir)
+    downloader = OpenMeteoWeatherDownloader(weather_dir=target_weather_dir)
 
     try:
-        with console.status(
-            f"[bold cyan]{t('status_weather', lang=active_lang, year=year)}[/bold cyan]"
-        ):
-            downloader = OpenMeteoWeatherDownloader(weather_dir=target_weather_dir)
-            _, _, result = downloader.download_year(
-                year=year,
-                latitude=lat,
-                longitude=lon,
-                timezone=timezone,
+        results: list[WeatherDownloadResult] = []
+        for lat, lon in coords_to_download:
+            coord_str = f"{abs(lat):.4f}°{'N' if lat >= 0 else 'S'}, {abs(lon):.4f}°{'E' if lon >= 0 else 'W'}"
+            status_text = (
+                f"[bold cyan]{t('status_weather_coord', lang=active_lang, year=year, coords=coord_str)}[/bold cyan]"
+                if len(coords_to_download) > 1
+                else f"[bold cyan]{t('status_weather', lang=active_lang, year=year)}[/bold cyan]"
             )
+            with console.status(status_text):
+                _, _, result = downloader.download_year(
+                    year=year,
+                    latitude=lat,
+                    longitude=lon,
+                    timezone=timezone,
+                )
+                results.append(result)
 
-        render_weather_result(result, lang=active_lang)
+        for result in results:
+            render_weather_result(result, lang=active_lang)
 
     except EsdError as err:
         console.print(f"\n[bold red]Error:[/bold red] {err}\n")
