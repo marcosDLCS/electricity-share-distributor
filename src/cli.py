@@ -262,6 +262,12 @@ def curate_command(
         "-m",
         help="Optional month filter (1-12).",
     ),
+    weather_dir: Path | None = typer.Option(
+        None,
+        "--weather-dir",
+        "-w",
+        help="Directory containing Open-Meteo hourly weather CSV files. Defaults to .input/weather.",
+    ),
     lang: str | None = typer.Option(
         None,
         "--lang",
@@ -271,17 +277,20 @@ def curate_command(
 ) -> None:
     """Reconcile DATADIS and Huawei time-series data and export curated CSV file."""
     active_lang = normalize_language_code(lang) if lang else get_language()
+    cfg = load_config()
 
     if not is_initialized():
         render_not_initialized_warning(lang=active_lang)
 
     try:
         with console.status(f"[bold cyan]{t('status_curating', lang=active_lang)}[/bold cyan]"):
+            target_weather_dir = weather_dir or Path(cfg.weather_dir)
             curator = DataCurator(
                 consumption_dir=consumption_dir,
                 generation_dir=generation_dir,
                 cups_config_path=cups_file,
                 curated_dir=curated_dir,
+                weather_dir=target_weather_dir,
             )
             dataset = curator.curate(year=year, month=month)
             csv_path = curator.export_csv(

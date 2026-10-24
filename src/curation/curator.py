@@ -12,6 +12,8 @@ from src.config import (
     DEFAULT_CUPS_CONFIG_PATH,
     DEFAULT_CURATED_DIR,
     DEFAULT_GENERATION_DIR,
+    DEFAULT_WEATHER_DIR,
+    load_config,
 )
 from src.curation.models import (
     CupsConfig,
@@ -29,12 +31,19 @@ from src.ingestion.schema import (
     AlignmentError,
     IngestionSummary,
 )
+from src.ingestion.weather import (
+    OpenMeteoWeatherDownloader,
+    WeatherLoader,
+    extract_coordinates_from_cups_file,
+)
 
 
 def dataframe_to_aligned_dataset(
     df: pd.DataFrame,
     year: int | None = None,
     month: int | None = None,
+    primary_cups: str | None = None,
+    cups_config_path: Path | str | None = None,
 ) -> AlignedDataset:
     """Convert a curated DataFrame into an AlignedDataset for calculation.
 
@@ -42,6 +51,8 @@ def dataframe_to_aligned_dataset(
         df: Curated DataFrame containing timestamp, cups_id, consumption, and generation.
         year: Optional calendar year filter.
         month: Optional calendar month filter (1-12).
+        primary_cups: Optional pre-resolved primary CUPS identifier.
+        cups_config_path: Optional path to cups.json configuration file.
 
     Returns:
         AlignedDataset with pivoted consumption and generation series.
@@ -100,21 +111,21 @@ def dataframe_to_aligned_dataset(
                 cups_uses[str(cups)] = str(use_val).strip()
 
     # Extract primary CUPS if available
-    primary_cups: str | None = None
-    if "primary" in df_clean.columns:
+    resolved_primary = primary_cups
+    if not resolved_primary and "primary" in df_clean.columns:
         pri_mask = df_clean["primary"].astype(str).str.lower().isin(["true", "1"])
         pri_rows = df_clean[pri_mask]
         if not pri_rows.empty:
             cand = str(pri_rows["cups_id"].iloc[0])
             if cand in cups_list:
-                primary_cups = cand
+                resolved_primary = cand
 
-    if not primary_cups:
+    if not resolved_primary:
         try:
-            cfg = DataCurator().load_cups_config()
+            cfg = DataCurator(cups_config_path=cups_config_path).load_cups_config()
             cand = next((c.cups for c in cfg.values() if c.primary), None)
             if cand and cand in cups_list:
-                primary_cups = cand
+                resolved_primary = cand
         except Exception:
             pass
 
@@ -141,7 +152,7 @@ def dataframe_to_aligned_dataset(
         metadata=summary,
         monthly_groups=monthly_groups,
         cups_uses=cups_uses,
-        primary_cups=primary_cups,
+        primary_cups=resolved_primary,
     )
 
 
@@ -169,14 +180,16 @@ class DataCurator:
         generation_dir: Path | str = DEFAULT_GENERATION_DIR,
         cups_config_path: Path | str | None = None,
         curated_dir: Path | str = DEFAULT_CURATED_DIR,
+        weather_dir: Path | str = DEFAULT_WEATHER_DIR,
     ) -> None:
         self.consumption_dir = Path(consumption_dir)
         self.generation_dir = Path(generation_dir)
         self.cups_config_path = Path(cups_config_path) if cups_config_path else None
         self.curated_dir = Path(curated_dir)
+        self.weather_dir = Path(weather_dir)
 
     def load_cups_config(self) -> dict[str, CupsConfig]:
-        """Discover and parse CUPS configuration file containing uses and primary flags.
+        """Discover and parse CUPS configuration file containing uses, primary flags, and coordinates.
 
         Returns:
             Dictionary mapping CUPS string identifiers to CupsConfig instances.
@@ -224,9 +237,85 @@ class DataCurator:
                 continue
             use = str(item.get("use") or "").strip()
             primary = bool(item.get("primary", False))
-            configs[cups_id] = CupsConfig(cups=cups_id, use=use, primary=primary)
+
+            lat_val: float | None = None
+            lon_val: float | None = None
+            raw_lat = item.get("lat") or item.get("latitude") or item.get("latitud")
+            raw_lon = (
+                item.get("long")
+                or item.get("lon")
+                or item.get("lng")
+                or item.get("longitude")
+                or item.get("longitud")
+            )
+            if raw_lat is not None and raw_lon is not None:
+                try:
+                    f_lat = float(raw_lat)
+                    f_lon = float(raw_lon)
+                    if -90.0 <= f_lat <= 90.0 and -180.0 <= f_lon <= 180.0:
+                        lat_val = f_lat
+                        lon_val = f_lon
+                except ValueError, TypeError:
+                    pass
+
+            configs[cups_id] = CupsConfig(
+                cups=cups_id,
+                use=use,
+                primary=primary,
+                latitude=lat_val,
+                longitude=lon_val,
+            )
 
         return configs
+
+    def get_default_location(
+        self,
+        cups_configs: dict[str, CupsConfig] | None = None,
+    ) -> tuple[float, float] | None:
+        """Resolve the default geographical location (latitude, longitude) for the community.
+
+        Resolution order:
+        1. Primary CUPS coordinates from cups.json.
+        2. First available CUPS coordinates from cups.json.
+        3. Coordinates extracted directly from cups_config_path file.
+        4. Global persistent configuration coordinates (cfg.latitude, cfg.longitude).
+
+        Returns:
+            Tuple of (latitude, longitude) rounded to 4 decimals, or None if not configured.
+        """
+        configs = cups_configs if cups_configs is not None else self.load_cups_config()
+
+        # 1. Primary CUPS coordinates take first priority
+        for cfg in configs.values():
+            if cfg.primary and cfg.latitude is not None and cfg.longitude is not None:
+                return (round(cfg.latitude, 4), round(cfg.longitude, 4))
+
+        # 2. Any other participating CUPS coordinates
+        for cfg in configs.values():
+            if cfg.latitude is not None and cfg.longitude is not None:
+                return (round(cfg.latitude, 4), round(cfg.longitude, 4))
+
+        # 3. Direct extraction from cups configuration file if configs was empty
+        candidate_paths: list[Path] = []
+        if self.cups_config_path:
+            candidate_paths.append(self.cups_config_path)
+        else:
+            candidate_paths.extend(
+                [DEFAULT_CUPS_CONFIG_PATH, Path(".input/cups.json"), Path("cups.json")]
+            )
+        for cp in candidate_paths:
+            if cp.exists() and cp.is_file():
+                coords = extract_coordinates_from_cups_file(cp)
+                if coords:
+                    return coords[0]
+
+        # 4. Fallback to persistent configuration if custom cups config not specified
+        if not self.cups_config_path:
+            app_cfg = load_config()
+            if app_cfg.latitude is not None and app_cfg.longitude is not None:
+                return (round(app_cfg.latitude, 4), round(app_cfg.longitude, 4))
+
+        return None
 
     def curate(
         self,
@@ -289,6 +378,53 @@ class DataCurator:
             g_df.set_index("timestamp")["consumption_kwh"] if g_has_cons else pd.Series(dtype=float)
         )
 
+        # Determine all calendar years present in the aligned dataset
+        years_present = sorted({int(str(ts)[:4]) for ts in aligned.data.index})
+
+        # Resolve cups default location (latitude, longitude)
+        default_coords = self.get_default_location(cups_configs)
+
+        # Build hourly weather lookup mapping: timestamp_str -> (temperature, cloud_cover)
+        weather_map: dict[str, tuple[float | None, int | None]] = {}
+        weather_loader = WeatherLoader(self.weather_dir)
+        weather_downloader = OpenMeteoWeatherDownloader(self.weather_dir)
+
+        for yr in years_present:
+            yr_df: pd.DataFrame | None = None
+            lat = default_coords[0] if default_coords else None
+            lon = default_coords[1] if default_coords else None
+
+            # 1. Try loading existing weather data from disk
+            try:
+                yr_df = weather_loader.load_year(year=yr, latitude=lat, longitude=lon)
+            except Exception:
+                yr_df = None
+
+            # 2. If weather data is not available, execute the weather fetch automatically
+            if yr_df is None and default_coords is not None:
+                try:
+                    _, yr_df, _ = weather_downloader.download_year(
+                        year=yr,
+                        latitude=default_coords[0],
+                        longitude=default_coords[1],
+                    )
+                except Exception:
+                    yr_df = None
+
+            # 3. Map hourly weather readings by standard timestamp string
+            if yr_df is not None and not yr_df.empty:
+                ts_series = pd.to_datetime(yr_df["timestamp"], errors="coerce").dt.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                for ts_fmt, temp, cloud in zip(
+                    ts_series, yr_df["temperature"], yr_df["cloud_cover"], strict=False
+                ):
+                    if pd.isna(ts_fmt):
+                        continue
+                    temp_val = round(float(temp), 1) if pd.notna(temp) else None
+                    cloud_val = round(float(cloud)) if pd.notna(cloud) else None
+                    weather_map[str(ts_fmt)] = (temp_val, cloud_val)
+
         records: list[CuratedHourRecord] = []
         total_gen_kwh = 0.0
         total_cons_kwh = 0.0
@@ -329,16 +465,19 @@ class DataCurator:
                 is_reconciled = False
                 final_cons = datadis_cons
 
-                # Reconcile primary CUPS if Huawei consumption reading is present and positive
-                if cfg.primary and hw_cons_val is not None and hw_cons_val > 0:
-                    final_cons = hw_cons_val
-                    # It's a genuine reconciliation if DATADIS reported 0 or significantly less
-                    if datadis_cons <= 0.001 or (hw_cons_val - datadis_cons) > 0.01:
-                        is_reconciled = True
-                        diff = max(0.0, hw_cons_val - datadis_cons)
-                        recovered_kwh += diff
-                        reconciled_hours_set.add(ts_str)
-                        cups_reconciled_counts[cups_id] += 1
+                # For primary CUPS: always get the higher consumption between DATADIS or the solar inverter data
+                if cfg.primary and hw_cons_val is not None:
+                    if hw_cons_val > datadis_cons:
+                        final_cons = hw_cons_val
+                        # Genuine reconciliation when inverter reveals higher behind-the-meter load
+                        if (hw_cons_val - datadis_cons) > 0.001:
+                            is_reconciled = True
+                            diff = hw_cons_val - datadis_cons
+                            recovered_kwh += diff
+                            reconciled_hours_set.add(ts_str)
+                            cups_reconciled_counts[cups_id] += 1
+                    else:
+                        final_cons = datadis_cons
 
                 cups_total_cons[cups_id] += final_cons
                 hour_cons_sum += final_cons
@@ -353,9 +492,15 @@ class DataCurator:
                     )
                 )
 
+            cups_readings.sort(key=lambda c: (str(c.use or "").strip().lower(), str(c.id).lower()))
+
             total_cons_kwh += hour_cons_sum
             surplus = max(0.0, gen_val - hour_cons_sum)
             grid_demand = max(0.0, hour_cons_sum - gen_val)
+
+            # Weather readings for this interval if present
+            w_reading = weather_map.get(ts_str)
+            temp_val, cloud_val = w_reading if w_reading is not None else (None, None)
 
             records.append(
                 CuratedHourRecord(
@@ -367,6 +512,8 @@ class DataCurator:
                     total_consumption=format_energy_value(hour_cons_sum),
                     solar_surplus=format_energy_value(surplus),
                     net_grid_demand=format_energy_value(grid_demand),
+                    temperature=temp_val,
+                    cloud_cover=cloud_val,
                 )
             )
 
@@ -441,7 +588,18 @@ class DataCurator:
         target_dir.mkdir(parents=True, exist_ok=True)
         csv_path = target_dir / f"{base_name}.csv"
         if not force and csv_path.exists() and csv_path.stat().st_size > 0:
-            return csv_path
+            try:
+                first_line = csv_path.read_text(encoding="utf-8").splitlines()[0]
+                cols = [c.strip() for c in first_line.split(",")]
+                if (
+                    "temperature" in cols
+                    and "cloud_cover" in cols
+                    and "primary" not in cols
+                    and "reconciled" not in cols
+                ):
+                    return csv_path
+            except Exception:
+                pass
 
         dataset = self.curate()
         return self.export_csv(
@@ -458,6 +616,7 @@ class DataCurator:
         year: int | None = None,
         month: int | None = None,
         delimiter: str | None = None,
+        cups_config_path: Path | str | None = None,
     ) -> AlignedDataset:
         """Load curated CSV file and reconstruct an AlignedDataset for calculation.
 
@@ -501,4 +660,9 @@ class DataCurator:
         except Exception as err:
             raise CurationError(f"Failed to read curated CSV '{path}': {err}") from err
 
-        return dataframe_to_aligned_dataset(df, year=year, month=month)
+        return dataframe_to_aligned_dataset(
+            df,
+            year=year,
+            month=month,
+            cups_config_path=cups_config_path,
+        )

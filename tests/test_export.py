@@ -223,6 +223,7 @@ def test_export_hourly_files(tmp_path: Path) -> None:
                 "timestamp": f"2026-05-01 {h}:00:00",
                 "hour": int(h),
                 "cups": cups_list[0],
+                "use": "Portal 1",
                 "consumption_kwh": 2.4,
                 "generation_kwh": 5.0,
                 "share_pct": "60%",
@@ -234,6 +235,7 @@ def test_export_hourly_files(tmp_path: Path) -> None:
                 "timestamp": f"2026-05-01 {h}:00:00",
                 "hour": int(h),
                 "cups": cups_list[1],
+                "use": "Aerotermia",
                 "consumption_kwh": 1.6,
                 "generation_kwh": 5.0,
                 "share_pct": "40%",
@@ -251,10 +253,17 @@ def test_export_hourly_files(tmp_path: Path) -> None:
     assert shares_path.exists()
     shares_content = shares_path.read_text(encoding="utf-8")
     assert (
-        "timestamp;hour;cups;consumption_kwh;generation_kwh;share_pct;estimated_share_pct"
+        "timestamp;hour;cups;use;consumption_kwh;generation_kwh;share_pct;estimated_share_pct"
         in shares_content
     )
     assert "ES0021000000000001AA" in shares_content
+
+    # Verify that within the same timestamp, Aerotermia appears before Portal 1
+    lines = shares_content.strip().splitlines()
+    assert len(lines) == 1 + (len(hours) * 2)
+    # Line 1: Header, Line 2: 2026-05-01 00:00:00 with Aerotermia, Line 3: 2026-05-01 00:00:00 with Portal 1
+    assert "Aerotermia" in lines[1]
+    assert "Portal 1" in lines[2]
 
     matrix_path = export_hourly_profile_matrix_csv(
         opt_result, tmp_path, precision=0, timestamp="20260531_120000"

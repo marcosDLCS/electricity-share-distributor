@@ -562,6 +562,17 @@ class DistributionOptimizer:
             else:
                 rounded_betas[t] = cls._round_betas(raw_betas[t], precision=precision)
 
+        # Resolve CUPS functional uses for labeling and sorting
+        cups_uses: dict[str, str] = getattr(aligned_dataset, "cups_uses", {}) or {}
+        if not cups_uses:
+            try:
+                from src.curation.curator import DataCurator
+
+                cfg = DataCurator().load_cups_config()
+                cups_uses = {c.cups: c.use for c in cfg.values()}
+            except Exception:
+                cups_uses = {}
+
         # Build simplified long-format hourly time series
         ts_rows: list[dict[str, object]] = []
         for t in range(t_steps):
@@ -582,11 +593,14 @@ class DistributionOptimizer:
                     if est_share == "—":
                         est_share = actual_share
 
+                use_val = cups_uses.get(cups, "")
+
                 ts_rows.append(
                     {
                         "timestamp": ts_str,
                         "hour": h_int,
                         "cups": cups,
+                        "use": use_val,
                         "consumption_kwh": cons_val,
                         "generation_kwh": gen_val,
                         "share_pct": actual_share,
@@ -595,6 +609,13 @@ class DistributionOptimizer:
                 )
 
         ts_df = pd.DataFrame(ts_rows)
+        if not ts_df.empty:
+            sort_cols = [c for c in ["timestamp", "use", "cups"] if c in ts_df.columns]
+            ts_df = ts_df.sort_values(
+                by=sort_cols,
+                key=lambda col: col.astype(str).str.lower() if col.name in ("use", "cups") else col,
+                ascending=[True] * len(sort_cols),
+            ).reset_index(drop=True)
 
         return HourlyOptimizationResult(
             profile_matrix=profile_matrix,

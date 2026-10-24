@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import openpyxl
+import pandas as pd
 import pytest
 from typer.testing import CliRunner
 
@@ -233,9 +235,11 @@ def test_curation_exports_csv(tmp_path: Path) -> None:
     csv_lines = csv_path.read_text(encoding="utf-8").strip().splitlines()
     assert len(csv_lines) == 25  # 1 header + 24 rows
     header = csv_lines[0]
-    assert header == "timestamp,generation,cups_id,use,consumption,primary,reconciled"
+    assert header == "timestamp,generation,cups_id,use,consumption,temperature,cloud_cover"
     assert "date" not in header.split(",")
     assert "hour" not in header.split(",")
+    assert "primary" not in header.split(",")
+    assert "reconciled" not in header.split(",")
     assert pri_cups in csv_lines[1]
     assert "Comunidad" in csv_lines[1]
     assert "2026-05-01 00:00:00" in csv_lines[1]
@@ -522,3 +526,326 @@ def test_curated_data_loads_primary_cups_and_hourly_assigns_100_percent_night(
                 assert share == "100%"
             else:
                 assert share == "0%"
+
+
+def test_curation_with_existing_weather_data(tmp_path: Path) -> None:
+    """Verify that curate populates temperature and cloud_cover when weather file exists."""
+    import pandas as pd
+
+    cons_dir = tmp_path / "consumption"
+    gen_dir = tmp_path / "generation"
+    weather_dir = tmp_path / "weather"
+    curated_dir = tmp_path / "curated"
+    cons_dir.mkdir()
+    gen_dir.mkdir()
+    weather_dir.mkdir()
+
+    pri_cups = "ES0021000000000001AA"
+    create_mock_datadis_csv(cons_dir / f"{pri_cups}.csv", pri_cups)
+    create_mock_huawei_excel(gen_dir / "gen.xlsx")
+
+    # Synthetic coordinates
+    lat = 40.4168
+    lon = -3.7038
+    cups_file = tmp_path / "cups.json"
+    cups_file.write_text(
+        json.dumps(
+            [{"cups": pri_cups, "use": "Aerotermia", "primary": True, "lat": lat, "long": lon}]
+        ),
+        encoding="utf-8",
+    )
+
+    # Create mock weather CSV for 2026
+    weather_file = weather_dir / "2026_40.4168_-3.7038_weather.csv"
+    weather_rows = ["timestamp,temperature,cloud_cover,weather_code"]
+    for h in range(24):
+        weather_rows.append(f"2026-05-01 {h:02d}:00:00,18.5,35,1")
+    weather_file.write_text("\n".join(weather_rows), encoding="utf-8")
+
+    curator = DataCurator(
+        consumption_dir=cons_dir,
+        generation_dir=gen_dir,
+        cups_config_path=cups_file,
+        curated_dir=curated_dir,
+        weather_dir=weather_dir,
+    )
+    dataset = curator.curate()
+
+    assert dataset.summary.total_hours == 24
+    rec_noon = next(r for r in dataset.records if r.hour == "12:00")
+    assert rec_noon.temperature == 18.5
+    assert rec_noon.cloud_cover == 35
+
+    csv_path = curator.export_csv(dataset, curated_dir=curated_dir, base_name="weather_curated")
+    df = pd.read_csv(csv_path)
+    assert "temperature" in df.columns
+    assert "cloud_cover" in df.columns
+    assert "primary" not in df.columns
+    assert "reconciled" not in df.columns
+    assert float(df["temperature"].iloc[12]) == 18.5
+    assert int(df["cloud_cover"].iloc[12]) == 35
+
+
+def test_curation_auto_fetches_weather_when_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify that curate automatically executes weather download using cups default location when missing."""
+    import pandas as pd
+
+    cons_dir = tmp_path / "consumption"
+    gen_dir = tmp_path / "generation"
+    weather_dir = tmp_path / "weather"
+    curated_dir = tmp_path / "curated"
+    cons_dir.mkdir()
+    gen_dir.mkdir()
+    weather_dir.mkdir()
+
+    pri_cups = "ES0021000000000001AA"
+    create_mock_datadis_csv(cons_dir / f"{pri_cups}.csv", pri_cups)
+    create_mock_huawei_excel(gen_dir / "gen.xlsx")
+
+    lat = 40.4168
+    lon = -3.7038
+    cups_file = tmp_path / "cups.json"
+    cups_file.write_text(
+        json.dumps(
+            [{"cups": pri_cups, "use": "Aerotermia", "primary": True, "lat": lat, "long": lon}]
+        ),
+        encoding="utf-8",
+    )
+
+    download_calls: list[dict[str, Any]] = []
+
+    def mock_download_year(
+        self: Any,
+        year: int,
+        latitude: float,
+        longitude: float,
+        timezone: str = "auto",
+        timeout_seconds: int = 30,
+    ) -> tuple[Path, pd.DataFrame, Any]:
+        download_calls.append({"year": year, "latitude": latitude, "longitude": longitude})
+        timestamps = [f"{year}-05-01 {h:02d}:00:00" for h in range(24)]
+        df_mock = pd.DataFrame(
+            {
+                "timestamp": timestamps,
+                "temperature": [22.4] * 24,
+                "cloud_cover": [10] * 24,
+                "weather_code": [0] * 24,
+            }
+        )
+        out_csv = self.weather_dir / f"{year}_{latitude:.4f}_{longitude:.4f}_weather.csv"
+        df_mock.to_csv(out_csv, index=False)
+        return out_csv, df_mock, None
+
+    from src.ingestion.weather import OpenMeteoWeatherDownloader
+
+    monkeypatch.setattr(OpenMeteoWeatherDownloader, "download_year", mock_download_year)
+
+    curator = DataCurator(
+        consumption_dir=cons_dir,
+        generation_dir=gen_dir,
+        cups_config_path=cups_file,
+        curated_dir=curated_dir,
+        weather_dir=weather_dir,
+    )
+    dataset = curator.curate()
+
+    # Verify download was triggered automatically with cups default location
+    assert len(download_calls) == 1
+    assert download_calls[0]["year"] == 2026
+    assert download_calls[0]["latitude"] == lat
+    assert download_calls[0]["longitude"] == lon
+
+    # Verify curated record has the downloaded weather data
+    rec = dataset.records[0]
+    assert rec.temperature == 22.4
+    assert rec.cloud_cover == 10
+
+
+def test_curation_without_coordinates_leaves_weather_empty(tmp_path: Path) -> None:
+    """Verify that curate runs gracefully without error when no coordinates are configured."""
+    import pandas as pd
+
+    cons_dir = tmp_path / "consumption"
+    gen_dir = tmp_path / "generation"
+    curated_dir = tmp_path / "curated"
+    weather_dir = tmp_path / "weather"
+    cons_dir.mkdir()
+    gen_dir.mkdir()
+    weather_dir.mkdir()
+
+    pri_cups = "ES0021000000000001AA"
+    create_mock_datadis_csv(cons_dir / f"{pri_cups}.csv", pri_cups)
+    create_mock_huawei_excel(gen_dir / "gen.xlsx")
+
+    # cups.json without lat/long
+    cups_file = tmp_path / "cups.json"
+    cups_file.write_text(
+        json.dumps([{"cups": pri_cups, "use": "Aerotermia", "primary": True}]),
+        encoding="utf-8",
+    )
+
+    curator = DataCurator(
+        consumption_dir=cons_dir,
+        generation_dir=gen_dir,
+        cups_config_path=cups_file,
+        curated_dir=curated_dir,
+        weather_dir=weather_dir,
+    )
+    dataset = curator.curate()
+
+    assert dataset.summary.total_hours == 24
+    assert dataset.records[0].temperature is None
+    assert dataset.records[0].cloud_cover is None
+
+    csv_path = curator.export_csv(dataset, curated_dir=curated_dir, base_name="empty_weather")
+    df = pd.read_csv(csv_path)
+    assert "temperature" in df.columns
+    assert "cloud_cover" in df.columns
+    assert df["temperature"].isna().all()
+    assert df["cloud_cover"].isna().all()
+
+
+def test_cli_curate_with_weather_dir(tmp_path: Path) -> None:
+    """Test invoking 'esd curate' CLI command with custom --weather-dir option."""
+    cons_dir = tmp_path / "consumption"
+    gen_dir = tmp_path / "generation"
+    curated_dir = tmp_path / "curated"
+    weather_dir = tmp_path / "weather"
+    cons_dir.mkdir()
+    gen_dir.mkdir()
+    curated_dir.mkdir()
+    weather_dir.mkdir()
+
+    pri_cups = "ES0021000000000001AA"
+    create_mock_datadis_csv(cons_dir / f"{pri_cups}.csv", pri_cups)
+    create_mock_huawei_excel(gen_dir / "gen.xlsx")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "curate",
+            "--consumption-dir",
+            str(cons_dir),
+            "--generation-dir",
+            str(gen_dir),
+            "--curated-dir",
+            str(curated_dir),
+            "--weather-dir",
+            str(weather_dir),
+            "--name",
+            "cli_weather_curated",
+        ],
+    )
+    assert result.exit_code == 0
+    assert (curated_dir / "cli_weather_curated.csv").exists()
+
+
+def test_primary_cups_always_gets_higher_consumption(tmp_path: Path) -> None:
+    """Verify that primary CUPS always adopts the higher consumption between DATADIS and the inverter."""
+    cons_dir = tmp_path / "consumption"
+    gen_dir = tmp_path / "generation"
+    curated_dir = tmp_path / "curated"
+    cons_dir.mkdir()
+    gen_dir.mkdir()
+
+    pri_cups = "ES0021000000000001AA"
+    sec_cups = "ES0021000000000002BB"
+
+    # DATADIS: primary has 0.0 during solar hours (9-18) and 5.0 at night
+    create_mock_datadis_csv(
+        cons_dir / f"{pri_cups}.csv", pri_cups, solar_cons_val=0.0, night_cons_val=5.0
+    )
+    create_mock_datadis_csv(
+        cons_dir / f"{sec_cups}.csv", sec_cups, solar_cons_val=1.0, night_cons_val=1.0
+    )
+
+    # Inverter: has 8.5 during solar hours (8-17) and 2.0 at night
+    # During solar peak (12:00): inverter (8.5) > datadis (0.0) -> picks 8.5
+    # During night (22:00): datadis (5.0) > inverter (2.0) -> picks 5.0 (the higher!)
+    create_mock_huawei_excel(gen_dir / "gen.xlsx", solar_gen=12.0, solar_cons=8.5, night_cons=2.0)
+
+    cups_file = tmp_path / "cups.json"
+    cups_file.write_text(
+        json.dumps(
+            [
+                {"cups": pri_cups, "use": "Aerotermia", "primary": True},
+                {"cups": sec_cups, "use": "piscina", "primary": False},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    curator = DataCurator(
+        consumption_dir=cons_dir,
+        generation_dir=gen_dir,
+        cups_config_path=cups_file,
+        curated_dir=curated_dir,
+    )
+    dataset = curator.curate()
+
+    # Hour 12:00: inverter (8.5) > datadis (0.0) -> picks 8.5
+    rec_noon = next(r for r in dataset.records if r.hour == "12:00")
+    pri_reading_noon = next(c for c in rec_noon.cups if c.id == pri_cups)
+    assert pri_reading_noon.consumption == 8.5
+    assert pri_reading_noon.reconciled is True
+
+    # Hour 22:00: datadis (5.0) > inverter (2.0) -> picks 5.0 (the higher!)
+    rec_night = next(r for r in dataset.records if r.hour == "22:00")
+    pri_reading_night = next(c for c in rec_night.cups if c.id == pri_cups)
+    assert pri_reading_night.consumption == 5
+    assert pri_reading_night.reconciled is False
+
+
+def test_curation_csv_ordering_by_date_and_use(tmp_path: Path) -> None:
+    """Verify that curated.csv rows are ordered first by date/timestamp and then by use alphabetically."""
+    cons_dir = tmp_path / "consumption"
+    gen_dir = tmp_path / "generation"
+    curated_dir = tmp_path / "curated"
+    cons_dir.mkdir()
+    gen_dir.mkdir()
+
+    cups_portal = "ES0021000000000001AA"
+    cups_aero = "ES0021000000000002BB"
+    cups_garaje = "ES0021000000000003CC"
+
+    create_mock_datadis_csv(cons_dir / f"{cups_portal}.csv", cups_portal)
+    create_mock_datadis_csv(cons_dir / f"{cups_aero}.csv", cups_aero)
+    create_mock_datadis_csv(cons_dir / f"{cups_garaje}.csv", cups_garaje)
+    create_mock_huawei_excel(gen_dir / "gen.xlsx")
+
+    # Define uses intentionally in non-alphabetical order
+    cups_file = tmp_path / "cups.json"
+    cups_file.write_text(
+        json.dumps(
+            [
+                {"cups": cups_portal, "use": "Portal 1", "primary": False},
+                {"cups": cups_aero, "use": "Aerotermia", "primary": True},
+                {"cups": cups_garaje, "use": "Garaje", "primary": False},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    curator = DataCurator(
+        consumption_dir=cons_dir,
+        generation_dir=gen_dir,
+        cups_config_path=cups_file,
+        curated_dir=curated_dir,
+    )
+    dataset = curator.curate()
+    csv_path = curator.export_csv(dataset, curated_dir=curated_dir, base_name="curated_sorted")
+
+    df = pd.read_csv(csv_path)
+    timestamps = df["timestamp"].unique()
+    assert len(timestamps) == 24
+    # Ensure timestamps are strictly non-decreasing
+    assert list(timestamps) == sorted(timestamps)
+
+    # For each timestamp, verify uses are ordered alphabetically: Aerotermia, Garaje, Portal 1
+    for ts in timestamps:
+        ts_slice = df[df["timestamp"] == ts]
+        uses = ts_slice["use"].tolist()
+        assert uses == ["Aerotermia", "Garaje", "Portal 1"]

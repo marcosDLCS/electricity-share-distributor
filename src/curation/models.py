@@ -23,11 +23,15 @@ class CupsConfig:
         cups: Universal supply point identifier code.
         use: Functional human-readable description of this supply point (e.g., 'piscina').
         primary: Whether this CUPS is the primary point connected to the PV generation plant.
+        latitude: Optional geographical latitude coordinate.
+        longitude: Optional geographical longitude coordinate.
     """
 
     cups: str
     use: str = ""
     primary: bool = False
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 @dataclass
@@ -72,6 +76,8 @@ class CuratedHourRecord:
         total_consumption: Sum of consumption across all participating CUPS for this hour.
         solar_surplus: Surplus generation exceeding collective demand (kWh).
         net_grid_demand: Net grid electricity demand exceeding solar generation (kWh).
+        temperature: Ambient temperature in degrees Celsius (°C), if available.
+        cloud_cover: Cloud cover percentage (0-100%), if available.
     """
 
     date: str
@@ -82,6 +88,8 @@ class CuratedHourRecord:
     total_consumption: float | int = 0
     solar_surplus: float | int = 0
     net_grid_demand: float | int = 0
+    temperature: float | None = None
+    cloud_cover: int | float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary conforming to the target JSON specification."""
@@ -94,6 +102,8 @@ class CuratedHourRecord:
             "total_consumption": self.total_consumption,
             "solar_surplus": self.solar_surplus,
             "net_grid_demand": self.net_grid_demand,
+            "temperature": self.temperature,
+            "cloud_cover": self.cloud_cover,
         }
 
 
@@ -139,11 +149,27 @@ class CuratedDataset:
                         "cups_id": c.id,
                         "use": c.use,
                         "consumption": c.consumption,
-                        "primary": c.primary,
-                        "reconciled": c.reconciled,
+                        "temperature": r.temperature,
+                        "cloud_cover": r.cloud_cover,
                     }
                 )
-        return pd.DataFrame(rows)
+        df = pd.DataFrame(rows)
+        if not df.empty:
+            if "cloud_cover" in df.columns:
+                df["cloud_cover"] = pd.to_numeric(df["cloud_cover"], errors="coerce").astype(
+                    "Int64"
+                )
+            if "temperature" in df.columns:
+                df["temperature"] = pd.to_numeric(df["temperature"], errors="coerce").round(1)
+            sort_cols = [col for col in ["timestamp", "use", "cups_id"] if col in df.columns]
+            df = df.sort_values(
+                by=sort_cols,
+                key=lambda col: (
+                    col.astype(str).str.lower() if col.name in ("use", "cups_id") else col
+                ),
+                ascending=[True] * len(sort_cols),
+            ).reset_index(drop=True)
+        return df
 
     def to_aligned_dataset(
         self,
@@ -153,4 +179,13 @@ class CuratedDataset:
         """Convert in-memory curated dataset into AlignedDataset for calculation."""
         from src.curation.curator import dataframe_to_aligned_dataset
 
-        return dataframe_to_aligned_dataset(self.to_dataframe(), year=year, month=month)
+        primary = self.summary.primary_cups
+        if not primary and self.cups_configs:
+            primary = next((c.cups for c in self.cups_configs.values() if c.primary), None)
+
+        return dataframe_to_aligned_dataset(
+            self.to_dataframe(),
+            year=year,
+            month=month,
+            primary_cups=primary,
+        )

@@ -77,11 +77,11 @@ Whenever the utility meter reports zero (or artificially low power) while the in
 ### The Curated Result (`.curated/curated.csv`)
 The output is a single, clean, standardized table:
 ```csv
-timestamp,generation,cups_id,use,consumption,primary,reconciled
-2026-05-01 12:00:00,12.5,ES0021000000000001AA,Aerotermia,8.5,True,True
-2026-05-01 12:00:00,12.5,ES0021000000000002BB,Garaje,1.2,False,False
+timestamp,generation,cups_id,use,consumption,temperature,cloud_cover
+2026-05-01 12:00:00,12.5,ES0021000000000001AA,Aerotermia,8.5,21.4,12
+2026-05-01 12:00:00,12.5,ES0021000000000002BB,Garaje,1.2,21.4,12
 ```
-Every row clearly marks whether a reading was reconciled, ensuring full auditability.
+For the primary installation point, `esd` always adopts the higher consumption between the utility (DATADIS) and the solar inverter smart power sensor ($\max(C_{\text{DATADIS}}, C_{\text{inverter}})$). This guarantees full equipment demand is captured while avoiding fake zero underreporting. The CSV is ordered chronologically by timestamp (date/hour) and within each timestamp alphabetically by facility use. Furthermore, each hourly record includes local weather context (`temperature` in °C and `cloud_cover` percentage from 0 to 100%). If weather data is not already stored locally in `.input/weather/`, `esd curate` automatically queries Open-Meteo using the community's default location from `.input/cups/cups.json`.
 
 ---
 
@@ -89,8 +89,8 @@ Every row clearly marks whether a reading was reconciled, ensuring full auditabi
 
 `esd` incorporates several practical rules to make community calculations robust and DSO-compliant:
 
-### 1. Behind-the-Meter Fake Zero Detection
-For the community supply designated as primary, whenever the solar inverter records active equipment consumption during hours with solar production, `esd` checks if the utility reported zero or significantly less power. If so, it restores the inverter's true reading and records the exact kWh recovered.
+### 1. Behind-the-Meter Fake Zero Detection & Maximum Load Adoption
+For the community supply designated as primary, the solar inverter's smart power meter measures the total actual load demanded by the equipment. During solar generation hours, self-consumption behind the meter causes utility grid import readings (DATADIS) to drop to zero or artificially low levels. To capture the full true facility consumption while preventing measurement dropouts, `esd` always adopts $\max(C_{\text{DATADIS}}, C_{\text{inverter}})$, restoring the true load and recording the exact kWh recovered.
 
 ### 2. Forward-Looking Calendar Schedule (January to December)
 Communities don't sign regulatory agreements to distribute energy in the past; they need a distribution schedule for an **upcoming operating year**. `esd` always structures its results as a clean 12-month calendar matrix running from January through December.
@@ -180,7 +180,7 @@ Running `esd calculate` generates ready-to-use artifacts in `.output/`:
 | `*_esd_optimization_summary.md` | Markdown | Executive summary report including the community agreement annex ready for community board review. |
 | `*_esd_coefficients.csv` | CSV (`;` delimited) | Detailed breakdown per CUPS: monthly self-consumed kWh, solar surplus, and remaining grid demand. |
 | `*_esd_results.json` | JSON | Machine-readable data file for software integrations and community dashboards. |
-| `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Full hourly time-series recording consumption, generation, and actual vs. estimated shares. |
+| `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Full hourly time-series recording consumption, generation, and actual vs. estimated shares, ordered first by date and then by use (alphabetically). |
 | `*_esd_hourly_profile_matrix.csv` | CSV (`;` delimited) | 24-hour diurnal table for variable hourly coefficient filing under Spanish regulation (Orden TED/1247/2021). |
 
 ---

@@ -138,7 +138,15 @@ def export_hourly_shares_csv(
     ts = timestamp or get_export_timestamp()
     file_path = out_dir / f"{ts}_esd_hourly_shares.csv"
 
-    df = opt_result.hourly_result.time_series_df
+    df = opt_result.hourly_result.time_series_df.copy()
+    if not df.empty:
+        sort_cols = [c for c in ["timestamp", "use", "cups"] if c in df.columns]
+        df = df.sort_values(
+            by=sort_cols,
+            key=lambda col: col.astype(str).str.lower() if col.name in ("use", "cups") else col,
+            ascending=[True] * len(sort_cols),
+        ).reset_index(drop=True)
+
     df.to_csv(file_path, index=False, sep=";")
     return file_path
 

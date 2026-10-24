@@ -485,6 +485,7 @@ def test_compute_hourly_optimization() -> None:
         "timestamp",
         "hour",
         "cups",
+        "use",
         "consumption_kwh",
         "generation_kwh",
         "share_pct",
