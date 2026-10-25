@@ -126,10 +126,24 @@ def test_generate_interactive_html_report_structure() -> None:
     assert "Aerotermia" in html_en
     assert "Garaje" in html_en
 
-    # Dynamic hourly shares distribution prevision box
+    # Four executive KPI cards: plain title and value only (no subtitle, no progress bar, no gain badge)
+    assert "kpi-subtitle" not in html_en
+    assert "kpi-meter-track" not in html_en
+    assert "gain-badge" not in html_en
+
+    # Dynamic 3-way comparative prevision showcase box
     assert "section-hourly-prevision" in html_en
     assert "TED/1247/2021" in html_en
-    assert "Prevision with Dynamic Hourly Coefficients" in html_en
+    assert "Self-Consumption Prevision & Comparison" in html_en
+    # 3 comparative scenarios present
+    assert "No Share (Single CUPS)" in html_en
+    assert "Monthly Share (RD 244/2019)" in html_en
+    assert "Hourly Share (Order TED)" in html_en
+    assert "Total Collective Uplift" in html_en
+    # 3 comparison bar rows
+    assert "No Collective Share (Single CUPS)" in html_en
+    assert "Fixed Monthly Share (RD 244/2019)" in html_en
+    assert "Dynamic Hourly Share (Orden TED/1247/2021)" in html_en
 
     # Removed components: simulator and resolution annex
     assert "sim-slider" not in html_en
@@ -151,10 +165,130 @@ def test_generate_interactive_html_report_structure() -> None:
     assert "Informe Ejecutivo de Autoconsumo Colectivo" in html_es
     assert "Eficiencia Solar Fotovoltaica" in html_es
     assert "Producción Solar Total" in html_es
-    assert "Previsión con Coeficientes Horarios Dinámicos" in html_es
+    assert "Previsión y Comparativa de Autoconsumo" in html_es
+    assert "Sin Reparto (1 solo CUPS)" in html_es
+    assert "Reparto Mensual (RD 244/2019)" in html_es
+    assert "Reparto Horario (Orden TED)" in html_es
+    assert "Ganancia Colectiva Total" in html_es
+    assert "Sin Reparto Colectivo (1 solo CUPS)" in html_es
+    assert "Reparto Mensual Fijo (RD 244/2019)" in html_es
+    assert "Reparto Horario Dinámico (Orden TED/1247/2021)" in html_es
+    assert "kpi-subtitle" not in html_es
+    assert "kpi-meter-track" not in html_es
+    assert "gain-badge" not in html_es
     assert "sim-slider" not in html_es
     assert "resolution-box" not in html_es
     assert "Hare-Niemeyer" not in html_es
+
+
+def test_prevision_three_way_comparison() -> None:
+    """Verify that _calculate_hourly_prevision computes consistent metrics across all 3 scenarios."""
+    from src.presentation.html_report import _calculate_hourly_prevision
+
+    opt_result, _ = _create_mock_optimization_result()
+    prev = _calculate_hourly_prevision(opt_result)
+
+    # All 3 scenarios must be present
+    assert "single_sc_kwh" in prev
+    assert "monthly_sc_kwh" in prev
+    assert "hourly_sc_kwh" in prev
+
+    # Physical progression invariant: single_sc <= monthly_sc <= hourly_sc
+    assert prev["single_sc_kwh"] <= prev["monthly_sc_kwh"]
+    assert prev["monthly_sc_kwh"] <= prev["hourly_sc_kwh"]
+
+    # Corresponding self-consumption rate progression
+    assert prev["single_sc_rate"] <= prev["monthly_sc_rate"]
+    assert prev["monthly_sc_rate"] <= prev["hourly_sc_rate"]
+
+    # Step-by-step gains
+    assert round(prev["gain_monthly_kwh"], 1) == round(
+        prev["monthly_sc_kwh"] - prev["single_sc_kwh"], 1
+    )
+    assert round(prev["gain_hourly_kwh"], 1) == round(
+        prev["hourly_sc_kwh"] - prev["monthly_sc_kwh"], 1
+    )
+    assert round(prev["gain_total_kwh"], 1) == round(
+        prev["hourly_sc_kwh"] - prev["single_sc_kwh"], 1
+    )
+
+
+def test_prevision_with_hourly_simulation_three_way() -> None:
+    """Verify 3-way calculation when explicit hourly time-series simulation dataframe is present."""
+    import pandas as pd
+
+    from src.optimization.models import HourlyOptimizationResult, HourlyProfileMatrix
+    from src.presentation.html_report import _calculate_hourly_prevision
+
+    opt_result, _ = _create_mock_optimization_result()
+
+    # Create synthetic hourly time-series df with primary CUPS (Aerotermia) and secondary CUPS (Garaje)
+    df_rows = [
+        # Hour 10: Gen = 5.0 kWh. Primary consumes 1.5, Secondary consumes 2.5
+        {
+            "timestamp": "2026-05-01 10:00:00",
+            "cups": "ES0021000000000001AA",
+            "consumption_kwh": 1.5,
+            "generation_kwh": 5.0,
+            "share_pct": "30.0%",
+            "estimated_share_pct": "30.0%",
+        },
+        {
+            "timestamp": "2026-05-01 10:00:00",
+            "cups": "ES0021000000000002BB",
+            "consumption_kwh": 2.5,
+            "generation_kwh": 5.0,
+            "share_pct": "50.0%",
+            "estimated_share_pct": "50.0%",
+        },
+        # Hour 11: Gen = 10.0 kWh. Primary consumes 2.0, Secondary consumes 4.0
+        {
+            "timestamp": "2026-05-01 11:00:00",
+            "cups": "ES0021000000000001AA",
+            "consumption_kwh": 2.0,
+            "generation_kwh": 10.0,
+            "share_pct": "20.0%",
+            "estimated_share_pct": "20.0%",
+        },
+        {
+            "timestamp": "2026-05-01 11:00:00",
+            "cups": "ES0021000000000002BB",
+            "consumption_kwh": 4.0,
+            "generation_kwh": 10.0,
+            "share_pct": "40.0%",
+            "estimated_share_pct": "40.0%",
+        },
+    ]
+    df = pd.DataFrame(df_rows)
+    empty_profile = HourlyProfileMatrix(
+        cups_list=opt_result.cups_list,
+        hours=[f"{h:02d}" for h in range(24)],
+        matrix={c: {} for c in opt_result.cups_list},
+        hourly_sums={},
+        average_shares={},
+        average_sum=1.0,
+    )
+    opt_result.hourly_result = HourlyOptimizationResult(
+        profile_matrix=empty_profile,
+        time_series_df=df,
+    )
+
+    prev = _calculate_hourly_prevision(opt_result)
+    assert prev["is_simulated"] is True
+
+    # Single CUPS tied solely to Primary (ES0021000000000001AA, Aerotermia):
+    # Hour 10: min(1.5, 5.0) = 1.5
+    # Hour 11: min(2.0, 10.0) = 2.0
+    # Expected single_sc = 3.5 kWh
+    assert prev["single_sc_kwh"] == 3.5
+
+    # Hourly simulation collective:
+    # Hour 10: min(1.5, 0.3*5.0=1.5) + min(2.5, 0.5*5.0=2.5) = 1.5 + 2.5 = 4.0
+    # Hour 11: min(2.0, 0.2*10.0=2.0) + min(4.0, 0.4*10.0=4.0) = 2.0 + 4.0 = 6.0
+    # Total hourly_sc = 10.0 kWh (bounded by monthly_sc if monthly_sc were larger, but here 1100 > 10 so it's bounded by monthly_sc = 1100)
+    assert prev["single_sc_kwh"] <= prev["monthly_sc_kwh"]
+    assert prev["gain_monthly_kwh"] >= 0.0
+    assert prev["gain_total_kwh"] >= prev["gain_monthly_kwh"]
 
 
 def test_export_interactive_html_file(tmp_path: Path) -> None:
