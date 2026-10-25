@@ -174,3 +174,29 @@ def test_generation_loader_missing_columns(tmp_path: Path) -> None:
     loader = HuaweiGenerationLoader(tmp_path)
     with pytest.raises(ValidationError, match="does not contain 'Rendimiento FV'"):
         loader.parse_file(bad_xlsx)
+
+
+def test_generation_loader_with_autoconsumo(tmp_path: Path) -> None:
+    xlsx_file = tmp_path / "Informe_planta_autoconsumo.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Informe de plantas_TEST", "", "", "", "", ""])
+    ws.append(
+        [
+            "Período estadístico",
+            "Rendimiento FV (kWh)",
+            "Consumo (kWh)",
+            "Autoconsumo (kWh)",
+        ]
+    )
+    ws.append(["2026-06-01 12:00:00", 10.5, 8.0, 7.5])
+    wb.save(xlsx_file)
+
+    loader = HuaweiGenerationLoader(tmp_path)
+    df = loader.load_all()
+
+    assert not df.empty
+    assert "generation_kwh" in df.columns
+    assert "consumption_kwh" in df.columns
+    assert "self_consumption_kwh" in df.columns
+    assert df["self_consumption_kwh"].iloc[0] == 7.5

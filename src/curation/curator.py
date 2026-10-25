@@ -70,7 +70,7 @@ def dataframe_to_aligned_dataset(
         raise CurationError(f"Curated dataset is missing required columns: {sorted(missing_cols)}")
 
     df_clean = df.copy()
-    for num_col in ("consumption", "generation", "community_demand"):
+    for num_col in ("consumption", "generation", "community_demand", "self_consumption"):
         if num_col in df_clean.columns and df_clean[num_col].dtype == object:
             df_clean[num_col] = (
                 df_clean[num_col].astype(str).str.replace(",", ".", regex=False).str.strip()
@@ -80,6 +80,10 @@ def dataframe_to_aligned_dataset(
     if "community_demand" in df_clean.columns:
         df_clean["community_demand"] = pd.to_numeric(
             df_clean["community_demand"], errors="coerce"
+        ).fillna(0.0)
+    if "self_consumption" in df_clean.columns:
+        df_clean["self_consumption"] = pd.to_numeric(
+            df_clean["self_consumption"], errors="coerce"
         ).fillna(0.0)
 
     # Apply year / month filters if specified
@@ -113,6 +117,10 @@ def dataframe_to_aligned_dataset(
     if "community_demand" in df_clean.columns:
         aligned_df["community_demand"] = (
             df_clean.groupby("timestamp")["community_demand"].first().loc[aligned_df.index]
+        )
+    if "self_consumption" in df_clean.columns:
+        aligned_df["self_consumption"] = (
+            df_clean.groupby("timestamp")["self_consumption"].sum().loc[aligned_df.index]
         )
     if "temperature" in df_clean.columns:
         aligned_df["temperature"] = (
@@ -423,6 +431,12 @@ class DataCurator:
         g_cons_series: pd.Series[float] = (
             g_df.set_index("timestamp")["consumption_kwh"] if g_has_cons else pd.Series(dtype=float)
         )
+        g_has_self_cons = "self_consumption_kwh" in g_df.columns
+        g_self_cons_series: pd.Series[float] = (
+            g_df.set_index("timestamp")["self_consumption_kwh"]
+            if g_has_self_cons
+            else pd.Series(dtype=float)
+        )
 
         # Determine all calendar years present in the aligned dataset
         years_present = sorted({int(str(ts)[:4]) for ts in aligned.data.index})
@@ -501,6 +515,16 @@ class DataCurator:
                     except ValueError, TypeError:
                         hw_cons_val = None
 
+            # Huawei meter self-consumption reading for this interval if present
+            hw_sc_val = 0.0
+            if g_has_self_cons and ts_str in g_self_cons_series.index:
+                sc_raw = g_self_cons_series.loc[ts_str]
+                if pd.notna(sc_raw):
+                    try:
+                        hw_sc_val = max(0.0, float(sc_raw))
+                    except ValueError, TypeError:
+                        hw_sc_val = 0.0
+
             cups_readings: list[CuratedCupsReading] = []
             hour_cons_sum = 0.0
 
@@ -525,6 +549,9 @@ class DataCurator:
                     else:
                         final_cons = datadis_cons
 
+                # Self-consumed electricity: primary CUPS receives the Huawei reading, others receive 0.0
+                c_self_cons = hw_sc_val if cfg.primary else 0.0
+
                 cups_total_cons[cups_id] += final_cons
                 hour_cons_sum += final_cons
 
@@ -535,6 +562,7 @@ class DataCurator:
                         consumption=format_energy_value(final_cons),
                         primary=cfg.primary,
                         reconciled=is_reconciled,
+                        self_consumption=format_energy_value(c_self_cons),
                     )
                 )
 
@@ -558,6 +586,7 @@ class DataCurator:
                     total_consumption=format_energy_value(hour_cons_sum),
                     solar_surplus=format_energy_value(surplus),
                     net_grid_demand=format_energy_value(grid_demand),
+                    self_consumption=format_energy_value(hw_sc_val),
                     temperature=temp_val,
                     cloud_cover=cloud_val,
                 )
@@ -647,6 +676,7 @@ class DataCurator:
                     and "year" in cols
                     and "temperature" in cols
                     and "cloud_cover" in cols
+                    and "self_consumption" in cols
                     and "primary" not in cols
                     and "reconciled" not in cols
                 ):

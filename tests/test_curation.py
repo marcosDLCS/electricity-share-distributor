@@ -45,14 +45,15 @@ def create_mock_huawei_excel(
     solar_gen: float = 12.0,
     solar_cons: float = 8.5,
     night_cons: float = 2.0,
+    solar_self_cons: float = 6.0,
 ) -> None:
-    """Generate synthetic Huawei FusionSolar Excel report with generation and consumption."""
+    """Generate synthetic Huawei FusionSolar Excel report with generation, consumption and self-consumption."""
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Sheet1"
 
     # Row 1: Title
-    ws.append(["Informe de plantas_MOCK_PLANT", "", "", "", "", "", ""])
+    ws.append(["Informe de plantas_MOCK_PLANT", "", "", "", "", "", "", ""])
 
     # Row 2: Headers
     ws.append(
@@ -64,6 +65,7 @@ def create_mock_huawei_excel(
             "Rendimiento FV (kWh)",
             "Rendimiento del inversor (kWh)",
             "Consumo (kWh)",
+            "Autoconsumo (kWh)",
         ]
     )
 
@@ -74,7 +76,8 @@ def create_mock_huawei_excel(
             is_solar = 8 <= h <= 17
             gen_val = solar_gen if is_solar else 0.0
             cons_val = solar_cons if is_solar else night_cons
-            ws.append([ts, 0.6, 20.0, gen_val, gen_val, gen_val, cons_val])
+            sc_val = solar_self_cons if is_solar else 0.0
+            ws.append([ts, 0.6, 20.0, gen_val, gen_val, gen_val, cons_val, sc_val])
 
     wb.save(file_path)
 
@@ -237,7 +240,7 @@ def test_curation_exports_csv(tmp_path: Path) -> None:
     header = csv_lines[0]
     expected_header = (
         "timestamp;year;month;day;hour;day_of_week;is_weekend;"
-        "cups_id;use;consumption;community_demand;generation;temperature;cloud_cover"
+        "cups_id;use;consumption;community_demand;generation;self_consumption;temperature;cloud_cover"
     )
     assert header == expected_header
     assert "date" not in header.split(";")
@@ -887,7 +890,7 @@ def test_curated_csv_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
     header = lines[0]
     expected_header = (
         "timestamp;year;month;day;hour;day_of_week;is_weekend;"
-        "cups_id;use;consumption;community_demand;generation;temperature;cloud_cover"
+        "cups_id;use;consumption;community_demand;generation;self_consumption;temperature;cloud_cover"
     )
     assert header == expected_header
 
@@ -895,15 +898,17 @@ def test_curated_csv_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
     sample_line = lines[1]
     assert ";" in sample_line
     parts = sample_line.split(";")
-    assert len(parts) == 14
+    assert len(parts) == 15
     # Verify no thousand separators (e.g. no '.' within numeric values when ',' is decimal)
-    # Check that consumption, community_demand, and generation parse as float with comma decimal
+    # Check that consumption, community_demand, generation, and self_consumption parse as float with comma decimal
     cons_val = float(parts[9].replace(",", "."))
     comm_val = float(parts[10].replace(",", "."))
     gen_val = float(parts[11].replace(",", "."))
+    sc_val = float(parts[12].replace(",", "."))
     assert isinstance(cons_val, float)
     assert isinstance(comm_val, float)
     assert isinstance(gen_val, float)
+    assert isinstance(sc_val, float)
 
     # Verify load_aligned_dataset reconstructs properly
     aligned = curator.load_aligned_dataset(csv_file)
@@ -990,6 +995,7 @@ def test_curated_dataset_calendar_decomposition_and_community_demand() -> None:
         "consumption",
         "community_demand",
         "generation",
+        "self_consumption",
         "temperature",
         "cloud_cover",
     ]
@@ -1027,3 +1033,58 @@ def test_curated_dataset_calendar_decomposition_and_community_demand() -> None:
     ).to_dataframe()
     assert list(empty_df.columns) == expected_cols
     assert empty_df.empty
+
+
+def test_curation_self_consumption_assigned_to_primary_cups(tmp_path: Path) -> None:
+    """Verify that hourly self-consumed electricity is assigned to primary CUPS, and other CUPS receive 0."""
+    cons_dir = tmp_path / "consumption"
+    gen_dir = tmp_path / "generation"
+    curated_dir = tmp_path / "curated"
+    cons_dir.mkdir()
+    gen_dir.mkdir()
+    curated_dir.mkdir()
+
+    pri_cups = "ES0021000000000001AA"
+    sec_cups = "ES0021000000000002BB"
+
+    create_mock_datadis_csv(cons_dir / f"{pri_cups}.csv", pri_cups)
+    create_mock_datadis_csv(cons_dir / f"{sec_cups}.csv", sec_cups)
+    # Inverter has 12 kWh gen, 8.5 kWh cons, and 6.0 kWh self_cons during solar hours (8-17)
+    create_mock_huawei_excel(
+        gen_dir / "gen.xlsx", solar_gen=12.0, solar_cons=8.5, solar_self_cons=6.0
+    )
+
+    cups_file = tmp_path / "cups.json"
+    cups_file.write_text(
+        json.dumps(
+            [
+                {"cups": pri_cups, "use": "Aerotermia", "primary": True},
+                {"cups": sec_cups, "use": "Garaje", "primary": False},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    curator = DataCurator(
+        consumption_dir=cons_dir,
+        generation_dir=gen_dir,
+        cups_config_path=cups_file,
+        curated_dir=curated_dir,
+    )
+    dataset = curator.curate()
+    csv_file = curator.export_csv(dataset, curated_dir=curated_dir)
+    df = pd.read_csv(csv_file, sep=";", decimal=",", dtype=str)
+
+    assert "self_consumption" in df.columns
+
+    # Check a solar hour (e.g. 12:00:00)
+    solar_rows = df[df["timestamp"] == "2026-05-01 12:00:00"]
+    assert len(solar_rows) == 2
+
+    pri_row = solar_rows[solar_rows["cups_id"] == pri_cups].iloc[0]
+    sec_row = solar_rows[solar_rows["cups_id"] == sec_cups].iloc[0]
+
+    # Primary CUPS receives Huawei self_consumption (6.0 kWh)
+    assert float(pri_row["self_consumption"].replace(",", ".")) == 6.0
+    # Secondary CUPS receives 0.0
+    assert float(sec_row["self_consumption"].replace(",", ".")) == 0.0

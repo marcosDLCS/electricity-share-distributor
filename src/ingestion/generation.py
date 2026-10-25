@@ -89,6 +89,14 @@ class HuaweiGenerationLoader:
                 cons_col = col
                 break
 
+        # Locate self-consumption column if present (e.g. 'Autoconsumo (kWh)', 'Self-consumption (kWh)')
+        self_cons_col = None
+        for col in df.columns:
+            c_low = col.lower()
+            if "autoconsumo" in c_low or "self-consumption" in c_low or "self_consumption" in c_low:
+                self_cons_col = col
+                break
+
         # Drop rows where timestamp is NaN
         clean_df = df.dropna(subset=[ts_col]).copy()
 
@@ -107,6 +115,11 @@ class HuaweiGenerationLoader:
                 clean_df[cons_col].astype(str).str.replace(",", "."), errors="coerce"
             )
             data_dict["consumption_kwh"] = cons_values
+        if self_cons_col:
+            self_cons_values = pd.to_numeric(
+                clean_df[self_cons_col].astype(str).str.replace(",", "."), errors="coerce"
+            ).fillna(0.0)
+            data_dict["self_consumption_kwh"] = self_cons_values
 
         result_df = pd.DataFrame(data_dict)
 
@@ -121,7 +134,7 @@ class HuaweiGenerationLoader:
 
         Returns:
             DataFrame with columns ['timestamp', 'generation_kwh'] (and optionally
-            'consumption_kwh' if present in the reports) sorted chronologically.
+            'consumption_kwh' and 'self_consumption_kwh' if present in the reports) sorted chronologically.
         """
         files = self.discover_files()
         dfs = []
@@ -134,6 +147,8 @@ class HuaweiGenerationLoader:
         agg_rules: dict[str, str] = {"generation_kwh": "max"}
         if "consumption_kwh" in combined.columns:
             agg_rules["consumption_kwh"] = "max"
+        if "self_consumption_kwh" in combined.columns:
+            agg_rules["self_consumption_kwh"] = "max"
 
         combined = (
             combined.groupby("timestamp", as_index=False)

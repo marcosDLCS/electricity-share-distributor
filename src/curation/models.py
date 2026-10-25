@@ -48,6 +48,7 @@ class CuratedCupsReading:
         consumption: Electricity consumption value (in kWh, matching generation units).
         primary: Whether this CUPS is the primary point directly connected to the solar plant.
         reconciled: Whether this reading was reconciled/corrected from the PV generation meter.
+        self_consumption: PV self-consumed electricity in this hour (in kWh).
     """
 
     id: str
@@ -55,6 +56,7 @@ class CuratedCupsReading:
     consumption: float | int
     primary: bool = False
     reconciled: bool = False
+    self_consumption: float | int = 0
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary matching the target format."""
@@ -62,6 +64,7 @@ class CuratedCupsReading:
             "id": self.id,
             "use": self.use,
             "consumption": self.consumption,
+            "self_consumption": self.self_consumption,
             "primary": self.primary,
             "reconciled": self.reconciled,
         }
@@ -80,6 +83,7 @@ class CuratedHourRecord:
         total_consumption: Sum of consumption across all participating CUPS for this hour.
         solar_surplus: Surplus generation exceeding collective demand (kWh).
         net_grid_demand: Net grid electricity demand exceeding solar generation (kWh).
+        self_consumption: Solar PV self-consumed electricity (kWh).
         temperature: Ambient temperature in degrees Celsius (°C), if available.
         cloud_cover: Cloud cover percentage (0-100%), if available.
     """
@@ -92,6 +96,7 @@ class CuratedHourRecord:
     total_consumption: float | int = 0
     solar_surplus: float | int = 0
     net_grid_demand: float | int = 0
+    self_consumption: float | int = 0
     temperature: float | None = None
     cloud_cover: int | float | None = None
 
@@ -101,6 +106,7 @@ class CuratedHourRecord:
             "date": self.date,
             "hour": self.hour,
             "generation": self.generation,
+            "self_consumption": self.self_consumption,
             "cups": [c.to_dict() for c in self.cups],
             "timestamp": self.timestamp,
             "total_consumption": self.total_consumption,
@@ -158,7 +164,7 @@ class CuratedDataset:
         Columns are grouped logically by analytical role:
         1. Temporal coordinates: timestamp, year, month, day, hour, day_of_week, is_weekend
         2. Individual consumer: cups_id, use, consumption
-        3. Community & solar balance: community_demand, generation
+        3. Community & solar balance: community_demand, generation, self_consumption
         4. Weather context: temperature, cloud_cover
         """
         rows: list[dict[str, Any]] = []
@@ -204,6 +210,9 @@ class CuratedDataset:
             comm_demand = r.total_consumption
 
             for c in r.cups:
+                self_cons = getattr(c, "self_consumption", 0)
+                if self_cons == 0 and c.primary and getattr(r, "self_consumption", 0):
+                    self_cons = r.self_consumption
                 rows.append(
                     {
                         "timestamp": r.timestamp,
@@ -218,6 +227,7 @@ class CuratedDataset:
                         "consumption": c.consumption,
                         "community_demand": comm_demand,
                         "generation": r.generation,
+                        "self_consumption": self_cons,
                         "temperature": r.temperature,
                         "cloud_cover": r.cloud_cover,
                     }
@@ -236,6 +246,7 @@ class CuratedDataset:
             "consumption",
             "community_demand",
             "generation",
+            "self_consumption",
             "temperature",
             "cloud_cover",
         ]
