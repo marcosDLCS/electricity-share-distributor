@@ -7,10 +7,11 @@ from src.domain.exceptions import (
     IngestionError,
     OptimizationError,
 )
-from src.domain.models import EnergyBalance, ShareAllocation, SupplyPoint
+from src.domain.models import BylawConstraints, EnergyBalance, ShareAllocation, SupplyPoint
 
 __all__ = [
     "AlignmentError",
+    "BylawConstraints",
     "CurationError",
     "EnergyBalance",
     "EsdError",

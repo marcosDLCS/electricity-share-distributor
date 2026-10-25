@@ -521,13 +521,23 @@ def calculate_command(
         "all",
         "--format",
         "-f",
-        help="Export format: 'all', 'table' (no file export), 'csv', 'json', or 'markdown'.",
+        help="Export format: 'all', 'table' (no file export), 'csv', 'json', 'markdown', or 'html'.",
     ),
     precision: int | None = typer.Option(
         None,
         "--precision",
         "-p",
         help="Share percentage precision: 0 (e.g. 53%), 1 (e.g. 52.8%), or 2 (e.g. 52.86%).",
+    ),
+    min_share: float | None = typer.Option(
+        None,
+        "--min-share",
+        help="Regulatory or bylaw minimum share floor per CUPS (e.g. 0.05 or 5%).",
+    ),
+    max_share: float | None = typer.Option(
+        None,
+        "--max-share",
+        help="Regulatory or bylaw maximum share cap per CUPS (e.g. 0.70 or 70%).",
     ),
     lang: str | None = typer.Option(
         None,
@@ -568,6 +578,19 @@ def calculate_command(
         )
         sys.exit(1)
 
+    def _parse_share(val: float | None, name: str) -> float | None:
+        if val is None:
+            return None
+        if val < 0.0 or val > 100.0:
+            console.print(
+                f"[bold red]Error:[/bold red] {name} must be between 0% and 100%. Got {val}."
+            )
+            sys.exit(1)
+        return val / 100.0 if val > 1.0 else val
+
+    parsed_min_share = _parse_share(min_share, "--min-share")
+    parsed_max_share = _parse_share(max_share, "--max-share")
+
     view_mode = view.lower().strip()
     is_hourly = hourly or (view_mode == "hourly")
 
@@ -588,6 +611,8 @@ def calculate_command(
             compute_hourly=is_hourly,
             export_format=export_format,
             lang=active_lang,
+            min_share=parsed_min_share,
+            max_share=parsed_max_share,
         )
 
         with console.status(

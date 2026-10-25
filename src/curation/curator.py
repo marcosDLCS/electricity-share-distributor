@@ -279,12 +279,37 @@ class DataCurator:
                 except ValueError, TypeError:
                     pass
 
+            min_val: float | None = None
+            max_val: float | None = None
+            raw_min = item.get("min_share") or item.get("min") or item.get("cuota_minima")
+            raw_max = item.get("max_share") or item.get("max") or item.get("cuota_maxima")
+            if raw_min is not None:
+                try:
+                    f_min = float(str(raw_min).replace("%", "").strip())
+                    if f_min > 1.0:
+                        f_min /= 100.0
+                    if 0.0 <= f_min <= 1.0:
+                        min_val = f_min
+                except ValueError, TypeError:
+                    pass
+            if raw_max is not None:
+                try:
+                    f_max = float(str(raw_max).replace("%", "").strip())
+                    if f_max > 1.0:
+                        f_max /= 100.0
+                    if 0.0 <= f_max <= 1.0:
+                        max_val = f_max
+                except ValueError, TypeError:
+                    pass
+
             configs[cups_id] = CupsConfig(
                 cups=cups_id,
                 use=use,
                 primary=primary,
                 latitude=lat_val,
                 longitude=lon_val,
+                min_share=min_val,
+                max_share=max_val,
             )
 
         return configs

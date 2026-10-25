@@ -569,7 +569,39 @@ class ReportExporter:
                 )
             )
 
+        if fmt in ("all", "html"):
+            exported.append(
+                self.export_interactive_html(
+                    opt_result,
+                    ingestion_summary,
+                    lang=lang,
+                    precision=precision,
+                )
+            )
+
         return exported
+
+    def export_interactive_html(
+        self,
+        opt_result: OptimizationResult,
+        ingestion_summary: IngestionSummary,
+        lang: str | None = None,
+        precision: int | None = None,
+        timestamp: str | None = None,
+    ) -> Path:
+        """Export standalone offline interactive HTML report."""
+        from src.presentation.html_report import generate_interactive_html_report
+
+        ts = timestamp or self.timestamp
+        file_path = self.output_dir / f"{ts}_esd_interactive_report.html"
+        html_content = generate_interactive_html_report(
+            opt_result,
+            ingestion_summary,
+            lang=lang,
+            precision=precision,
+        )
+        file_path.write_text(html_content, encoding="utf-8")
+        return file_path
 
 
 # -------------------------------------------------------------------------
@@ -662,4 +694,19 @@ def export_all(
         formats=formats,
         lang=lang,
         precision=precision,
+    )
+
+
+def export_interactive_html(
+    opt_result: OptimizationResult,
+    ingestion_summary: IngestionSummary,
+    output_dir: Path | str,
+    lang: str | None = None,
+    precision: int | None = None,
+    timestamp: str | None = None,
+) -> Path:
+    """Export standalone offline interactive HTML report."""
+    exporter = ReportExporter(output_dir=output_dir, timestamp=timestamp)
+    return exporter.export_interactive_html(
+        opt_result, ingestion_summary, lang=lang, precision=precision
     )

@@ -15,6 +15,7 @@ from src.domain.exceptions import (
 from src.domain.exceptions import (
     OptimizationError as OptimizationError,
 )
+from src.domain.models import BylawConstraints
 from src.ingestion.schema import AlignedDataset
 from src.optimization.efficiency import calculate_solar_efficiency
 from src.optimization.models import (
@@ -34,12 +35,16 @@ class DistributionOptimizer:
     def _solve_optimal_betas(
         consumption: np.ndarray,
         generation: np.ndarray,
+        cups_list: list[str] | None = None,
+        constraints: BylawConstraints | None = None,
     ) -> np.ndarray:
         """Formulate and solve Linear Program to find betas maximizing collective self-consumption.
 
         Args:
             consumption: 2D array of shape (T, N) with hourly kWh consumption per CUPS.
             generation: 1D array of shape (T,) with hourly kWh solar PV generation.
+            cups_list: Optional list of CUPS identifiers for constraint lookup.
+            constraints: Optional regulatory or community bylaw constraints.
 
         Returns:
             1D array of shape (N,) with optimal coefficients beta_i summing to <= 1.0.
@@ -55,8 +60,16 @@ class DistributionOptimizer:
         n_sun = len(sun_indices)
 
         if n_sun == 0 or np.sum(generation) <= 0:
-            # No solar generation in this period: return uniform distribution
-            return np.full(n_cups, 1.0 / n_cups)
+            # No solar generation in this period: return uniform or bounded distribution
+            raw = np.full(n_cups, 1.0 / n_cups)
+            if constraints and constraints.is_active and cups_list:
+                for i, cups in enumerate(cups_list):
+                    l_b, u_b = constraints.get_bounds(cups)
+                    raw[i] = max(l_b, min(u_b, raw[i]))
+                raw_sum = float(np.sum(raw))
+                if raw_sum > 0:
+                    raw = raw / raw_sum
+            return raw
 
         # -------------------------------------------------------------------------
         # Linear Programming Epigraph Formulation (RD 244/2019):
@@ -79,8 +92,9 @@ class DistributionOptimizer:
         # -------------------------------------------------------------------------
         n_vars = n_cups + n_cups * n_sun
 
-        # Objective: Maximize sum(s_{i, k}) -> Minimize -sum(s_{i, k}) in standard solver form
+        # Objective: Maximize sum(s_{i, k}) with slight incentive to allocate generation up to bounds
         c = np.zeros(n_vars)
+        c[:n_cups] = -1e-5
         c[n_cups:] = -1.0
 
         # Constraints Matrix (A_ub * x <= b_ub):
@@ -106,9 +120,14 @@ class DistributionOptimizer:
                 row += 1
 
         # Variable Bounds:
-        # beta_i in [0.0, 1.0] (coefficient between 0% and 100%)
+        # beta_i in [lower_bound, upper_bound] (from bylaw constraints or [0.0, 1.0])
         # s_{i, k} in [0.0, C_{i, k}] (cannot self-consume more than actual demand)
-        bounds: list[tuple[float, float]] = [(0.0, 1.0) for _ in range(n_cups)]
+        bounds: list[tuple[float, float]] = []
+        for i in range(n_cups):
+            cups = cups_list[i] if cups_list and i < len(cups_list) else str(i)
+            l_b, u_b = constraints.get_bounds(cups) if constraints else (0.0, 1.0)
+            bounds.append((float(l_b), float(u_b)))
+
         for i in range(n_cups):
             for t_idx in sun_indices:
                 c_val = float(consumption[t_idx, i])
@@ -126,27 +145,62 @@ class DistributionOptimizer:
         if not res.success:
             raise OptimizationError(f"Linear programming optimization failed: {res.message}")
 
-        betas = np.maximum(0.0, res.x[:n_cups])
+        betas = np.zeros(n_cups)
+        for i in range(n_cups):
+            cups = cups_list[i] if cups_list and i < len(cups_list) else str(i)
+            l_b, u_b = constraints.get_bounds(cups) if constraints else (0.0, 1.0)
+            betas[i] = float(np.clip(res.x[i], l_b, u_b))
 
-        # Normalize or adjust if sum slightly exceeds 1.0 due to float precision
-        beta_sum = np.sum(betas)
-        if beta_sum > 1.0:
+        # Normalize or distribute remaining share if below 1.0
+        beta_sum = float(np.sum(betas))
+        if beta_sum > 1.00001:
             betas = betas / beta_sum
         elif beta_sum < 0.9999 and np.sum(generation) > 0:
-            # If total generation exceeds total consumption, allocate remaining share proportionally
             rem = 1.0 - beta_sum
-            betas = betas + (rem / n_cups)
+            for _ in range(5):
+                if rem <= 1e-5:
+                    break
+                headrooms = np.array(
+                    [
+                        max(
+                            0.0,
+                            (
+                                constraints.get_bounds(
+                                    cups_list[i] if cups_list and i < len(cups_list) else str(i)
+                                )[1]
+                                if constraints
+                                else 1.0
+                            )
+                            - betas[i],
+                        )
+                        for i in range(n_cups)
+                    ]
+                )
+                tot_hr = float(np.sum(headrooms))
+                if tot_hr <= 1e-6:
+                    break
+                alloc = np.minimum(headrooms, rem * (headrooms / tot_hr))
+                alloc_sum = float(np.sum(alloc))
+                if alloc_sum <= 1e-7:
+                    break
+                betas += alloc
+                rem -= alloc_sum
 
         return betas
 
     @staticmethod
-    def _round_betas(betas: np.ndarray, precision: int = 0) -> np.ndarray:
+    def _round_betas(
+        betas: np.ndarray,
+        precision: int = 0,
+        cups_list: list[str] | None = None,
+        constraints: BylawConstraints | None = None,
+    ) -> np.ndarray:
         """Round coefficients to specified percentage precision using Hare-Niemeyer largest remainder method.
 
         Guarantees that:
           1. sum(round(betas * 100, precision)) == 100.0 exactly
           2. sum(betas) == 1.0000 exactly
-          3. All betas >= 0.0
+          3. All betas >= 0.0 and respect bylaw constraints (min_share, max_share).
         """
         n = len(betas)
         if n == 0:
@@ -169,19 +223,47 @@ class DistributionOptimizer:
         floors = np.floor(exact_alloc).astype(int)
         remainders = exact_alloc - floors
 
+        lower_units = np.zeros(n, dtype=int)
+        upper_units = np.full(n, scale, dtype=int)
+        if constraints and constraints.is_active and cups_list:
+            for i, c in enumerate(cups_list):
+                l_b, u_b = constraints.get_bounds(c)
+                lower_units[i] = int(np.floor(round(l_b * scale, 6)))
+                upper_units[i] = int(np.ceil(round(u_b * scale, 6)))
+
+            # Clamp initial floors
+            floors = np.maximum(floors, lower_units)
+            floors = np.minimum(floors, upper_units)
+
         deficit = scale - int(np.sum(floors))
 
         if deficit > 0:
-            # Distribute remaining units to items with largest remainders
+            # Distribute remaining units to items with largest remainders that haven't hit upper_units
             order = np.lexsort((-exact_alloc, -remainders))
             for i in range(deficit):
-                floors[order[i % n]] += 1
+                allocated = False
+                for step in range(n):
+                    idx = order[(i + step) % n]
+                    if floors[idx] < upper_units[idx]:
+                        floors[idx] += 1
+                        allocated = True
+                        break
+                if not allocated:
+                    floors[order[i % n]] += 1
         elif deficit < 0:
+            # Deduct units from items with smallest remainders that haven't hit lower_units
             order = np.lexsort((exact_alloc, remainders))
             for i in range(abs(deficit)):
-                idx = order[i % n]
-                if floors[idx] > 0:
-                    floors[idx] -= 1
+                allocated = False
+                for step in range(n):
+                    idx = order[(i + step) % n]
+                    if floors[idx] > lower_units[idx]:
+                        floors[idx] -= 1
+                        allocated = True
+                        break
+                if not allocated:
+                    if floors[order[i % n]] > 0:
+                        floors[order[i % n]] -= 1
 
         rounded_betas = floors / scale
         return rounded_betas
@@ -193,6 +275,8 @@ class DistributionOptimizer:
         generation: np.ndarray,
         strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL,
         precision: int = 0,
+        cups_list: list[str] | None = None,
+        constraints: BylawConstraints | None = None,
     ) -> np.ndarray:
         """Calculate distribution coefficients for given consumption and generation arrays."""
         _, n_cups = consumption.shape
@@ -204,9 +288,13 @@ class DistributionOptimizer:
             c_sum = np.sum(c_totals)
             raw = c_totals / c_sum if c_sum > 0 else np.full(n_cups, 1.0 / n_cups)
         else:
-            raw = cls._solve_optimal_betas(consumption, generation)
+            raw = cls._solve_optimal_betas(
+                consumption, generation, cups_list=cups_list, constraints=constraints
+            )
 
-        return cls._round_betas(raw, precision=precision)
+        return cls._round_betas(
+            raw, precision=precision, cups_list=cups_list, constraints=constraints
+        )
 
     @classmethod
     def evaluate_month(
@@ -217,12 +305,20 @@ class DistributionOptimizer:
         strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL,
         precision: int = 0,
         cups_uses: dict[str, str] | None = None,
+        constraints: BylawConstraints | None = None,
     ) -> CommunityMonthlyMetrics:
         """Evaluate and compute self-consumption metrics for a single month."""
         consumption = df_month[cups_list].values
         generation = df_month["generation_kwh"].values
 
-        betas = cls.calculate_betas(consumption, generation, strategy=strategy, precision=precision)
+        betas = cls.calculate_betas(
+            consumption,
+            generation,
+            strategy=strategy,
+            precision=precision,
+            cups_list=cups_list,
+            constraints=constraints,
+        )
 
         # Vectorized hourly energy balance:
         # allocated_gen shape: (T, N)
@@ -329,6 +425,7 @@ class DistributionOptimizer:
         precision: int,
         require_full_month: bool = True,
         cups_uses: dict[str, str] | None = None,
+        constraints: BylawConstraints | None = None,
     ) -> list[CommunityMonthlyMetrics]:
         """Evaluate each calendar month (01 to 12), aggregating multi-year data and skipping incomplete months."""
         monthly_results: list[CommunityMonthlyMetrics] = []
@@ -375,6 +472,7 @@ class DistributionOptimizer:
                     strategy=strategy,
                     precision=precision,
                     cups_uses=effective_uses,
+                    constraints=constraints,
                 )
                 res.has_data = True
                 monthly_results.append(res)
@@ -389,6 +487,7 @@ class DistributionOptimizer:
                     strategy=strategy,
                     precision=precision,
                     cups_uses=effective_uses,
+                    constraints=constraints,
                 )
                 # Scale energy totals by 1/k to reflect single upcoming year expected energy:
                 res.total_generation_kwh /= k
@@ -670,6 +769,7 @@ class DistributionOptimizer:
         require_full_month: bool = True,
         compute_hourly: bool = False,
         primary_cups: str | None = None,
+        constraints: BylawConstraints | None = None,
     ) -> OptimizationResult:
         """Run optimization for an upcoming calendar year (January to December).
 
@@ -681,6 +781,7 @@ class DistributionOptimizer:
             require_full_month: If True, skips months that do not have at least one complete month of data.
             compute_hourly: If True, computes 24-hour diurnal profile and full hourly time-series balance.
             primary_cups: Optional identifier of primary CUPS.
+            constraints: Optional regulatory or community bylaw constraints.
 
         Returns:
             OptimizationResult containing 12-month calendar prevision, total summary, baselines, and optional hourly_result.
@@ -709,6 +810,7 @@ class DistributionOptimizer:
             precision=active_precision,
             require_full_month=require_full_month,
             cups_uses=cups_uses,
+            constraints=constraints,
         )
 
         total_summary = cls._aggregate_summary(
@@ -756,6 +858,7 @@ class DistributionOptimizer:
             cups_list=cups_list,
             hourly_result=hourly_result,
             cups_uses=cups_uses,
+            constraints=constraints,
         )
 
     @staticmethod

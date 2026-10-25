@@ -134,6 +134,13 @@ $$\text{SEI} = \begin{cases} \text{clip}\left(\text{round}\left(100.0 \times f_{
 - **Diurnal Solar Zenith Angle ($f_{\text{hour}}$):** Models the diurnal solar arc and cosine incidence angle on fixed rooftop panels, peaking around solar noon (13:00–14:00 in Spain) with minimal optical reflection, and tapering during morning and evening grazing angles:
   $$f_{\text{hour}} = \begin{cases} 0.70 + 0.30 \times \sin\left(\pi \times \frac{h - 6.0}{15.0}\right) & \text{if } 6 \le h \le 21 \\ 0.65 & \text{otherwise} \end{cases}$$
 
+### 8. Regulatory Constraints & Community Bylaw Limits (*Estatutos de la Comunidad*)
+Homeowners association agreements and community bylaws frequently establish statutory allocation bounds across shared supplies:
+- **Minimum Share Floor (`--min-share`):** Guarantees smaller common circuits (e.g. garage ventilation, elevator cabs, stair lighting) a baseline allocation (e.g., $\beta_i \ge 0.05$ or 5%) so all facilities benefit from the collective installation.
+- **Maximum Share Cap (`--max-share`):** Prevents dominant consumers (e.g. centralized aerothermal heating) from monopolizing generation (e.g., capped at $\beta_i \le 0.70$ or 70%).
+- **Custom Per-CUPS Bylaws in `cups.json`:** Individual supply points can also define specific `"min_share"` and `"max_share"` limits directly in `cups.json`.
+- The HiGHS linear programming solver incorporates variable bounds $L_i \le \beta_i \le U_i$, checks mathematical feasibility ($\sum L_i \le 1.0$), and applies Hare-Niemeyer exact rounding strictly within bounds while guaranteeing $\sum \beta_i = 100.0\%$.
+
 ---
 
 ## 5. 🚀 Practical Workflow & Commands
@@ -180,6 +187,9 @@ Solves the optimal distribution schedule and displays clean 80-column terminal t
 # Calculate full 12-month calendar schedule
 esd calculate
 
+# Enforce regulatory or bylaw limits (e.g. 5% minimum floor, 70% maximum cap per supply)
+esd calculate --min-share 5% --max-share 70%
+
 # Choose specific terminal view mode ('summary', 'matrix', 'trajectory', 'hourly', 'coefficients', 'comparison', 'all')
 esd calculate --view matrix
 esd calculate --view comparison
@@ -195,6 +205,9 @@ esd calculate --hourly
 
 # Set share percentage precision (0 = 53%, 1 = 52.8%, 2 = 52.86%)
 esd calculate --precision 1
+
+# Export only the standalone interactive HTML report
+esd calculate --format html
 ```
 
 ---
@@ -205,6 +218,7 @@ Running `esd calculate` generates ready-to-use artifacts in `.output/`:
 
 | File Name | Format | Practical Purpose |
 | :--- | :--- | :--- |
+| `*_esd_interactive_report.html` | HTML (Standalone) | Offline interactive dashboard with SVG trajectory charts, what-if share simulator, and printable Board Resolution Annex (Acta de Junta). |
 | `*_esd_coefficients_matrix.csv` | CSV (`;` delimited) | Ready-to-import spreadsheet table formatted for official submission to the electrical utility distributor (DSO). |
 | `*_esd_optimization_summary.md` | Markdown | Executive summary report including the community agreement annex ready for community board review. |
 | `*_esd_coefficients.csv` | CSV (`;` delimited) | Detailed breakdown per CUPS: monthly self-consumed kWh, solar surplus, and remaining grid demand. |

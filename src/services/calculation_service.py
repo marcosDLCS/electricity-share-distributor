@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src.curation.curator import DataCurator
+from src.domain.models import BylawConstraints
 from src.i18n import t
 from src.ingestion.schema import IngestionSummary
 from src.optimization.engine import DistributionOptimizer
@@ -33,6 +34,8 @@ class CalculationRequest:
     compute_hourly: bool = False
     export_format: str = "all"
     lang: str = "en"
+    min_share: float | None = None
+    max_share: float | None = None
 
 
 @dataclass(frozen=True)
@@ -90,12 +93,34 @@ class CalculationService:
         if progress_callback:
             progress_callback(3, t("status_step_3", lang=request.lang))
 
+        # Resolve bylaw constraints from request parameters and CUPS config
+        cups_cfg = curator.load_cups_config()
+        cups_min: dict[str, float] = {
+            c.cups: c.min_share
+            for c in cups_cfg.values()
+            if getattr(c, "min_share", None) is not None
+        }
+        cups_max: dict[str, float] = {
+            c.cups: c.max_share
+            for c in cups_cfg.values()
+            if getattr(c, "max_share", None) is not None
+        }
+        constraints = BylawConstraints(
+            min_share=request.min_share,
+            max_share=request.max_share,
+            cups_min_shares=cups_min,
+            cups_max_shares=cups_max,
+        )
+        if constraints.is_active:
+            constraints.validate_feasibility(aligned.cups_list)
+
         opt_result = DistributionOptimizer.optimize_dataset(
             aligned,
             strategy=request.strategy,
             include_baselines=True,
             precision=request.precision,
             compute_hourly=request.compute_hourly,
+            constraints=constraints,
         )
 
         if progress_callback:

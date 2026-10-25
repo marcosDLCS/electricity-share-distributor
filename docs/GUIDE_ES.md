@@ -132,7 +132,12 @@ $$\text{SEI} = \begin{cases} \text{clip}\left(\text{round}\left(100.0 \times f_{
 - **Elevación Solar Estacional ($f_{\text{season}}$):** Modela la declinación solar anual y la masa de aire atmosférica en latitudes de la Península Ibérica (36°N–43°N), alcanzando su cénit en el solsticio de verano (junio/julio ~ 1,00) y su mínimo en el de invierno (diciembre/enero ~ 0,70):
   $$f_{\text{season}} = 0.85 + 0.15 \times \cos\left(\frac{2\pi \times (m - 6.5)}{12.0}\right)$$
 - **Ángulo Cénit Diurno ($f_{\text{hour}}$):** Refleja la curva diurna de elevación solar y el ángulo de incidencia sobre paneles de cubierta con inclinación fija, alcanzando el máximo en el mediodía solar (13:00–14:00 en España) con mínimas pérdidas por reflexión de Fresnel, y reduciéndose en horas rasantes:
-  $$f_{\text{hour}} = \begin{cases} 0.70 + 0.30 \times \sin\left(\pi \times \frac{h - 6.0}{15.0}\right) & \text{si } 6 \le h \le 21 \\ 0.65 & \text{en otro caso} \end{cases}$$
+### 8. Restricciones Regulatorias y Límites Estatutarios (*Estatutos de la Comunidad*)
+Los acuerdos de junta y estatutos de comunidades de propietarios a menudo establecen cuotas mínimas y máximas de reparto entre los servicios comunes:
+- **Cuota Mínima Garantizada (`--min-share`):** Garantiza que los circuitos comunes menores (ventilación de garajes, alumbrado de escaleras, ascensores) perciban un porcentaje base de energía solar (p. ej. $\beta_i \ge 0.05$ o 5%), evitando que un único suministro acapare toda la generación.
+- **Cuota Máxima Tope (`--max-share`):** Impide que consumos intensivos (p. ej. bombas de calor centralizadas de aerotermia) monopolicen en exceso la producción (p. ej. tope del 70% o $\beta_i \le 0.70$).
+- **Límites Individuales por CUPS en `cups.json`:** Cada suministro puede fijar directamente en `cups.json` sus propios valores `"min_share"` y `"max_share"`.
+- El optimizador de programación lineal HiGHS incorpora las cotas de variables $L_i \le \beta_i \le U_i$, verifica la factibilidad matemática ($\sum L_i \le 1.0$) y aplica el redondeo exacto de Hare-Niemeyer garantizando $\sum \beta_i = 100.0\%$ estricto.
 
 ---
 
@@ -180,6 +185,9 @@ Resuelve el reparto óptimo y presenta tablas claras adaptadas a terminales de 8
 # Calcular el calendario completo de 12 meses
 esd calculate
 
+# Aplicar restricciones estatutarias (mínimo 5% y máximo 70% por suministro)
+esd calculate --min-share 5% --max-share 70%
+
 # Elegir modo de vista específico ('summary', 'matrix', 'trajectory', 'hourly', 'coefficients', 'comparison', 'all')
 esd calculate --view matrix
 esd calculate --view comparison
@@ -195,6 +203,9 @@ esd calculate --hourly
 
 # Configurar la precisión decimal de los porcentajes (0 = 53%, 1 = 52.8%, 2 = 52.86%)
 esd calculate --precision 1
+
+# Exportar únicamente el informe interactivo HTML independiente
+esd calculate --format html
 ```
 
 ---
@@ -205,6 +216,7 @@ Al ejecutar `esd calculate`, se generan automáticamente los archivos en `.outpu
 
 | Nombre de Archivo | Formato | Utilidad Práctica |
 | :--- | :--- | :--- |
+| `*_esd_interactive_report.html` | HTML (Independiente) | Cuadro de mando interactivo offline con gráficas SVG, simulador interactivo de coeficientes y anexo listo para imprimir del Acta de Junta. |
 | `*_esd_coefficients_matrix.csv` | CSV (delimitado por `;`) | Tabla en formato hoja de cálculo lista para su presentación oficial ante la compañía distribuidora de electricidad (DSO). |
 | `*_esd_optimization_summary.md` | Markdown | Informe ejecutivo completo con el anexo del acuerdo de reparto comunitario listo para la firma de la junta de propietarios. |
 | `*_esd_coefficients.csv` | CSV (delimitado por `;`) | Desglose detallado por CUPS: kWh autoconsumidos, excedentes vertidos y demanda remanente de red. |

@@ -34,6 +34,8 @@ class CupsConfig:
     primary: bool = False
     latitude: float | None = None
     longitude: float | None = None
+    min_share: float | None = None
+    max_share: float | None = None
 
 
 @dataclass

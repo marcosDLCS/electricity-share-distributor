@@ -71,8 +71,18 @@ def render_community_summary(
     meta_grid.add_column(ratio=1)
 
     strat_label = tot.strategy.upper()
+    bylaw_str = ""
+    if opt_result and opt_result.constraints and opt_result.constraints.is_active:
+        parts: list[str] = []
+        if opt_result.constraints.min_share is not None:
+            parts.append(f"Min: {opt_result.constraints.min_share * 100:.1f}%")
+        if opt_result.constraints.max_share is not None:
+            parts.append(f"Max: {opt_result.constraints.max_share * 100:.1f}%")
+        if parts:
+            bylaw_str = f" [dim]• Bylaws:[/dim] [bright_yellow]{' | '.join(parts)}[/bright_yellow]"
+
     meta_grid.add_row(
-        f"[dim]{t('lbl_supply_points', lang=lang)}:[/dim] [bold green]{summary.cups_count} CUPS[/bold green] [dim]• {t('col_strategy', lang=lang)}:[/dim] [white]{strat_label}[/white]",
+        f"[dim]{t('lbl_supply_points', lang=lang)}:[/dim] [bold green]{summary.cups_count} CUPS[/bold green] [dim]• {t('col_strategy', lang=lang)}:[/dim] [white]{strat_label}[/white]{bylaw_str}",
         f"[dim]{t('lbl_date_range', lang=lang)}:[/dim] [white]{summary.start_time[:10]} ➔ {summary.end_time[:10]}[/white]",
     )
 

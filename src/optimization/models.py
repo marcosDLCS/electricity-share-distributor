@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pandas as pd
 
+    from src.domain.models import BylawConstraints
+
 
 class OptimizationStrategy(StrEnum):
     """Distribution coefficient allocation strategies."""
@@ -237,6 +239,7 @@ class OptimizationResult:
     cups_list: list[str] = field(default_factory=list)
     hourly_result: HourlyOptimizationResult | None = None
     cups_uses: dict[str, str] = field(default_factory=dict)
+    constraints: BylawConstraints | None = None
 
     def build_matrix(self) -> CoefficientsMatrix:
         """Construct the 12-month calendar coefficients matrix (January to December)."""
