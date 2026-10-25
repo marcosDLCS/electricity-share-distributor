@@ -45,6 +45,7 @@ class CupsMonthlyMetrics:
     grid_demand_kwh: float
     self_consumption_rate: float
     solar_coverage_rate: float
+    use: str = ""
 
 
 @dataclass
@@ -99,6 +100,7 @@ class CoefficientsMatrix:
     monthly_sums: dict[str, float | None]
     annual_shares: dict[str, float | None]
     annual_sum: float | None
+    cups_uses: dict[str, str] = field(default_factory=dict)
 
     def get_share_pct(self, cups: str, month: str) -> float | None:
         """Get the percentage share for a given CUPS and month, or None if no data."""
@@ -144,6 +146,7 @@ class HourlyProfileMatrix:
         hourly_sums: Dictionary mapping hour_str -> sum of betas (must equal 1.0 or None).
         average_shares: Dictionary mapping cups -> weighted average share across 24 hours (or None).
         average_sum: Sum of average shares (must equal 1.0 or None).
+        cups_uses: Mapping of CUPS identifiers to functional descriptions.
     """
 
     cups_list: list[str]
@@ -152,6 +155,7 @@ class HourlyProfileMatrix:
     hourly_sums: dict[str, float | None]
     average_shares: dict[str, float | None]
     average_sum: float | None
+    cups_uses: dict[str, str] = field(default_factory=dict)
 
     def get_share_pct(self, cups: str, hour: str) -> float | None:
         """Get the percentage share for a given CUPS and hour, or None if no data."""
@@ -231,6 +235,7 @@ class OptimizationResult:
     baselines: dict[str, OptimizationResult] = field(default_factory=dict)
     cups_list: list[str] = field(default_factory=list)
     hourly_result: HourlyOptimizationResult | None = None
+    cups_uses: dict[str, str] = field(default_factory=dict)
 
     def build_matrix(self) -> CoefficientsMatrix:
         """Construct the 12-month calendar coefficients matrix (January to December)."""
@@ -305,4 +310,5 @@ class OptimizationResult:
             monthly_sums=monthly_sums,
             annual_shares=annual_shares,
             annual_sum=annual_sum,
+            cups_uses=dict(self.cups_uses),
         )

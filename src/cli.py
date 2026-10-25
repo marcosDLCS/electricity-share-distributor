@@ -8,10 +8,6 @@ from pathlib import Path
 import typer
 
 from src.config import (
-    DEFAULT_CONSUMPTION_DIR,
-    DEFAULT_CURATED_DIR,
-    DEFAULT_GENERATION_DIR,
-    DEFAULT_OUTPUT_DIR,
     DEFAULT_SHARE_PRECISION,
     DEFAULT_WEATHER_DIR,
     clear_output_directory,
@@ -175,17 +171,17 @@ def init_command(
 
 @app.command(name="doctor")
 def doctor_command(
-    consumption_dir: Path = typer.Option(
-        DEFAULT_CONSUMPTION_DIR,
+    consumption_dir: Path | None = typer.Option(
+        None,
         "--consumption-dir",
         "-c",
-        help="Path to folder containing DATADIS hourly consumption CSV files.",
+        help="Path to folder containing DATADIS hourly consumption CSV files. Defaults to configured path.",
     ),
-    generation_dir: Path = typer.Option(
-        DEFAULT_GENERATION_DIR,
+    generation_dir: Path | None = typer.Option(
+        None,
         "--generation-dir",
         "-g",
-        help="Path to folder containing Huawei FusionSolar generation Excel files.",
+        help="Path to folder containing Huawei FusionSolar generation Excel files. Defaults to configured path.",
     ),
     cups_file: Path | None = typer.Option(
         None,
@@ -197,7 +193,7 @@ def doctor_command(
         None,
         "--weather-dir",
         "-w",
-        help="Directory containing Open-Meteo hourly weather CSV files. Defaults to .input/weather.",
+        help="Directory containing Open-Meteo hourly weather CSV files. Defaults to configured path.",
     ),
     verbose: bool = typer.Option(
         False,
@@ -215,15 +211,17 @@ def doctor_command(
     """Audit input data files to detect gaps, missing hourly intervals, and inconsistencies."""
     active_lang = normalize_language_code(lang) if lang else get_language()
     cfg = load_config()
-    cups_path = resolve_cups_config_path(custom_path=cups_file, config=cfg)
+    target_consumption_dir = consumption_dir or Path(cfg.consumption_dir)
+    target_generation_dir = generation_dir or Path(cfg.generation_dir)
     target_weather_dir = weather_dir or (
         Path(cfg.weather_dir) if cfg and cfg.weather_dir else DEFAULT_WEATHER_DIR
     )
+    cups_path = resolve_cups_config_path(custom_path=cups_file, config=cfg)
 
     with console.status(f"[bold cyan]{t('status_doctor', lang=active_lang)}[/bold cyan]"):
         doc = DataDoctor(
-            consumption_dir=consumption_dir,
-            generation_dir=generation_dir,
+            consumption_dir=target_consumption_dir,
+            generation_dir=target_generation_dir,
             weather_dir=target_weather_dir,
             cups_config_path=cups_path,
         )
@@ -237,17 +235,17 @@ def doctor_command(
 
 @app.command(name="curate")
 def curate_command(
-    consumption_dir: Path = typer.Option(
-        DEFAULT_CONSUMPTION_DIR,
+    consumption_dir: Path | None = typer.Option(
+        None,
         "--consumption-dir",
         "-c",
-        help="Path to folder containing DATADIS hourly consumption CSV files.",
+        help="Path to folder containing DATADIS hourly consumption CSV files. Defaults to configured path.",
     ),
-    generation_dir: Path = typer.Option(
-        DEFAULT_GENERATION_DIR,
+    generation_dir: Path | None = typer.Option(
+        None,
         "--generation-dir",
         "-g",
-        help="Path to folder containing Huawei FusionSolar generation Excel files.",
+        help="Path to folder containing Huawei FusionSolar generation Excel files. Defaults to configured path.",
     ),
     cups_file: Path | None = typer.Option(
         None,
@@ -255,11 +253,11 @@ def curate_command(
         "-C",
         help="Path to cups.json configuration file specifying CUPS uses and primary flags.",
     ),
-    curated_dir: Path = typer.Option(
-        DEFAULT_CURATED_DIR,
+    curated_dir: Path | None = typer.Option(
+        None,
         "--curated-dir",
         "-o",
-        help="Path to directory where curated CSV files will be written.",
+        help="Path to directory where curated CSV files will be written. Defaults to configured path.",
     ),
     name: str = typer.Option(
         "curated",
@@ -289,7 +287,7 @@ def curate_command(
         None,
         "--weather-dir",
         "-w",
-        help="Directory containing Open-Meteo hourly weather CSV files. Defaults to .input/weather.",
+        help="Directory containing Open-Meteo hourly weather CSV files. Defaults to configured path.",
     ),
     lang: str | None = typer.Option(
         None,
@@ -305,20 +303,27 @@ def curate_command(
     if not is_initialized():
         render_not_initialized_warning(lang=active_lang)
 
+    target_consumption_dir = consumption_dir or Path(cfg.consumption_dir)
+    target_generation_dir = generation_dir or Path(cfg.generation_dir)
+    target_curated_dir = curated_dir or Path(cfg.curated_dir)
+    target_weather_dir = weather_dir or (
+        Path(cfg.weather_dir) if cfg and cfg.weather_dir else DEFAULT_WEATHER_DIR
+    )
+    cups_path = resolve_cups_config_path(custom_path=cups_file, config=cfg)
+
     try:
         with console.status(f"[bold cyan]{t('status_curating', lang=active_lang)}[/bold cyan]"):
-            target_weather_dir = weather_dir or Path(cfg.weather_dir)
             curator = DataCurator(
-                consumption_dir=consumption_dir,
-                generation_dir=generation_dir,
-                cups_config_path=cups_file,
-                curated_dir=curated_dir,
+                consumption_dir=target_consumption_dir,
+                generation_dir=target_generation_dir,
+                cups_config_path=cups_path,
+                curated_dir=target_curated_dir,
                 weather_dir=target_weather_dir,
             )
             dataset = curator.curate(year=year, month=month)
             csv_path = curator.export_csv(
                 dataset,
-                curated_dir=curated_dir,
+                curated_dir=target_curated_dir,
                 base_name=name,
                 delimiter=delimiter,
             )
@@ -367,7 +372,7 @@ def weather_command(
         None,
         "--weather-dir",
         "-w",
-        help="Directory to store downloaded weather CSV files. Defaults to .input/weather.",
+        help="Directory to store downloaded weather CSV files. Defaults to configured path.",
     ),
     timezone: str = typer.Option(
         "auto",
@@ -444,35 +449,35 @@ def weather_command(
 
 @app.command(name="calculate")
 def calculate_command(
-    consumption_dir: Path = typer.Option(
-        DEFAULT_CONSUMPTION_DIR,
+    consumption_dir: Path | None = typer.Option(
+        None,
         "--consumption-dir",
         "-c",
-        help="Path to folder containing DATADIS hourly consumption CSV files.",
+        help="Path to folder containing DATADIS hourly consumption CSV files. Defaults to configured path.",
     ),
-    generation_dir: Path = typer.Option(
-        DEFAULT_GENERATION_DIR,
+    generation_dir: Path | None = typer.Option(
+        None,
         "--generation-dir",
         "-g",
-        help="Path to folder containing Huawei FusionSolar generation Excel files.",
+        help="Path to folder containing Huawei FusionSolar generation Excel files. Defaults to configured path.",
     ),
-    output_dir: Path = typer.Option(
-        DEFAULT_OUTPUT_DIR,
+    output_dir: Path | None = typer.Option(
+        None,
         "--output-dir",
         "-o",
-        help="Path to folder where summary reports and exports will be written.",
+        help="Path to folder where summary reports and exports will be written. Defaults to configured path.",
     ),
-    curated_dir: Path = typer.Option(
-        DEFAULT_CURATED_DIR,
+    curated_dir: Path | None = typer.Option(
+        None,
         "--curated-dir",
         "-u",
-        help="Path to folder containing curated time-series CSV file.",
+        help="Path to folder containing curated time-series CSV file. Defaults to configured path.",
     ),
     cups_file: Path | None = typer.Option(
         None,
         "--cups-file",
         "-C",
-        help="Path to cups.json configuration file specifying CUPS uses and primary flags.",
+        help="Path to cups.json configuration file specifying CUPS uses and primary flags. Defaults to configured path.",
     ),
     force_curate: bool = typer.Option(
         False,
@@ -501,7 +506,7 @@ def calculate_command(
         "summary",
         "--view",
         "-v",
-        help="Display view mode: 'summary' (overview + matrix), 'matrix' (CUPS/months share matrix), 'trajectory', 'hourly', or 'all'.",
+        help="Display view mode: 'summary' (overview + matrix), 'matrix' (CUPS/months share matrix), 'trajectory', 'hourly', 'coefficients', 'comparison', or 'all'.",
     ),
     hourly: bool = typer.Option(
         False,
@@ -542,6 +547,13 @@ def calculate_command(
     if not is_initialized():
         render_not_initialized_warning(lang=active_lang)
 
+    cfg = load_config()
+    target_consumption_dir = consumption_dir or Path(cfg.consumption_dir)
+    target_generation_dir = generation_dir or Path(cfg.generation_dir)
+    target_output_dir = output_dir or Path(cfg.output_dir)
+    target_curated_dir = curated_dir or Path(cfg.curated_dir)
+    cups_path = resolve_cups_config_path(custom_path=cups_file, config=cfg)
+
     # Normalize strategy
     strat_key = strategy.lower().strip()
     try:
@@ -558,17 +570,19 @@ def calculate_command(
 
     try:
         curator = DataCurator(
-            consumption_dir=consumption_dir,
-            generation_dir=generation_dir,
-            cups_config_path=cups_file,
-            curated_dir=curated_dir,
+            consumption_dir=target_consumption_dir,
+            generation_dir=target_generation_dir,
+            cups_config_path=cups_path,
+            curated_dir=target_curated_dir,
         )
 
-        curated_csv = curated_dir / "curated.csv" if curated_dir.is_dir() else curated_dir
-        is_custom_input = (
-            consumption_dir != DEFAULT_CONSUMPTION_DIR or generation_dir != DEFAULT_GENERATION_DIR
+        curated_csv = (
+            target_curated_dir / "curated.csv"
+            if target_curated_dir.is_dir()
+            else target_curated_dir
         )
-        is_custom_curated = curated_dir != DEFAULT_CURATED_DIR
+        is_custom_input = consumption_dir is not None or generation_dir is not None
+        is_custom_curated = curated_dir is not None
         needs_curation = (
             force_curate or not curated_csv.exists() or (is_custom_input and not is_custom_curated)
         )
@@ -635,7 +649,7 @@ def calculate_command(
             exported_paths = export_all(
                 opt_result,
                 aligned.metadata,
-                output_dir=output_dir,
+                output_dir=target_output_dir,
                 formats=fmt_clean,
                 lang=active_lang,
                 precision=active_precision,
@@ -757,6 +771,12 @@ def config_command(
 
 @app.command(name="cleanup")
 def cleanup_command(
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        help="Directory to clean up. Defaults to configured output directory.",
+    ),
     force: bool = typer.Option(
         False,
         "--force",
@@ -773,7 +793,7 @@ def cleanup_command(
     """Clean up generated reports and files from the output directory."""
     active_lang = normalize_language_code(lang) if lang else get_language()
     cfg = load_config()
-    out_dir = Path(cfg.output_dir)
+    out_dir = output_dir or Path(cfg.output_dir)
 
     if not out_dir.exists():
         render_cleanup_result(count=0, output_dir=str(out_dir), lang=active_lang)

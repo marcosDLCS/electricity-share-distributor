@@ -180,6 +180,13 @@ Resuelve el reparto óptimo y presenta tablas claras adaptadas a terminales de 8
 # Calcular el calendario completo de 12 meses
 esd calculate
 
+# Elegir modo de vista específico ('summary', 'matrix', 'trajectory', 'hourly', 'coefficients', 'comparison', 'all')
+esd calculate --view matrix
+esd calculate --view comparison
+
+# Sobrescribir directorios de entrada/salida (por defecto usa los configurados en .esd_config.json)
+esd calculate -c .input/consumption -g .input/generation -o .output
+
 # Filtrar para un año y mes específicos
 esd calculate --year 2026 --month 5
 
@@ -217,7 +224,7 @@ Para desarrolladores y agentes autónomos que naveguen por la base de código:
 | **Configuración** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision`, `get_weather_dir` | Persistencia de ajustes (`.esd_config.json`) y resolución de rutas. |
 | **Localización** | [`src/i18n.py`](../src/i18n.py) | `t()`, `TRANSLATIONS` | Diccionario bilingüe inglés/español con soporte de interpolación. |
 | **Ingesta: Consumo** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | Búsqueda de CSVs de DATADIS, detección de codificación y lectura. |
-| **Ingesta: Producción** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `SolarGenerationLoader` | Procesamiento de informes `.xlsx` del inversor solar (producción y demanda). |
+| **Ingesta: Producción** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `HuaweiGenerationLoader` | Procesamiento de informes `.xlsx` del inversor solar (producción y demanda). |
 | **Ingesta: Meteorología** | [`src/ingestion/weather.py`](../src/ingestion/weather.py) | `OpenMeteoWeatherDownloader`, `WeatherLoader` | Descargador API Open-Meteo Archive, códigos OMM e ingesta de CSV meteorológicos. |
 | **Ingesta: Auditoría** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Diagnóstico de huecos, salud meteorológica, identificación de usos de CUPS, contadores inactivos y solapamientos. |
 | **Curado y Reconciliación** | [`src/curation/`](../src/curation) | `DataCurator`, `CuratedDataset` | Reconciliación de falsos ceros, cruce de metadatos de CUPS y exportación CSV. |

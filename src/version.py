@@ -8,7 +8,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-__version__ = "2026.10.037"
+__version__ = "2026.10.038"
 
 VERSION_PATTERN = re.compile(r"^(\d{4})\.(\d{2})\.(\d{3})$")
 
@@ -102,6 +102,21 @@ def update_version_py(version_file_path: Path, new_version: str) -> None:
     version_file_path.write_text(updated, encoding="utf-8")
 
 
+def update_readme_version(readme_path: Path, new_version: str) -> None:
+    """Update version badge in README.md."""
+    if not readme_path.is_file():
+        return
+    content = readme_path.read_text(encoding="utf-8")
+    updated, count = re.subn(
+        r"(badge/version-)[0-9.]+(-blue\.svg)",
+        rf"\g<1>{new_version}\g<2>",
+        content,
+        count=1,
+    )
+    if count > 0:
+        readme_path.write_text(updated, encoding="utf-8")
+
+
 def bump_version_files(
     repo_root: Path | None = None,
     target_date: datetime | None = None,
@@ -114,6 +129,7 @@ def bump_version_files(
     root = find_repo_root(repo_root)
     pyproject = root / "pyproject.toml"
     version_file = root / "src" / "version.py"
+    readme_file = root / "README.md"
 
     current: str | None = None
     if version_file.is_file():
@@ -130,6 +146,8 @@ def bump_version_files(
         update_version_py(version_file, new_version)
     if pyproject.is_file():
         update_pyproject_version(pyproject, new_version)
+    if readme_file.is_file():
+        update_readme_version(readme_file, new_version)
 
     return new_version
 

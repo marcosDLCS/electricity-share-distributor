@@ -319,7 +319,7 @@ def render_monthly_coefficients_table(
     )
 
     table.add_column(t("col_rank", lang=lang), justify="right", style="dim", width=2, no_wrap=True)
-    table.add_column(t("col_cups", lang=lang), style="bold white", width=20, no_wrap=True)
+    table.add_column(t("col_cups_desc", lang=lang), style="bold white", width=20, no_wrap=True)
     table.add_column(
         t("col_beta", lang=lang), justify="right", style="bold green", width=7, no_wrap=True
     )
@@ -345,9 +345,10 @@ def render_monthly_coefficients_table(
     for rank, cm in enumerate(sorted_cups, 1):
         pct = cm.beta * 100.0
         bar = make_percentage_bar(pct, width=8)
+        cups_label = f"{cm.use[:11]} (…{cm.cups[-6:]})" if cm.use else cm.cups
         table.add_row(
             str(rank),
-            cm.cups,
+            cups_label,
             f"{pct:.{prec}f}%",
             bar,
             f"{cm.consumption_kwh:,.1f}",
@@ -417,8 +418,9 @@ def render_coefficients_matrix_table(
         show_lines=False,
     )
 
-    cups_width = 12 if compact_mode else 20
-    table.add_column(t("col_cups", lang=lang), style="bold cyan", width=cups_width, no_wrap=True)
+    cups_width = 12 if compact_mode else 22
+    col_cups_title = t("col_cups", lang=lang) if compact_mode else t("col_cups_desc", lang=lang)
+    table.add_column(col_cups_title, style="bold cyan", width=cups_width, no_wrap=True)
 
     abbr_map = MONTH_ABBR_ES if current_lang == "es" else MONTH_ABBR_EN
     for m in matrix.months:
@@ -441,7 +443,11 @@ def render_coefficients_matrix_table(
     )
 
     for cups in matrix.cups_list:
-        display_cups = f"…{cups[-10:]}" if compact_mode and len(cups) > 12 else cups
+        use_val = matrix.cups_uses.get(cups, "") if hasattr(matrix, "cups_uses") else ""
+        if compact_mode:
+            display_cups = f"…{cups[-10:]}" if len(cups) > 12 else cups
+        else:
+            display_cups = f"{use_val[:11]} (…{cups[-6:]})" if use_val else cups
         row = [display_cups]
         for m in matrix.months:
             row.append(matrix.format_cell(cups, m, precision=prec))

@@ -180,6 +180,13 @@ Solves the optimal distribution schedule and displays clean 80-column terminal t
 # Calculate full 12-month calendar schedule
 esd calculate
 
+# Choose specific terminal view mode ('summary', 'matrix', 'trajectory', 'hourly', 'coefficients', 'comparison', 'all')
+esd calculate --view matrix
+esd calculate --view comparison
+
+# Override input/output directories (dynamically defaults to .esd_config.json)
+esd calculate -c .input/consumption -g .input/generation -o .output
+
 # Filter to a specific year and month
 esd calculate --year 2026 --month 5
 
@@ -217,7 +224,7 @@ For developers and autonomous agents navigating the codebase:
 | **Configuration** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision`, `get_weather_dir` | Settings persistence (`.esd_config.json`) and folder resolution. |
 | **Localization** | [`src/i18n.py`](../src/i18n.py) | `t()`, `TRANSLATIONS` | English and Spanish dictionary lookups with string interpolation. |
 | **Ingestion: Consumption** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | DATADIS CSV discovery, encoding detection, and reading. |
-| **Ingestion: Generation** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `SolarGenerationLoader` | Solar inverter `.xlsx` report parsing (solar production and load demand). |
+| **Ingestion: Generation** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `HuaweiGenerationLoader` | Solar inverter `.xlsx` report parsing (solar production and load demand). |
 | **Ingestion: Weather** | [`src/ingestion/weather.py`](../src/ingestion/weather.py) | `OpenMeteoWeatherDownloader`, `WeatherLoader` | Open-Meteo Archive API downloader, WMO weather codes, and weather CSV ingestion. |
 | **Ingestion: Audit** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Pre-flight gap detection, weather health audit, CUPS use enrichment, inactive meter alerts, and date overlap verification. |
 | **Curation & Reconciliation** | [`src/curation/`](../src/curation) | `DataCurator`, `CuratedDataset` | Fake-zero reconciliation, CUPS metadata lookup, and curated CSV export. |

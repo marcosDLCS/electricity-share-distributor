@@ -70,6 +70,7 @@ def export_coefficients_csv(
                 {
                     "month": c.month,
                     "cups": c.cups,
+                    "use": c.use,
                     "beta": f"{c.beta:.4f}".replace(".", ","),
                     "share_pct": f"{c.beta * 100:.{prec}f}".replace(".", ","),
                     "consumption_kwh": round(c.consumption_kwh, 2),
@@ -106,14 +107,15 @@ def export_coefficients_matrix_csv(
     rows: list[dict[str, object]] = []
 
     for cups in matrix.cups_list:
-        row_dict: dict[str, object] = {"cups": cups}
+        use_val = matrix.cups_uses.get(cups, "") if hasattr(matrix, "cups_uses") else ""
+        row_dict: dict[str, object] = {"cups": cups, "use": use_val}
         for m in matrix.months:
             row_dict[m] = matrix.format_cell(cups, m, precision=prec).replace(".", ",")
         row_dict["annual_average"] = matrix.format_annual(cups, precision=prec).replace(".", ",")
         rows.append(row_dict)
 
     # Total row
-    total_dict: dict[str, object] = {"cups": "TOTAL"}
+    total_dict: dict[str, object] = {"cups": "TOTAL", "use": "TOTAL"}
     for m in matrix.months:
         total_dict[m] = matrix.format_month_sum(m, precision=prec).replace(".", ",")
     total_dict["annual_average"] = matrix.format_annual_sum(precision=prec).replace(".", ",")
@@ -216,6 +218,7 @@ def export_results_json(
         "total_summary": asdict(opt_result.total_summary),
         "monthly_results": [asdict(m) for m in opt_result.monthly_results],
         "baselines": {k: asdict(v.total_summary) for k, v in opt_result.baselines.items()},
+        "cups_uses": opt_result.cups_uses,
     }
 
     if opt_result.hourly_result is not None:
@@ -226,6 +229,7 @@ def export_results_json(
             "hourly_sums": h_matrix.hourly_sums,
             "average_shares": h_matrix.average_shares,
             "average_sum": h_matrix.average_sum,
+            "cups_uses": h_matrix.cups_uses,
         }
 
     file_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -361,18 +365,24 @@ def export_summary_markdown(
         lines.append("")
 
         month_headers = [abbr_map.get(m, m) for m in matrix.months]
-        headers = ["CUPS", *month_headers, t("col_annual_avg", lang=target_lang)]
+        headers = [
+            "CUPS",
+            t("col_use", lang=target_lang),
+            *month_headers,
+            t("col_annual_avg", lang=target_lang),
+        ]
         lines.append("| " + " | ".join(headers) + " |")
-        lines.append("| :--- | " + " | ".join([":---:"] * (len(headers) - 1)) + " |")
+        lines.append("| :--- | :--- | " + " | ".join([":---:"] * (len(headers) - 2)) + " |")
 
         for cups in matrix.cups_list:
-            row_cells = [f"`{cups}`"]
+            use_val = matrix.cups_uses.get(cups, "") if hasattr(matrix, "cups_uses") else ""
+            row_cells = [f"`{cups}`", use_val]
             for m in matrix.months:
                 row_cells.append(matrix.format_cell(cups, m, precision=prec))
             row_cells.append(f"**{matrix.format_annual(cups, precision=prec)}**")
             lines.append("| " + " | ".join(row_cells) + " |")
 
-        total_cells = [f"**{t('lbl_total_rd244', lang=target_lang)}**"]
+        total_cells = [f"**{t('lbl_total_rd244', lang=target_lang)}**", ""]
         for m in matrix.months:
             total_cells.append(f"**{matrix.format_month_sum(m, precision=prec)}**")
         total_cells.append(f"**{matrix.format_annual_sum(precision=prec)}**")
@@ -389,18 +399,24 @@ def export_summary_markdown(
             lines.append("")
 
             hour_headers = [f"{h}h" for h in h_matrix.hours]
-            h_headers = ["CUPS", *hour_headers, t("col_hourly_avg", lang=target_lang)]
+            h_headers = [
+                "CUPS",
+                t("col_use", lang=target_lang),
+                *hour_headers,
+                t("col_hourly_avg", lang=target_lang),
+            ]
             lines.append("| " + " | ".join(h_headers) + " |")
-            lines.append("| :--- | " + " | ".join([":---:"] * (len(h_headers) - 1)) + " |")
+            lines.append("| :--- | :--- | " + " | ".join([":---:"] * (len(h_headers) - 2)) + " |")
 
             for cups in h_matrix.cups_list:
-                h_row = [f"`{cups}`"]
+                h_use = h_matrix.cups_uses.get(cups, "") if hasattr(h_matrix, "cups_uses") else ""
+                h_row = [f"`{cups}`", h_use]
                 for h in h_matrix.hours:
                     h_row.append(h_matrix.format_cell(cups, h, precision=prec))
                 h_row.append(f"**{h_matrix.format_average(cups, precision=prec)}**")
                 lines.append("| " + " | ".join(h_row) + " |")
 
-            total_h_cells = [f"**{t('lbl_total_rd244', lang=target_lang)}**"]
+            total_h_cells = [f"**{t('lbl_total_rd244', lang=target_lang)}**", ""]
             for h in h_matrix.hours:
                 total_h_cells.append(f"**{h_matrix.format_hour_sum(h, precision=prec)}**")
             total_h_cells.append(f"**{h_matrix.format_average_sum(precision=prec)}**")
@@ -426,11 +442,11 @@ def export_summary_markdown(
         lines.append("")
         lines.append(t("md_coeff_header", lang=target_lang))
         lines.append(
-            "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
+            "| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
         )
         for c in m.cups_metrics:
             lines.append(
-                f"| `{c.cups}` | **{c.beta:.4f}** | {c.beta * 100:.{prec}f}% | "
+                f"| `{c.cups}` | {c.use} | **{c.beta:.4f}** | {c.beta * 100:.{prec}f}% | "
                 f"{c.consumption_kwh:,.1f} | {c.generation_allocated_kwh:,.1f} | "
                 f"{c.self_consumed_kwh:,.1f} | {c.surplus_kwh:,.1f} | {c.grid_demand_kwh:,.1f} |"
             )

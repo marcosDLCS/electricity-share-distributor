@@ -459,3 +459,45 @@ def test_cli_calculate_hourly_export_csv(tmp_path: Path) -> None:
     file_names = [f.name for f in exported_files]
     assert any("_esd_hourly_shares.csv" in n for n in file_names)
     assert any("_esd_hourly_profile_matrix.csv" in n for n in file_names)
+
+
+def test_cli_calculate_dynamic_defaults_from_config(tmp_path: Path, monkeypatch) -> None:
+    """Ensure calculate command dynamically picks up directories from config."""
+    from src.config import AppConfig
+
+    custom_out = tmp_path / "custom_output"
+    custom_out.mkdir()
+
+    cfg = AppConfig(
+        output_dir=str(custom_out),
+    )
+    monkeypatch.setattr("src.cli.load_config", lambda: cfg)
+
+    result = runner.invoke(
+        app,
+        [
+            "calculate",
+            "-y",
+            "2026",
+            "-m",
+            "5",
+            "--format",
+            "csv",
+            "--lang",
+            "en",
+        ],
+    )
+    assert result.exit_code == 0
+    exported = list(custom_out.glob("*.csv"))
+    assert len(exported) > 0
+
+
+def test_cli_cleanup_with_output_dir_override(tmp_path: Path) -> None:
+    """Ensure cleanup --output-dir cleans the overridden directory."""
+    test_dir = tmp_path / "clean_me"
+    test_dir.mkdir()
+    (test_dir / "temp_file.csv").write_text("dummy")
+
+    result = runner.invoke(app, ["cleanup", "-o", str(test_dir), "--force"])
+    assert result.exit_code == 0
+    assert not (test_dir / "temp_file.csv").exists()

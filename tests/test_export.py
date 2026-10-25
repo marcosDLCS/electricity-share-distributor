@@ -31,6 +31,7 @@ def create_dummy_optimization_result() -> tuple[OptimizationResult, IngestionSum
     cups_list = ["ES0021000000000001AA", "ES0021000000000002BB"]
     c1 = CupsMonthlyMetrics(
         cups="ES0021000000000001AA",
+        use="Aerotermia",
         month="2026-05",
         beta=0.6,
         consumption_kwh=500.0,
@@ -43,6 +44,7 @@ def create_dummy_optimization_result() -> tuple[OptimizationResult, IngestionSum
     )
     c2 = CupsMonthlyMetrics(
         cups="ES0021000000000002BB",
+        use="Garaje",
         month="2026-05",
         beta=0.4,
         consumption_kwh=300.0,
@@ -72,6 +74,7 @@ def create_dummy_optimization_result() -> tuple[OptimizationResult, IngestionSum
         monthly_results=[m1],
         total_summary=m1,
         baselines={},
+        cups_uses={"ES0021000000000001AA": "Aerotermia", "ES0021000000000002BB": "Garaje"},
     )
 
     summary = IngestionSummary(
@@ -96,8 +99,11 @@ def test_export_csv(tmp_path: Path) -> None:
     assert len(df) == 2
     assert "month" in df.columns
     assert "cups" in df.columns
+    assert "use" in df.columns
     assert "beta" in df.columns
     assert df["beta"].sum() == 1.0
+    assert df.iloc[0]["use"] == "Aerotermia"
+    assert df.iloc[1]["use"] == "Garaje"
 
 
 def test_export_coefficients_matrix_csv(tmp_path: Path) -> None:
@@ -111,19 +117,22 @@ def test_export_coefficients_matrix_csv(tmp_path: Path) -> None:
     df = pd.read_csv(csv_path, sep=";", decimal=",")
     # 2 CUPS rows + 1 TOTAL row
     assert len(df) == 3
-    expected_cols = ["cups"] + [f"{m:02d}" for m in range(1, 13)] + ["annual_average"]
+    expected_cols = ["cups", "use"] + [f"{m:02d}" for m in range(1, 13)] + ["annual_average"]
     assert list(df.columns) == expected_cols
 
     # Verify CUPS rows
     assert df.iloc[0]["cups"] == "ES0021000000000001AA"
+    assert df.iloc[0]["use"] == "Aerotermia"
     assert df.iloc[0]["05"] == "60,0%"
     assert df.iloc[0]["01"] == "—"
     assert df.iloc[1]["cups"] == "ES0021000000000002BB"
+    assert df.iloc[1]["use"] == "Garaje"
     assert df.iloc[1]["05"] == "40,0%"
     assert df.iloc[1]["01"] == "—"
 
     # Verify TOTAL row
     assert df.iloc[2]["cups"] == "TOTAL"
+    assert df.iloc[2]["use"] == "TOTAL"
     assert df.iloc[2]["05"] == "100,0%"
     assert df.iloc[2]["annual_average"] == "100,0%"
 

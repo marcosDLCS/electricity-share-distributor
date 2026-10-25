@@ -214,6 +214,7 @@ class DistributionOptimizer:
         month_name: str,
         strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL,
         precision: int = 0,
+        cups_uses: dict[str, str] | None = None,
     ) -> CommunityMonthlyMetrics:
         """Evaluate and compute self-consumption metrics for a single month."""
         consumption = df_month[cups_list].values
@@ -261,6 +262,7 @@ class DistributionOptimizer:
                     grid_demand_kwh=grid_kwh,
                     self_consumption_rate=sc_rate,
                     solar_coverage_rate=cov_rate,
+                    use=cups_uses.get(cups, "") if cups_uses else "",
                 )
             )
 
@@ -324,9 +326,11 @@ class DistributionOptimizer:
         strategy: OptimizationStrategy,
         precision: int,
         require_full_month: bool = True,
+        cups_uses: dict[str, str] | None = None,
     ) -> list[CommunityMonthlyMetrics]:
         """Evaluate each calendar month (01 to 12), aggregating multi-year data and skipping incomplete months."""
         monthly_results: list[CommunityMonthlyMetrics] = []
+        effective_uses = cups_uses or getattr(aligned_dataset, "cups_uses", {}) or {}
 
         for m in range(1, 13):
             m_str = f"{m:02d}"
@@ -368,6 +372,7 @@ class DistributionOptimizer:
                     month_name=m_str,
                     strategy=strategy,
                     precision=precision,
+                    cups_uses=effective_uses,
                 )
                 res.has_data = True
                 monthly_results.append(res)
@@ -381,6 +386,7 @@ class DistributionOptimizer:
                     month_name=m_str,
                     strategy=strategy,
                     precision=precision,
+                    cups_uses=effective_uses,
                 )
                 # Scale energy totals by 1/k to reflect single upcoming year expected energy:
                 res.total_generation_kwh /= k
@@ -402,6 +408,7 @@ class DistributionOptimizer:
                             grid_demand_kwh=cm.grid_demand_kwh / k,
                             self_consumption_rate=cm.self_consumption_rate,
                             solar_coverage_rate=cm.solar_coverage_rate,
+                            use=cm.use,
                         )
                     )
                 res.cups_metrics = scaled_cups
@@ -435,6 +442,17 @@ class DistributionOptimizer:
 
         hours_str = [f"{h:02d}" for h in range(24)]
 
+        # Resolve CUPS functional uses for labeling and sorting
+        cups_uses: dict[str, str] = getattr(aligned_dataset, "cups_uses", {}) or {}
+        if not cups_uses:
+            try:
+                from src.curation.curator import DataCurator
+
+                cfg = DataCurator().load_cups_config()
+                cups_uses = {c.cups: c.use for c in cfg.values() if c.use}
+            except Exception:
+                cups_uses = {}
+
         if aligned_df.empty or n_cups == 0:
             empty_matrix = HourlyProfileMatrix(
                 cups_list=cups_list,
@@ -443,6 +461,7 @@ class DistributionOptimizer:
                 hourly_sums=dict.fromkeys(hours_str),
                 average_shares=dict.fromkeys(cups_list),
                 average_sum=None,
+                cups_uses=cups_uses,
             )
             return HourlyOptimizationResult(
                 profile_matrix=empty_matrix,
@@ -536,6 +555,7 @@ class DistributionOptimizer:
             hourly_sums=hourly_sums,
             average_shares=average_shares,
             average_sum=avg_sum,
+            cups_uses=cups_uses,
         )
 
         # -------------------------------------------------------------------------
@@ -562,17 +582,6 @@ class DistributionOptimizer:
                 rounded_betas[t, pri_idx] = 1.0
             else:
                 rounded_betas[t] = cls._round_betas(raw_betas[t], precision=precision)
-
-        # Resolve CUPS functional uses for labeling and sorting
-        cups_uses: dict[str, str] = getattr(aligned_dataset, "cups_uses", {}) or {}
-        if not cups_uses:
-            try:
-                from src.curation.curator import DataCurator
-
-                cfg = DataCurator().load_cups_config()
-                cups_uses = {c.cups: c.use for c in cfg.values()}
-            except Exception:
-                cups_uses = {}
 
         temp_series = aligned_df["temperature"] if "temperature" in aligned_df.columns else None
         cloud_series = aligned_df["cloud_cover"] if "cloud_cover" in aligned_df.columns else None
@@ -681,15 +690,28 @@ class DistributionOptimizer:
         )
         cups_list = aligned_dataset.cups_list
 
+        cups_uses: dict[str, str] = getattr(aligned_dataset, "cups_uses", {}) or {}
+        if not cups_uses:
+            try:
+                from src.curation.curator import DataCurator
+
+                cups_cfg = DataCurator().load_cups_config()
+                cups_uses = {c.cups: c.use for c in cups_cfg.values() if c.use}
+            except Exception:
+                cups_uses = {}
+
         monthly_results = cls._evaluate_calendar_months(
             aligned_dataset=aligned_dataset,
             cups_list=cups_list,
             strategy=strategy,
             precision=active_precision,
             require_full_month=require_full_month,
+            cups_uses=cups_uses,
         )
 
-        total_summary = cls._aggregate_summary(monthly_results, cups_list, strategy.value)
+        total_summary = cls._aggregate_summary(
+            monthly_results, cups_list, strategy.value, cups_uses=cups_uses
+        )
 
         baselines: dict[str, OptimizationResult] = {}
         if include_baselines:
@@ -701,14 +723,18 @@ class DistributionOptimizer:
                         strategy=base_strat,
                         precision=active_precision,
                         require_full_month=require_full_month,
+                        cups_uses=cups_uses,
                     )
-                    base_summary = cls._aggregate_summary(base_monthly, cups_list, base_strat.value)
+                    base_summary = cls._aggregate_summary(
+                        base_monthly, cups_list, base_strat.value, cups_uses=cups_uses
+                    )
                     baselines[base_strat.value] = OptimizationResult(
                         strategy=base_strat.value,
                         monthly_results=base_monthly,
                         total_summary=base_summary,
                         baselines={},
                         cups_list=cups_list,
+                        cups_uses=cups_uses,
                     )
 
         hourly_result: HourlyOptimizationResult | None = None
@@ -727,6 +753,7 @@ class DistributionOptimizer:
             baselines=baselines,
             cups_list=cups_list,
             hourly_result=hourly_result,
+            cups_uses=cups_uses,
         )
 
     @staticmethod
@@ -734,6 +761,7 @@ class DistributionOptimizer:
         monthly_results: list[CommunityMonthlyMetrics],
         cups_list: list[str],
         strategy: str,
+        cups_uses: dict[str, str] | None = None,
     ) -> CommunityMonthlyMetrics:
         """Compute aggregate total metrics across multiple months."""
         active_months = [m for m in monthly_results if m.has_data]
@@ -761,6 +789,7 @@ class DistributionOptimizer:
                         grid_demand_kwh=0.0,
                         self_consumption_rate=0.0,
                         solar_coverage_rate=0.0,
+                        use=cups_uses.get(c, "") if cups_uses else "",
                     )
                     for c in cups_list
                 ],
@@ -827,6 +856,7 @@ class DistributionOptimizer:
                     grid_demand_kwh=c_grid,
                     self_consumption_rate=c_sc_rate,
                     solar_coverage_rate=c_cov_rate,
+                    use=cups_uses.get(cups, "") if cups_uses else "",
                 )
             )
 

@@ -51,6 +51,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "opt_month": "Filter analysis to a specific month (1-12).",
         "opt_format": "Export format: 'table', 'csv', 'json', 'markdown', or 'all'.",
         "opt_hourly": "Calculate and export distribution shares per hour (24-hour diurnal profile and hourly time-series).",
+        "opt_view": "Display view mode: 'summary', 'matrix', 'trajectory', 'hourly', 'coefficients', 'comparison', or 'all'.",
         "opt_force": "Execute cleanup without interactive confirmation.",
         "opt_force_curate": "Force re-running curation before calculating, even if curated CSV exists.",
         # Messages
@@ -223,7 +224,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "md_comp_header": "| Strategy | Self-Consumed (kWh) | Solar Surplus (kWh) | Efficiency % | vs Equal Gain |",
         "md_sec_monthly_coeffs": "## 📅 Proposed Monthly Distribution Coefficients (β_i)",
         "md_month_header": "### Month: `{month}` (Solar Gen: {gen:,.1f} kWh)",
-        "md_coeff_header": "| CUPS | Beta (β) | Share % | Demand (kWh) | Allocated Solar (kWh) | Self-Consumed (kWh) | Surplus (kWh) | Grid (kWh) |",
+        "md_coeff_header": "| CUPS | Use | Beta (β) | Share % | Demand (kWh) | Allocated Solar (kWh) | Self-Consumed (kWh) | Surplus (kWh) | Grid (kWh) |",
         "md_lbl_optimal_strat": "**Optimal (RD 244/2019 LP)**",
         # Matrix & Insights in Markdown
         "md_sec_coeff_matrix": "## 📋 Regulatory Distribution Coefficients Matrix (RD 244/2019)",
@@ -300,6 +301,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "opt_month": "Filtrar análisis a un mes específico (1-12).",
         "opt_format": "Formato de exportación: 'table', 'csv', 'json', 'markdown' o 'all'.",
         "opt_hourly": "Calcular y exportar el reparto por hora (perfil diario de 24 horas y serie temporal horaria).",
+        "opt_view": "Modo de visualización: 'summary', 'matrix', 'trajectory', 'hourly', 'coefficients', 'comparison' o 'all'.",
         "opt_force": "Ejecutar limpieza sin confirmación interactiva.",
         "opt_force_curate": "Forzar re-ejecución del curado antes de calcular, incluso si ya existe el CSV curado.",
         # Messages
@@ -472,7 +474,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "md_comp_header": "| Estrategia | Autoconsumo (kWh) | Excedentes (kWh) | % Eficiencia | Ganancia vs Igualitario |",
         "md_sec_monthly_coeffs": "## 📅 Propuesta de Coeficientes de Reparto Mensuales (β_i)",
         "md_month_header": "### Mes: `{month}` (Gen Solar: {gen:,.1f} kWh)",
-        "md_coeff_header": "| CUPS | Beta (β) | % Reparto | Demanda (kWh) | Solar Asignada (kWh) | Autoconsumo (kWh) | Excedentes (kWh) | Red (kWh) |",
+        "md_coeff_header": "| CUPS | Uso | Beta (β) | % Reparto | Demanda (kWh) | Solar Asignada (kWh) | Autoconsumo (kWh) | Excedentes (kWh) | Red (kWh) |",
         "md_lbl_optimal_strat": "**Óptimo (RD 244/2019 PL)**",
         # Matrix & Insights in Markdown (es)
         "md_sec_coeff_matrix": "## 📋 Matriz Regulatoria de Coeficientes de Reparto (RD 244/2019)",
