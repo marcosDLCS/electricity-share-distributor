@@ -171,7 +171,7 @@ esd calculate [OPTIONS]
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |
 
 ### `esd doctor`
-Audits input data files to detect gaps, missing hourly intervals, inactive meters, and temporal alignment issues:
+Audits input data files to detect gaps, missing hourly intervals, inactive meters, weather dataset continuity, and temporal alignment issues. Enriches CUPS with functional uses (e.g. heat pump, pool, garage) from `cups.json`:
 
 ```bash
 esd doctor
@@ -183,6 +183,8 @@ esd doctor --verbose
 | :--- | :--- | :--- | :--- |
 | `--consumption-dir` | `-c` | Folder containing DATADIS hourly consumption CSVs | `.input/consumption` |
 | `--generation-dir` | `-g` | Folder containing solar inverter generation Excel files | `.input/generation` |
+| `--cups-file` | `-C` | Path to `cups.json` specifying CUPS uses and primary flags | `.input/cups/cups.json` |
+| `--weather-dir` | `-w` | Folder containing Open-Meteo hourly weather CSV files | `.input/weather` |
 | `--verbose` | `-v` | Show complete list of all detected missing intervals | `False` |
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |
 

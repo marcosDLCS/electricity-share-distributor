@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
-from src.config import DEFAULT_CONSUMPTION_DIR, DEFAULT_GENERATION_DIR
+from src.config import DEFAULT_CONSUMPTION_DIR, DEFAULT_GENERATION_DIR, DEFAULT_WEATHER_DIR
 from src.ingestion.consumption import DatadisConsumptionLoader
 from src.ingestion.generation import HuaweiGenerationLoader
+from src.ingestion.weather import WeatherLoader
+
+if TYPE_CHECKING:
+    from src.curation.models import CupsConfig
 
 
 @dataclass
@@ -23,11 +28,13 @@ class GapInterval:
 
 @dataclass
 class SeriesCheckResult:
-    """Diagnostic health summary for a single time series (CUPS or PV generation)."""
+    """Diagnostic health summary for a single time series (CUPS, PV generation, or weather)."""
 
     identifier: str
-    source_type: str  # "consumption" or "generation"
+    source_type: str  # "consumption", "generation", or "weather"
     files_count: int
+    use: str = ""
+    is_primary: bool = False
     date_start: str | None = None
     date_end: str | None = None
     total_records: int = 0
@@ -68,6 +75,7 @@ class DoctorReport:
     overlap: OverlapCheckResult
     overall_status: str  # "ok", "warning", "error"
     can_calculate: bool
+    weather_result: SeriesCheckResult | None = None
     summary_messages: list[str] = field(default_factory=list)
 
 
@@ -78,15 +86,30 @@ class DataDoctor:
         self,
         consumption_dir: Path | str = DEFAULT_CONSUMPTION_DIR,
         generation_dir: Path | str = DEFAULT_GENERATION_DIR,
+        weather_dir: Path | str | None = DEFAULT_WEATHER_DIR,
+        cups_config_path: Path | str | None = None,
     ) -> None:
         self.consumption_dir = Path(consumption_dir)
         self.generation_dir = Path(generation_dir)
+        self.weather_dir = Path(weather_dir) if weather_dir else None
+        self.cups_config_path = Path(cups_config_path) if cups_config_path else None
 
     def diagnose(self) -> DoctorReport:
-        """Execute full diagnostics across consumption and generation datasets."""
+        """Execute full diagnostics across consumption, generation, and weather datasets."""
         consumption_results: list[SeriesCheckResult] = []
         gen_result: SeriesCheckResult | None = None
+        weather_result: SeriesCheckResult | None = None
         summary_messages: list[str] = []
+
+        # 0. Load CUPS config (if available) to enrich supply point identification
+        cups_configs: dict[str, CupsConfig] = {}
+        try:
+            from src.curation.curator import DataCurator
+
+            curator = DataCurator(cups_config_path=self.cups_config_path)
+            cups_configs = curator.load_cups_config()
+        except Exception:
+            cups_configs = {}
 
         # 1. Check directories existence
         if not self.consumption_dir.exists():
@@ -99,6 +122,7 @@ class DataDoctor:
                 ),
                 overall_status="error",
                 can_calculate=False,
+                weather_result=None,
                 summary_messages=[f"Consumption directory not found: {self.consumption_dir}"],
             )
 
@@ -112,6 +136,7 @@ class DataDoctor:
                 ),
                 overall_status="error",
                 can_calculate=False,
+                weather_result=None,
                 summary_messages=[f"Generation directory not found: {self.generation_dir}"],
             )
 
@@ -127,12 +152,16 @@ class DataDoctor:
                 c_df_all = c_loader.load_all()
                 cups_groups = c_df_all.groupby("cups")
                 for cups, group in cups_groups:
+                    cups_str = str(cups)
+                    c_cfg = cups_configs.get(cups_str)
                     diag = self._audit_time_series(
                         df=group,
-                        identifier=str(cups),
+                        identifier=cups_str,
                         source_type="consumption",
                         value_col="consumption_kwh",
                         files_count=len(c_files),
+                        use=c_cfg.use if c_cfg else "",
+                        is_primary=c_cfg.primary if c_cfg else False,
                     )
                     consumption_results.append(diag)
             except Exception as err:
@@ -158,10 +187,69 @@ class DataDoctor:
             except Exception as err:
                 summary_messages.append(f"Failed parsing generation files: {err}")
 
-        # 4. Check Overlap & Cross-Alignment
+        # 4. Check Weather Files
+        if self.weather_dir and self.weather_dir.exists():
+            w_loader = WeatherLoader(self.weather_dir)
+            w_files = w_loader.discover_files()
+            if not w_files:
+                weather_result = SeriesCheckResult(
+                    identifier="Open-Meteo Weather",
+                    source_type="weather",
+                    files_count=0,
+                    status="warning",
+                    notes=[f"No weather CSV files found in {self.weather_dir}."],
+                )
+            else:
+                try:
+                    w_df = w_loader.load_all()
+                    weather_result = self._audit_time_series(
+                        df=w_df,
+                        identifier="Open-Meteo Weather",
+                        source_type="weather",
+                        value_col="temperature",
+                        files_count=len(w_files),
+                    )
+                except Exception as err:
+                    weather_result = SeriesCheckResult(
+                        identifier="Open-Meteo Weather",
+                        source_type="weather",
+                        files_count=len(w_files),
+                        status="error",
+                        notes=[f"Failed parsing weather files: {err}"],
+                    )
+        elif self.weather_dir:
+            weather_result = SeriesCheckResult(
+                identifier="Open-Meteo Weather",
+                source_type="weather",
+                files_count=0,
+                status="warning",
+                notes=[f"Weather directory not found: {self.weather_dir}"],
+            )
+
+        # 5. Check Overlap & Cross-Alignment
         overlap = self._audit_overlap(consumption_results, gen_result, c_df_all, g_df)
 
-        # 5. Determine Overall Health Status
+        # Check weather coverage against common calculation window
+        if (
+            weather_result
+            and weather_result.date_start
+            and weather_result.date_end
+            and overlap.common_start
+            and overlap.common_end
+        ):
+            w_start = pd.to_datetime(weather_result.date_start)
+            w_end = pd.to_datetime(weather_result.date_end)
+            c_start = pd.to_datetime(overlap.common_start)
+            c_end = pd.to_datetime(overlap.common_end)
+
+            if w_start > c_start or w_end < c_end:
+                weather_result.notes.append(
+                    f"Weather data ({weather_result.date_start[:10]} to {weather_result.date_end[:10]}) does not fully cover common calculation window ({overlap.common_start[:10]} to {overlap.common_end[:10]})."
+                )
+                if weather_result.status == "ok":
+                    weather_result.status = "warning"
+
+        # 6. Determine Overall Health Status
         overall_status = "ok"
         can_calculate = True
 
@@ -172,6 +260,7 @@ class DataDoctor:
             has_warnings = (
                 any(c.status == "warning" for c in consumption_results)
                 or (gen_result and gen_result.status == "warning")
+                or (weather_result and weather_result.status == "warning")
                 or overlap.status == "warning"
             )
             has_errors = (
@@ -191,6 +280,7 @@ class DataDoctor:
             overlap=overlap,
             overall_status=overall_status,
             can_calculate=can_calculate,
+            weather_result=weather_result,
             summary_messages=summary_messages,
         )
 
@@ -201,6 +291,8 @@ class DataDoctor:
         source_type: str,
         value_col: str,
         files_count: int,
+        use: str = "",
+        is_primary: bool = False,
     ) -> SeriesCheckResult:
         """Audit an individual time series for missing intervals, duplicates, and anomalies."""
         notes: list[str] = []
@@ -212,6 +304,8 @@ class DataDoctor:
                 identifier=identifier,
                 source_type=source_type,
                 files_count=files_count,
+                use=use,
+                is_primary=is_primary,
                 status="error",
                 notes=["No records found in series."],
             )
@@ -222,12 +316,22 @@ class DataDoctor:
             notes.append(f"{null_count} null/NaN readings found.")
             status = "warning"
 
-        # Negative checks
+        # Negative checks (only for energy readings; temperature can be negative)
         valid_vals = df[value_col].dropna()
-        neg_count = int((valid_vals < 0).sum())
-        if neg_count > 0:
-            notes.append(f"{neg_count} negative energy readings found.")
-            status = "warning"
+        neg_count = 0
+        if source_type != "weather":
+            neg_count = int((valid_vals < 0).sum())
+            if neg_count > 0:
+                notes.append(f"{neg_count} negative energy readings found.")
+                status = "warning"
+
+        # Cloud cover bounds check (only for weather)
+        if source_type == "weather" and "cloud_cover" in df.columns:
+            valid_clouds = df["cloud_cover"].dropna()
+            invalid_clouds = int(((valid_clouds < 0) | (valid_clouds > 100)).sum())
+            if invalid_clouds > 0:
+                notes.append(f"{invalid_clouds} invalid cloud cover readings outside 0-100% range.")
+                status = "warning"
 
         # Zero activity check
         zero_count = int((valid_vals == 0).sum())
@@ -305,6 +409,8 @@ class DataDoctor:
             identifier=identifier,
             source_type=source_type,
             files_count=files_count,
+            use=use,
+            is_primary=is_primary,
             date_start=date_start,
             date_end=date_end,
             total_records=total_records,

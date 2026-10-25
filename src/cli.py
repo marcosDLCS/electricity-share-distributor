@@ -13,6 +13,7 @@ from src.config import (
     DEFAULT_GENERATION_DIR,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_SHARE_PRECISION,
+    DEFAULT_WEATHER_DIR,
     clear_output_directory,
     ensure_directories,
     get_language,
@@ -186,6 +187,18 @@ def doctor_command(
         "-g",
         help="Path to folder containing Huawei FusionSolar generation Excel files.",
     ),
+    cups_file: Path | None = typer.Option(
+        None,
+        "--cups-file",
+        "-C",
+        help="Path to cups.json configuration file specifying CUPS uses and primary flags.",
+    ),
+    weather_dir: Path | None = typer.Option(
+        None,
+        "--weather-dir",
+        "-w",
+        help="Directory containing Open-Meteo hourly weather CSV files. Defaults to .input/weather.",
+    ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -201,9 +214,19 @@ def doctor_command(
 ) -> None:
     """Audit input data files to detect gaps, missing hourly intervals, and inconsistencies."""
     active_lang = normalize_language_code(lang) if lang else get_language()
+    cfg = load_config()
+    cups_path = resolve_cups_config_path(custom_path=cups_file, config=cfg)
+    target_weather_dir = weather_dir or (
+        Path(cfg.weather_dir) if cfg and cfg.weather_dir else DEFAULT_WEATHER_DIR
+    )
 
     with console.status(f"[bold cyan]{t('status_doctor', lang=active_lang)}[/bold cyan]"):
-        doc = DataDoctor(consumption_dir=consumption_dir, generation_dir=generation_dir)
+        doc = DataDoctor(
+            consumption_dir=consumption_dir,
+            generation_dir=generation_dir,
+            weather_dir=target_weather_dir,
+            cups_config_path=cups_path,
+        )
         report = doc.diagnose()
 
     render_doctor_report(report, verbose=verbose, lang=active_lang)

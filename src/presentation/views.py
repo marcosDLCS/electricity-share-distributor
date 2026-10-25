@@ -857,7 +857,8 @@ def render_doctor_report(
     console.print(
         Panel(
             banner_grid,
-            title=f"{t('doc_title_banner', lang=lang)} — {badge}",
+            title=t("doc_title_banner", lang=lang),
+            subtitle=badge,
             border_style=border_col,
             box=box.ROUNDED,
             padding=(1, 2),
@@ -872,25 +873,25 @@ def render_doctor_report(
             padding=(0, 1),
             show_lines=False,
         )
-        c_table.add_column("CUPS", style="bold cyan", width=22, no_wrap=True)
+        c_table.add_column(t("col_cups_desc", lang=lang), style="bold cyan", width=22, no_wrap=True)
         c_table.add_column(
             t("lbl_doctor_readings", lang=lang),
             justify="right",
             style="white",
-            width=9,
+            width=8,
             no_wrap=True,
         )
         c_table.add_column(
             t("doc_lbl_zero_pct", lang=lang), justify="right", style="dim", width=7, no_wrap=True
         )
         c_table.add_column(
-            t("lbl_doctor_gaps", lang=lang), justify="right", style="yellow", width=5, no_wrap=True
+            t("lbl_doctor_gaps", lang=lang), justify="right", style="yellow", width=6, no_wrap=True
         )
         c_table.add_column(
-            t("lbl_doctor_status", lang=lang), justify="center", width=9, no_wrap=True
+            t("lbl_doctor_status", lang=lang), justify="center", width=7, no_wrap=True
         )
         c_table.add_column(
-            t("lbl_doctor_diagnosis", lang=lang), style="dim", width=22, no_wrap=True
+            t("lbl_doctor_diagnosis", lang=lang), style="dim", width=12, no_wrap=True
         )
 
         for c in report.consumption_results:
@@ -902,11 +903,17 @@ def render_doctor_report(
                 st_badge = "[red]✗ FAIL[/red]"
 
             note_str = c.notes[0] if c.notes else t("doc_lbl_healthy", lang=lang)
-            if len(note_str) > 22:
-                note_str = note_str[:20] + "…"
+            if len(note_str) > 12:
+                note_str = note_str[:11] + "…"
+
+            if c.use:
+                pri_star = " [bold green]★[/bold green]" if c.is_primary else ""
+                cups_cell = f"{c.identifier}\n[dim white]{c.use}{pri_star}[/dim white]"
+            else:
+                cups_cell = c.identifier
 
             c_table.add_row(
-                c.identifier,
+                cups_cell,
                 f"{c.total_records:,}",
                 f"{c.zero_ratio_pct:.1f}%",
                 str(c.missing_hours),
@@ -927,32 +934,32 @@ def render_doctor_report(
             show_lines=False,
         )
         g_table.add_column(
-            t("lbl_doctor_source", lang=lang), style="bold yellow", width=24, no_wrap=True
+            t("lbl_doctor_source", lang=lang), style="bold yellow", width=20, no_wrap=True
         )
         g_table.add_column(
-            t("lbl_doctor_files", lang=lang), justify="right", style="white", width=7, no_wrap=True
+            t("lbl_doctor_files", lang=lang), justify="right", style="white", width=8, no_wrap=True
         )
         g_table.add_column(
             t("lbl_doctor_readings", lang=lang),
             justify="right",
             style="white",
-            width=9,
+            width=8,
             no_wrap=True,
         )
         g_table.add_column(
-            t("lbl_doctor_gaps", lang=lang), justify="right", style="yellow", width=5, no_wrap=True
+            t("lbl_doctor_gaps", lang=lang), justify="right", style="yellow", width=6, no_wrap=True
         )
         g_table.add_column(
-            t("lbl_doctor_status", lang=lang), justify="center", width=9, no_wrap=True
+            t("lbl_doctor_status", lang=lang), justify="center", width=7, no_wrap=True
         )
         g_table.add_column(
-            t("lbl_doctor_diagnosis", lang=lang), style="dim", width=20, no_wrap=True
+            t("lbl_doctor_diagnosis", lang=lang), style="dim", width=12, no_wrap=True
         )
 
         g_badge = "[green]✓ OK[/green]" if g.status == "ok" else "[yellow]⚠ WARN[/yellow]"
         g_note = g.notes[0] if g.notes else t("doc_lbl_healthy", lang=lang)
-        if len(g_note) > 20:
-            g_note = g_note[:18] + "…"
+        if len(g_note) > 12:
+            g_note = g_note[:11] + "…"
 
         g_table.add_row(
             t("doc_source_huawei", lang=lang),
@@ -965,14 +972,72 @@ def render_doctor_report(
         console.print(g_table)
         console.print()
 
-    # 4. Detailed Gap Breakdown (if gaps exist or verbose)
+    # 4. Weather Ingestion Health Table
+    if report.weather_result:
+        w = report.weather_result
+        w_table = Table(
+            title=t("title_doctor_weather", lang=lang),
+            box=box.ROUNDED,
+            padding=(0, 1),
+            show_lines=False,
+        )
+        w_table.add_column(
+            t("lbl_doctor_source", lang=lang), style="bold bright_cyan", width=20, no_wrap=True
+        )
+        w_table.add_column(
+            t("lbl_doctor_files", lang=lang), justify="right", style="white", width=8, no_wrap=True
+        )
+        w_table.add_column(
+            t("lbl_doctor_readings", lang=lang),
+            justify="right",
+            style="white",
+            width=8,
+            no_wrap=True,
+        )
+        w_table.add_column(
+            t("lbl_doctor_gaps", lang=lang), justify="right", style="yellow", width=6, no_wrap=True
+        )
+        w_table.add_column(
+            t("lbl_doctor_status", lang=lang), justify="center", width=7, no_wrap=True
+        )
+        w_table.add_column(
+            t("lbl_doctor_diagnosis", lang=lang), style="dim", width=12, no_wrap=True
+        )
+
+        if w.status == "ok":
+            w_badge = "[green]✓ OK[/green]"
+        elif w.status == "warning":
+            w_badge = "[yellow]⚠ WARN[/yellow]"
+        else:
+            w_badge = "[red]✗ FAIL[/red]"
+
+        w_note = w.notes[0] if w.notes else t("doc_lbl_healthy", lang=lang)
+        if len(w_note) > 12:
+            w_note = w_note[:11] + "…"
+
+        w_table.add_row(
+            t("doc_source_weather", lang=lang),
+            str(w.files_count),
+            f"{w.total_records:,}",
+            str(w.missing_hours),
+            w_badge,
+            w_note,
+        )
+        console.print(w_table)
+        console.print()
+
+    # 5. Detailed Gap Breakdown (if gaps exist or verbose)
     all_gaps: list[tuple[str, GapInterval]] = []
     for c in report.consumption_results:
+        display_id = f"{c.identifier} ({c.use})" if c.use else c.identifier
         for gap in c.gaps:
-            all_gaps.append((c.identifier, gap))
+            all_gaps.append((display_id, gap))
     if report.generation_result:
         for gap in report.generation_result.gaps:
-            all_gaps.append(("Huawei Generation", gap))
+            all_gaps.append((t("doc_source_huawei", lang=lang), gap))
+    if report.weather_result:
+        for gap in report.weather_result.gaps:
+            all_gaps.append((t("doc_source_weather", lang=lang), gap))
 
     if all_gaps:
         gap_table = Table(
@@ -1016,32 +1081,44 @@ def render_doctor_report(
         console.print(gap_table)
         console.print()
 
-    # 5. Diagnostic Findings & Actionable Advice
+    # 6. Diagnostic Findings & Actionable Advice
     advice_items: list[str] = []
     for c in report.consumption_results:
+        display_id = f"{c.identifier} ({c.use})" if c.use else c.identifier
         if c.zero_ratio_pct >= 99.0:
             advice_items.append(
-                t("doc_adv_inactive", lang=lang, id=c.identifier, pct=f"{c.zero_ratio_pct:.1f}")
+                t("doc_adv_inactive", lang=lang, id=display_id, pct=f"{c.zero_ratio_pct:.1f}")
             )
         if c.missing_hours > 0:
             advice_items.append(
-                t("doc_adv_cons_gaps", lang=lang, id=c.identifier, hours=c.missing_hours)
+                t("doc_adv_cons_gaps", lang=lang, id=display_id, hours=c.missing_hours)
             )
     if report.generation_result and report.generation_result.missing_hours > 0:
         advice_items.append(
             t("doc_adv_gen_gaps", lang=lang, hours=report.generation_result.missing_hours)
         )
+    if report.weather_result:
+        w = report.weather_result
+        if w.files_count == 0:
+            advice_items.append(t("doc_adv_weather_missing", lang=lang, dir=".input/weather"))
+        elif w.missing_hours > 0:
+            advice_items.append(t("doc_adv_weather_gaps", lang=lang, hours=w.missing_hours))
+        elif any("does not fully cover" in note for note in w.notes):
+            period_str = (
+                f"{ov.common_start[:10]} ➔ {ov.common_end[:10]}"
+                if ov.common_start and ov.common_end
+                else ""
+            )
+            advice_items.append(t("doc_adv_weather_coverage", lang=lang, period=period_str))
 
     if not advice_items:
         advice_items.append(t("doc_adv_clean", lang=lang))
 
-    advice_text = Text()
-    for item in advice_items:
-        advice_text.append(f" {item}\n")
+    advice_content = Text.from_markup("\n".join(f" {item}" for item in advice_items))
 
     console.print(
         Panel(
-            advice_text,
+            advice_content,
             title=t("doc_title_advice", lang=lang),
             border_style="cyan",
             box=box.ROUNDED,

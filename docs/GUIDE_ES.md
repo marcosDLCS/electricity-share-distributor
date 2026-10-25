@@ -144,9 +144,11 @@ graph TD
 ```
 
 ### Paso 1: Comprobar la Salud de los Datos (`esd doctor`)
-Revisa todos los archivos CSV de DATADIS y los informes Excel del inversor solar para detectar huecos, contadores inactivos y solapamientos antes de realizar cálculos:
+Revisa todos los archivos CSV de DATADIS, los informes Excel del inversor solar y los datos meteorológicos de Open-Meteo para detectar huecos, contadores inactivos y solapamientos antes de calcular. Identifica cada CUPS con su uso funcional (aerotermia, garaje, ascensor, piscina) a partir de `cups.json`:
 ```bash
 esd doctor
+# Con configuración personalizada de CUPS o carpeta meteorológica:
+esd doctor -C .input/cups/cups.json -w .input/weather --verbose
 ```
 
 ### Paso 2: Curado Automático o Manual (`esd curate`)
@@ -212,7 +214,7 @@ Para desarrolladores y agentes autónomos que naveguen por la base de código:
 | **Ingesta: Consumo** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | Búsqueda de CSVs de DATADIS, detección de codificación y lectura. |
 | **Ingesta: Producción** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `SolarGenerationLoader` | Procesamiento de informes `.xlsx` del inversor solar (producción y demanda). |
 | **Ingesta: Meteorología** | [`src/ingestion/weather.py`](../src/ingestion/weather.py) | `OpenMeteoWeatherDownloader`, `WeatherLoader` | Descargador API Open-Meteo Archive, códigos OMM e ingesta de CSV meteorológicos. |
-| **Ingesta: Auditoría** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Diagnóstico de huecos, detección de contadores inactivos y solapamientos. |
+| **Ingesta: Auditoría** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Diagnóstico de huecos, salud meteorológica, identificación de usos de CUPS, contadores inactivos y solapamientos. |
 | **Curado y Reconciliación** | [`src/curation/`](../src/curation) | `DataCurator`, `CuratedDataset` | Reconciliación de falsos ceros, cruce de metadatos de CUPS y exportación CSV. |
 | **Optimización: Modelos** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Estructuras matriciales, perfiles horarios diarios y métricas comunitarias. |
 | **Optimización: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Programación lineal (HiGHS), perfil horario, comparativas y redondeo Hare-Niemeyer. |

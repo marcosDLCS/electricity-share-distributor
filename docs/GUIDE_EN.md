@@ -144,9 +144,11 @@ graph TD
 ```
 
 ### Step 1: Check Data Health (`esd doctor`)
-Scans all DATADIS CSV files and solar inverter Excel reports to detect gaps, inactive meters, and overlapping date ranges before doing any math:
+Scans all DATADIS CSV files, solar inverter Excel reports, and Open-Meteo weather datasets to detect gaps, inactive meters, and overlapping date ranges before running calculations. Enriches CUPS with functional uses (e.g. Aerothermal heat pump, garage, elevators) from `cups.json`:
 ```bash
 esd doctor
+# With custom CUPS config or weather directory:
+esd doctor -C .input/cups/cups.json -w .input/weather --verbose
 ```
 
 ### Step 2: Automatic or Manual Curation (`esd curate`)
@@ -212,7 +214,7 @@ For developers and autonomous agents navigating the codebase:
 | **Ingestion: Consumption** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | DATADIS CSV discovery, encoding detection, and reading. |
 | **Ingestion: Generation** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `SolarGenerationLoader` | Solar inverter `.xlsx` report parsing (solar production and load demand). |
 | **Ingestion: Weather** | [`src/ingestion/weather.py`](../src/ingestion/weather.py) | `OpenMeteoWeatherDownloader`, `WeatherLoader` | Open-Meteo Archive API downloader, WMO weather codes, and weather CSV ingestion. |
-| **Ingestion: Audit** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Pre-flight gap detection, inactive meter alerts, and date overlap verification. |
+| **Ingestion: Audit** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Pre-flight gap detection, weather health audit, CUPS use enrichment, inactive meter alerts, and date overlap verification. |
 | **Curation & Reconciliation** | [`src/curation/`](../src/curation) | `DataCurator`, `CuratedDataset` | Fake-zero reconciliation, CUPS metadata lookup, and curated CSV export. |
 | **Optimization: Models** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Matrix structures, diurnal profiles, and community metrics. |
 | **Optimization: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Linear programming solver, diurnal profile engine, baselines, and Hare-Niemeyer rounding. |
