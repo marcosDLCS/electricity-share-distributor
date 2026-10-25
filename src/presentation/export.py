@@ -293,6 +293,7 @@ class ReportExporter:
         lang: str | None = None,
         precision: int | None = None,
         timestamp: str | None = None,
+        file_suffix: str = "",
     ) -> Path:
         """Export complete human-readable optimization and coefficient report in Markdown."""
         from src.config import get_language, get_precision
@@ -301,7 +302,7 @@ class ReportExporter:
         target_lang = lang or get_language()
         prec = get_precision() if precision is None else precision
         ts = timestamp or self.timestamp
-        file_path = self.output_dir / f"{ts}_esd_optimization_summary.md"
+        file_path = self.output_dir / f"{ts}_esd_optimization_summary{file_suffix}.md"
 
         tot = opt_result.total_summary
 
@@ -560,14 +561,35 @@ class ReportExporter:
             exported.append(self.export_results_json(opt_result, ingestion_summary))
 
         if fmt in ("all", "markdown", "md"):
-            exported.append(
-                self.export_summary_markdown(
-                    opt_result,
-                    ingestion_summary,
-                    lang=lang,
-                    precision=precision,
+            if opt_result.hourly_result is not None:
+                # Always generate an ES document and an EN document for hourly reports
+                exported.append(
+                    self.export_summary_markdown(
+                        opt_result,
+                        ingestion_summary,
+                        lang="es",
+                        precision=precision,
+                        file_suffix="_es",
+                    )
                 )
-            )
+                exported.append(
+                    self.export_summary_markdown(
+                        opt_result,
+                        ingestion_summary,
+                        lang="en",
+                        precision=precision,
+                        file_suffix="_en",
+                    )
+                )
+            else:
+                exported.append(
+                    self.export_summary_markdown(
+                        opt_result,
+                        ingestion_summary,
+                        lang=lang,
+                        precision=precision,
+                    )
+                )
 
         if fmt in ("all", "html"):
             exported.append(
@@ -670,11 +692,17 @@ def export_summary_markdown(
     lang: str | None = None,
     precision: int | None = None,
     timestamp: str | None = None,
+    file_suffix: str = "",
 ) -> Path:
     """Export complete human-readable optimization and coefficient report in Markdown."""
     exporter = ReportExporter(output_dir=output_dir, timestamp=timestamp)
     return exporter.export_summary_markdown(
-        opt_result, ingestion_summary, lang=lang, precision=precision
+        opt_result,
+        ingestion_summary,
+        lang=lang,
+        precision=precision,
+        timestamp=timestamp,
+        file_suffix=file_suffix,
     )
 
 

@@ -218,9 +218,9 @@ Running `esd calculate` generates ready-to-use artifacts in `.output/`:
 
 | File Name | Format | Practical Purpose |
 | :--- | :--- | :--- |
-| `*_esd_interactive_report.html` | HTML (Standalone) | Offline interactive dashboard with dynamic bilingual ES/EN switcher, energy trajectory multi-bar charts, Photovoltaic Solar Efficiency Index graphic, and monthly coefficient matrix heatmap. |
+| `*_esd_interactive_report.html` | HTML (Standalone) | Offline interactive executive dashboard with dynamic bilingual ES/EN switcher, 4 primary energy KPI cards, dynamic hourly coefficient prevision (Orden TED/1247/2021), energy trajectory multi-bars, Photovoltaic Solar Efficiency Index graphic, and monthly coefficient matrix heatmap. |
 | `*_esd_coefficients_matrix.csv` | CSV (`;` delimited) | Ready-to-import spreadsheet table formatted for official submission to the electrical utility distributor (DSO). |
-| `*_esd_optimization_summary.md` | Markdown | Executive summary report including the community agreement annex ready for community board review. |
+| `*_esd_optimization_summary.md` | Markdown | Executive summary report including the community agreement annex ready for community board review (generates both ES and EN documents when running with `--hourly`). |
 | `*_esd_coefficients.csv` | CSV (`;` delimited) | Detailed breakdown per CUPS: monthly self-consumed kWh, solar surplus, and remaining grid demand. |
 | `*_esd_results.json` | JSON | Machine-readable data file for software integrations and community dashboards. |
 | `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Full hourly time-series recording consumption, generation, shares, and the Solar Efficiency Index (integer 1-100 for generation hours, 0 without generation), ordered by timestamp and use. |

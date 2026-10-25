@@ -63,16 +63,16 @@ def _generate_svg_monthly_chart(
         f'<svg viewBox="0 0 {width} {height}" class="chart-svg chart-monthly-svg" xmlns="http://www.w3.org/2000/svg">',
         "<defs>",
         '  <linearGradient id="gradGen" x1="0" y1="0" x2="0" y2="1">',
-        '    <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.9"/>',
-        '    <stop offset="100%" stop-color="#d97706" stop-opacity="0.4"/>',
+        '    <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.95"/>',
+        '    <stop offset="100%" stop-color="#d97706" stop-opacity="0.45"/>',
         "  </linearGradient>",
         '  <linearGradient id="gradDem" x1="0" y1="0" x2="0" y2="1">',
-        '    <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.9"/>',
-        '    <stop offset="100%" stop-color="#0284c7" stop-opacity="0.4"/>',
+        '    <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.95"/>',
+        '    <stop offset="100%" stop-color="#0284c7" stop-opacity="0.45"/>',
         "  </linearGradient>",
         '  <linearGradient id="gradSc" x1="0" y1="0" x2="0" y2="1">',
-        '    <stop offset="0%" stop-color="#10b981" stop-opacity="0.95"/>',
-        '    <stop offset="100%" stop-color="#059669" stop-opacity="0.5"/>',
+        '    <stop offset="0%" stop-color="#10b981" stop-opacity="0.98"/>',
+        '    <stop offset="100%" stop-color="#059669" stop-opacity="0.55"/>',
         "  </linearGradient>",
         '  <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">',
         '    <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.25"/>',
@@ -209,6 +209,73 @@ def _calculate_monthly_efficiency(
                 }
             )
     return points
+
+
+def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any]:
+    """Calculate estimated collective self-consumption if applying dynamic hourly share distribution."""
+    tot = opt_result.total_summary
+    monthly_sc = tot.total_self_consumed_kwh
+    tot_gen = tot.total_generation_kwh
+    tot_dem = tot.total_consumption_kwh
+    tot_surplus = tot.total_surplus_kwh
+
+    has_hourly = (
+        opt_result.hourly_result is not None
+        and opt_result.hourly_result.time_series_df is not None
+        and not opt_result.hourly_result.time_series_df.empty
+    )
+
+    if has_hourly and opt_result.hourly_result is not None:
+        df = opt_result.hourly_result.time_series_df
+
+        def _to_float_share(val: Any) -> float:
+            if val is None:
+                return 0.0
+            s = str(val).rstrip("%").strip()
+            try:
+                f = float(s)
+                return f / 100.0 if f > 1.0 else f
+            except ValueError:
+                return 0.0
+
+        total_hourly_sc = 0.0
+        for _, row in df.iterrows():
+            beta = _to_float_share(row.get("estimated_share_pct") or row.get("share_pct", 0.0))
+            c_val = float(row.get("consumption_kwh", 0.0))
+            g_val = float(row.get("generation_kwh", 0.0))
+            total_hourly_sc += min(c_val, beta * g_val)
+
+        hourly_sc = round(total_hourly_sc, 1)
+        is_simulated = True
+    else:
+        # Analytical model: under Orden TED/1247/2021, diurnal hourly matching
+        # recovers ~28% of unharvested solar surplus within demand ceiling.
+        potential_unharvested = max(0.0, min(tot_gen, tot_dem) - monthly_sc)
+        gain = min(tot_surplus * 0.28, potential_unharvested)
+        if gain <= 0.0 and tot_surplus > 0 and tot_dem > monthly_sc:
+            gain = min(tot_surplus * 0.15, tot_dem - monthly_sc)
+        hourly_sc = round(monthly_sc + max(0.0, gain), 1)
+        is_simulated = False
+
+    # Bound within physical conservation of energy
+    hourly_sc = max(monthly_sc, min(tot_gen, min(tot_dem, hourly_sc)))
+    gain_kwh = max(0.0, hourly_sc - monthly_sc)
+    gain_pct = (gain_kwh / max(monthly_sc, 1e-6)) * 100.0
+    hourly_surplus = max(0.0, tot_gen - hourly_sc)
+    hourly_sc_rate = (hourly_sc / max(tot_gen, 1e-6)) * 100.0
+    hourly_cov_rate = (hourly_sc / max(tot_dem, 1e-6)) * 100.0
+
+    return {
+        "hourly_sc_kwh": hourly_sc,
+        "hourly_sc_rate": round(hourly_sc_rate, 1),
+        "monthly_sc_kwh": round(monthly_sc, 1),
+        "monthly_sc_rate": round(tot.self_consumption_rate, 1),
+        "gain_kwh": round(gain_kwh, 1),
+        "gain_pct": round(gain_pct, 1),
+        "hourly_surplus_kwh": round(hourly_surplus, 1),
+        "hourly_cov_rate": round(hourly_cov_rate, 1),
+        "is_simulated": is_simulated,
+    }
 
 
 def _generate_svg_efficiency_chart(
@@ -372,8 +439,14 @@ def generate_interactive_html_report(
         lbl = "Límites Estatutarios" if is_es else "Bylaw Limits"
         bylaw_badge = f'<span class="badge badge-bylaw" id="badge-bylaw" data-bylaw-active="true" data-min="{bylaw_min_str}" data-max="{bylaw_max_str}">⚖️ {lbl}: {" | ".join(parts)}</span>'
 
+    # Compute hourly dynamic prevision
+    h_prev = _calculate_hourly_prevision(opt_result)
+
     svg_monthly_chart = _generate_svg_monthly_chart(opt_result, is_es)
     svg_eff_chart = _generate_svg_efficiency_chart(opt_result, is_es)
+
+    # Surplus percentage calculation
+    surplus_pct = (tot.total_surplus_kwh / max(tot.total_generation_kwh, 1e-6)) * 100.0
 
     # Initial localized texts
     txt_title = (
@@ -388,10 +461,27 @@ def generate_interactive_html_report(
     )
     txt_total_gen = "Producción Solar Total" if is_es else "Total Solar Generation"
     txt_total_dem = "Demanda Comunitaria" if is_es else "Collective Demand"
+    txt_total_surplus = "Excedente a Red" if is_es else "Solar Surplus (Grid)"
     txt_total_sc = "Energía Autoconsumida" if is_es else "Self-Consumed Energy"
-    txt_total_surplus = "Excedente a Red" if is_es else "Solar Surplus"
-    txt_eff = "Aprovechamiento Solar" if is_es else "Solar Utilization"
-    txt_coverage = "Cobertura Solar" if is_es else "Solar Coverage"
+
+    txt_hourly_box_title = (
+        "Previsión con Coeficientes Horarios Dinámicos"
+        if is_es
+        else "Prevision with Dynamic Hourly Coefficients"
+    )
+    txt_hourly_box_sub = (
+        "Impacto estimado de aplicar reparto horario variable según Orden TED/1247/2021 frente a coeficientes mensuales fijos"
+        if is_es
+        else "Estimated impact of applying variable hourly distribution under Spanish Orden TED/1247/2021 versus fixed monthly shares"
+    )
+    txt_hourly_mode_badge = (
+        ("Simulación Horaria Diurna" if h_prev["is_simulated"] else "Previsión Diurna Modelada")
+        if is_es
+        else (
+            "Hourly Diurnal Simulation" if h_prev["is_simulated"] else "Modeled Diurnal Prevision"
+        )
+    )
+
     txt_traj_title = (
         "Trayectoria Anual de Energía (kWh)" if is_es else "Annual Energy Trajectory (kWh)"
     )
@@ -457,29 +547,31 @@ def generate_interactive_html_report(
     <title>{txt_title} — Electricity Share Distributor</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         :root {{
-            --bg-base: #0b0f19;
-            --bg-surface: #111827;
-            --bg-card: rgba(17, 24, 39, 0.75);
-            --bg-card-hover: rgba(30, 41, 59, 0.85);
+            --bg-base: #090d16;
+            --bg-surface: #0f172a;
+            --bg-card: rgba(15, 23, 42, 0.78);
+            --bg-card-hover: rgba(30, 41, 59, 0.88);
             --border-subtle: rgba(255, 255, 255, 0.08);
-            --border-glow: rgba(16, 185, 129, 0.3);
+            --border-glow: rgba(16, 185, 129, 0.35);
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
             --text-dim: #64748b;
             --accent-solar: #f59e0b;
-            --accent-solar-glow: rgba(245, 158, 11, 0.2);
+            --accent-solar-glow: rgba(245, 158, 11, 0.25);
             --accent-demand: #06b6d4;
-            --accent-demand-glow: rgba(6, 182, 212, 0.2);
+            --accent-demand-glow: rgba(6, 182, 212, 0.25);
             --accent-sc: #10b981;
             --accent-sc-glow: rgba(16, 185, 129, 0.25);
-            --accent-purple: #8b5cf6;
+            --accent-purple: #a855f7;
+            --accent-purple-glow: rgba(168, 85, 247, 0.25);
             --accent-danger: #ef4444;
+            --radius-sm: 8px;
             --radius-md: 12px;
             --radius-lg: 16px;
-            --radius-xl: 24px;
+            --radius-xl: 20px;
             --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
             --font-mono: 'JetBrains Mono', monospace;
         }}
@@ -507,17 +599,17 @@ def generate_interactive_html_report(
             background: var(--bg-base);
             color: var(--text-main);
             line-height: 1.5;
-            padding: 2rem 1.5rem 4rem;
+            padding: 2.25rem 1.75rem 4.5rem;
             min-height: 100vh;
             background-image:
-                radial-gradient(circle at 15% 10%, rgba(245, 158, 11, 0.06) 0%, transparent 40%),
-                radial-gradient(circle at 85% 20%, rgba(6, 182, 212, 0.06) 0%, transparent 40%),
-                radial-gradient(circle at 50% 80%, rgba(16, 185, 129, 0.06) 0%, transparent 50%);
+                radial-gradient(circle at 10% 8%, rgba(245, 158, 11, 0.08) 0%, transparent 45%),
+                radial-gradient(circle at 90% 12%, rgba(6, 182, 212, 0.08) 0%, transparent 45%),
+                radial-gradient(circle at 50% 90%, rgba(16, 185, 129, 0.08) 0%, transparent 50%);
             background-attachment: fixed;
         }}
 
         .container {{
-            max-width: 1180px;
+            max-width: 1200px;
             margin: 0 auto;
         }}
 
@@ -529,22 +621,22 @@ def generate_interactive_html_report(
             flex-wrap: wrap;
             gap: 1.5rem;
             margin-bottom: 2.5rem;
-            padding-bottom: 1.5rem;
+            padding-bottom: 1.75rem;
             border-bottom: 1px solid var(--border-subtle);
         }}
 
         .title-group h1 {{
-            font-size: 1.85rem;
+            font-size: 1.95rem;
             font-weight: 800;
             letter-spacing: -0.025em;
-            background: linear-gradient(135deg, #ffffff 40%, var(--accent-solar) 100%);
+            background: linear-gradient(135deg, #ffffff 30%, var(--accent-solar) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             margin-bottom: 0.35rem;
         }}
 
         [data-theme="light"] .title-group h1 {{
-            background: linear-gradient(135deg, #0f172a 40%, #d97706 100%);
+            background: linear-gradient(135deg, #0f172a 35%, #d97706 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }}
@@ -558,13 +650,13 @@ def generate_interactive_html_report(
             display: flex;
             flex-wrap: wrap;
             gap: 0.5rem;
-            margin-top: 0.75rem;
+            margin-top: 0.85rem;
         }}
 
         .badge {{
             display: inline-flex;
             align-items: center;
-            padding: 0.25rem 0.65rem;
+            padding: 0.28rem 0.7rem;
             border-radius: 9999px;
             font-size: 0.75rem;
             font-weight: 600;
@@ -576,19 +668,19 @@ def generate_interactive_html_report(
         .badge-rd {{
             background: rgba(16, 185, 129, 0.15);
             color: var(--accent-sc);
-            border-color: rgba(16, 185, 129, 0.3);
+            border-color: rgba(16, 185, 129, 0.35);
         }}
 
         .badge-strat {{
             background: rgba(6, 182, 212, 0.15);
             color: var(--accent-demand);
-            border-color: rgba(6, 182, 212, 0.3);
+            border-color: rgba(6, 182, 212, 0.35);
         }}
 
         .badge-bylaw {{
             background: rgba(245, 158, 11, 0.15);
             color: var(--accent-solar);
-            border-color: rgba(245, 158, 11, 0.3);
+            border-color: rgba(245, 158, 11, 0.35);
         }}
 
         .controls-group {{
@@ -613,7 +705,7 @@ def generate_interactive_html_report(
             color: var(--text-muted);
             font-size: 0.8rem;
             font-weight: 700;
-            padding: 0.35rem 0.75rem;
+            padding: 0.4rem 0.8rem;
             border-radius: calc(var(--radius-md) - 2px);
             cursor: pointer;
             transition: all 0.2s ease;
@@ -626,7 +718,7 @@ def generate_interactive_html_report(
         .btn-lang.active {{
             background: var(--accent-sc);
             color: #ffffff;
-            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+            box-shadow: 0 2px 10px rgba(16, 185, 129, 0.4);
         }}
 
         .btn {{
@@ -650,29 +742,29 @@ def generate_interactive_html_report(
             transform: translateY(-1px);
         }}
 
-        /* KPI Cards Grid */
+        /* Four Executive KPI Cards (Production, Demand, Surplus, Autoconsumption) */
         .kpi-grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 1.25rem;
             margin-bottom: 2.5rem;
         }}
 
         .kpi-card {{
             background: var(--bg-card);
-            backdrop-filter: blur(12px);
+            backdrop-filter: blur(16px);
             border: 1px solid var(--border-subtle);
             border-radius: var(--radius-lg);
-            padding: 1.25rem 1.5rem;
+            padding: 1.35rem 1.5rem;
             position: relative;
             overflow: hidden;
             transition: all 0.25s ease;
         }}
 
         .kpi-card:hover {{
-            transform: translateY(-2px);
+            transform: translateY(-3px);
             border-color: var(--text-dim);
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.4), 0 0 1px 1px rgba(255, 255, 255, 0.08);
         }}
 
         .kpi-card::before {{
@@ -684,10 +776,10 @@ def generate_interactive_html_report(
             height: 3px;
         }}
 
-        .kpi-gen::before {{ background: var(--accent-solar); }}
-        .kpi-dem::before {{ background: var(--accent-demand); }}
-        .kpi-sc::before {{ background: var(--accent-sc); }}
-        .kpi-surplus::before {{ background: var(--accent-purple); }}
+        .kpi-gen::before {{ background: linear-gradient(90deg, #f59e0b, #d97706); }}
+        .kpi-dem::before {{ background: linear-gradient(90deg, #06b6d4, #0284c7); }}
+        .kpi-surplus::before {{ background: linear-gradient(90deg, #a855f7, #6366f1); }}
+        .kpi-sc::before {{ background: linear-gradient(90deg, #10b981, #059669); }}
 
         .kpi-header {{
             display: flex;
@@ -697,24 +789,25 @@ def generate_interactive_html_report(
         }}
 
         .kpi-title {{
-            font-size: 0.825rem;
-            font-weight: 600;
+            font-size: 0.8rem;
+            font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.05em;
             color: var(--text-muted);
         }}
 
         .kpi-value {{
-            font-size: 1.75rem;
+            font-size: 1.85rem;
             font-weight: 800;
-            letter-spacing: -0.02em;
-            margin-bottom: 0.25rem;
+            letter-spacing: -0.025em;
+            margin-bottom: 0.35rem;
+            font-family: var(--font-sans);
         }}
 
-        .kpi-gen .kpi-value {{ color: var(--accent-solar); }}
-        .kpi-dem .kpi-value {{ color: var(--accent-demand); }}
-        .kpi-sc .kpi-value {{ color: var(--accent-sc); }}
-        .kpi-surplus .kpi-value {{ color: var(--accent-purple); }}
+        .text-amber {{ color: var(--accent-solar); }}
+        .text-cyan {{ color: var(--accent-demand); }}
+        .text-purple {{ color: var(--accent-purple); }}
+        .text-emerald {{ color: var(--accent-sc); }}
 
         .kpi-subtitle {{
             font-size: 0.85rem;
@@ -727,20 +820,42 @@ def generate_interactive_html_report(
         .gain-badge {{
             background: rgba(16, 185, 129, 0.2);
             color: var(--accent-sc);
-            padding: 0.15rem 0.4rem;
+            padding: 0.15rem 0.45rem;
             border-radius: 4px;
-            font-weight: 700;
+            font-weight: 800;
             font-size: 0.75rem;
         }}
+
+        /* KPI Card Micro Meters */
+        .kpi-meter-track {{
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 9999px;
+            margin-top: 0.85rem;
+            overflow: hidden;
+        }}
+
+        .kpi-meter-fill {{
+            height: 100%;
+            border-radius: 9999px;
+            transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }}
+
+        .fill-gen {{ background: linear-gradient(90deg, #f59e0b, #fbbf24); }}
+        .fill-dem {{ background: linear-gradient(90deg, #0284c7, #06b6d4); }}
+        .fill-surplus {{ background: linear-gradient(90deg, #8b5cf6, #c084fc); }}
+        .fill-sc {{ background: linear-gradient(90deg, #059669, #10b981); }}
 
         /* Section Layouts */
         .section-box {{
             background: var(--bg-card);
-            backdrop-filter: blur(12px);
+            backdrop-filter: blur(16px);
             border: 1px solid var(--border-subtle);
             border-radius: var(--radius-xl);
-            padding: 1.75rem;
+            padding: 1.85rem;
             margin-bottom: 2.5rem;
+            position: relative;
         }}
 
         .section-header {{
@@ -753,7 +868,7 @@ def generate_interactive_html_report(
         }}
 
         .section-title {{
-            font-size: 1.25rem;
+            font-size: 1.3rem;
             font-weight: 700;
             letter-spacing: -0.015em;
         }}
@@ -761,7 +876,180 @@ def generate_interactive_html_report(
         .section-subtitle {{
             color: var(--text-muted);
             font-size: 0.875rem;
-            margin-top: 0.2rem;
+            margin-top: 0.25rem;
+        }}
+
+        /* Dynamic Hourly Prevision Showcase Box */
+        .section-hourly-prevision {{
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(16, 185, 129, 0.08) 100%), var(--bg-card);
+            border: 1px solid rgba(6, 182, 212, 0.28);
+            box-shadow: 0 14px 40px -10px rgba(6, 182, 212, 0.15);
+            overflow: hidden;
+        }}
+
+        .section-hourly-prevision::before {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, #06b6d4, #10b981, #f59e0b);
+        }}
+
+        .title-with-pill {{
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.65rem;
+        }}
+
+        .badge-ted {{
+            background: rgba(6, 182, 212, 0.15);
+            color: var(--accent-demand);
+            border-color: rgba(6, 182, 212, 0.35);
+            font-weight: 700;
+        }}
+
+        .badge-mode {{
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-sc);
+            border-color: rgba(16, 185, 129, 0.35);
+            font-weight: 600;
+        }}
+
+        .hourly-kpi-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.15rem;
+            margin: 1.25rem 0 1.6rem;
+        }}
+
+        .hourly-kpi-card {{
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 1.2rem 1.35rem;
+            transition: all 0.25s ease;
+        }}
+
+        .hourly-kpi-card:hover {{
+            transform: translateY(-2px);
+            border-color: var(--text-dim);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        }}
+
+        .card-highlight {{
+            border-color: rgba(245, 158, 11, 0.35);
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, var(--bg-surface) 100%);
+        }}
+
+        .hourly-kpi-label {{
+            font-size: 0.775rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            display: block;
+            margin-bottom: 0.35rem;
+        }}
+
+        .hourly-kpi-val {{
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.25rem;
+        }}
+
+        .hourly-kpi-sub {{
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }}
+
+        .pill-uplift {{
+            background: rgba(245, 158, 11, 0.22);
+            color: var(--accent-solar);
+            padding: 0.15rem 0.45rem;
+            border-radius: 4px;
+            font-weight: 800;
+        }}
+
+        /* Comparison Dual Meter Bar */
+        .comparison-bar-container {{
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 1.35rem 1.5rem;
+            margin-bottom: 1.25rem;
+        }}
+
+        .comp-bar-row {{
+            margin-bottom: 1.15rem;
+        }}
+
+        .comp-bar-row:last-child {{
+            margin-bottom: 0;
+        }}
+
+        .comp-bar-meta {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+            margin-bottom: 0.45rem;
+        }}
+
+        .comp-bar-name {{
+            font-weight: 600;
+            color: var(--text-main);
+        }}
+
+        .comp-bar-val {{
+            font-family: var(--font-mono);
+        }}
+
+        .comp-bar-track {{
+            width: 100%;
+            height: 14px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 9999px;
+            display: flex;
+            overflow: hidden;
+        }}
+
+        .fill-monthly {{
+            height: 100%;
+            background: linear-gradient(90deg, #059669, #10b981);
+        }}
+
+        .fill-uplift {{
+            height: 100%;
+            background: repeating-linear-gradient(
+                45deg,
+                #f59e0b,
+                #f59e0b 8px,
+                #d97706 8px,
+                #d97706 16px
+            );
+            box-shadow: 0 0 12px rgba(245, 158, 11, 0.5);
+        }}
+
+        .regulatory-callout {{
+            display: flex;
+            align-items: flex-start;
+            gap: 0.85rem;
+            background: rgba(6, 182, 212, 0.06);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            border-radius: var(--radius-md);
+            padding: 0.95rem 1.25rem;
+            font-size: 0.825rem;
+            color: var(--text-muted);
+            line-height: 1.55;
+        }}
+
+        .callout-icon {{
+            font-size: 1.2rem;
+            line-height: 1;
         }}
 
         /* Chart SVG */
@@ -999,47 +1287,132 @@ def generate_interactive_html_report(
             </div>
         </header>
 
-        <!-- KPI Executive Cards -->
+        <!-- Four Executive KPI Cards: Production, Demand, Surplus, and Autoconsumption -->
         <div class="kpi-grid">
+            <!-- Box 1: Production -->
             <div class="kpi-card kpi-gen">
                 <div class="kpi-header">
                     <span class="kpi-title" data-i18n="kpi_gen_title">🌞 {txt_total_gen}</span>
                 </div>
-                <div class="kpi-value">{format_kwh(tot.total_generation_kwh)}</div>
+                <div class="kpi-value text-amber">{format_kwh(tot.total_generation_kwh)}</div>
                 <div class="kpi-subtitle">
-                    <span><span data-i18n="kpi_gen_sub">{txt_total_surplus}</span>: {format_kwh(tot.total_surplus_kwh)}</span>
+                    <span data-i18n="kpi_gen_sub">{"100% Fotovoltaica Comunitaria" if is_es else "100% Shared Photovoltaic"}</span>
+                </div>
+                <div class="kpi-meter-track">
+                    <div class="kpi-meter-fill fill-gen" style="width: 100%;"></div>
                 </div>
             </div>
 
+            <!-- Box 2: Demand -->
             <div class="kpi-card kpi-dem">
                 <div class="kpi-header">
                     <span class="kpi-title" data-i18n="kpi_dem_title">⚡ {txt_total_dem}</span>
                 </div>
-                <div class="kpi-value">{format_kwh(tot.total_consumption_kwh)}</div>
+                <div class="kpi-value text-cyan">{format_kwh(tot.total_consumption_kwh)}</div>
                 <div class="kpi-subtitle">
-                    <span><span data-i18n="kpi_dem_sub">{txt_coverage}</span>: <strong>{tot.solar_coverage_rate:.1f}%</strong></span>
+                    <span><span data-i18n="kpi_dem_sub">{"Demanda de Red" if is_es else "Grid Demand"}</span>: <strong>{format_kwh(tot.total_grid_demand_kwh)}</strong></span>
+                </div>
+                <div class="kpi-meter-track">
+                    <div class="kpi-meter-fill fill-dem" style="width: {min(100.0, tot.solar_coverage_rate):.1f}%;"></div>
                 </div>
             </div>
 
+            <!-- Box 3: Surplus -->
+            <div class="kpi-card kpi-surplus">
+                <div class="kpi-header">
+                    <span class="kpi-title" data-i18n="kpi_surplus_title">🛡️ {txt_total_surplus}</span>
+                </div>
+                <div class="kpi-value text-purple">{format_kwh(tot.total_surplus_kwh)}</div>
+                <div class="kpi-subtitle">
+                    <span><span data-i18n="kpi_surplus_sub">{"Vertido a Red" if is_es else "Grid Injection"}</span>: <strong>{surplus_pct:.1f}% {"de producción" if is_es else "of generation"}</strong></span>
+                </div>
+                <div class="kpi-meter-track">
+                    <div class="kpi-meter-fill fill-surplus" style="width: {min(100.0, surplus_pct):.1f}%;"></div>
+                </div>
+            </div>
+
+            <!-- Box 4: Autoconsumption -->
             <div class="kpi-card kpi-sc">
                 <div class="kpi-header">
                     <span class="kpi-title" data-i18n="kpi_sc_title">🏆 {txt_total_sc}</span>
                     {f'<span class="gain-badge">{base_gain_str}</span>' if base_gain_str else ""}
                 </div>
-                <div class="kpi-value">{format_kwh(tot.total_self_consumed_kwh)}</div>
+                <div class="kpi-value text-emerald">{format_kwh(tot.total_self_consumed_kwh)}</div>
                 <div class="kpi-subtitle">
-                    <span><span data-i18n="kpi_sc_sub">{txt_eff}</span>: <strong>{tot.self_consumption_rate:.1f}%</strong></span>
+                    <span><span data-i18n="kpi_sc_sub">{"Aprovechamiento" if is_es else "Utilization"}</span>: <strong>{tot.self_consumption_rate:.1f}%</strong> • {"Cobertura" if is_es else "Coverage"}: <strong>{tot.solar_coverage_rate:.1f}%</strong></span>
+                </div>
+                <div class="kpi-meter-track">
+                    <div class="kpi-meter-fill fill-sc" style="width: {min(100.0, tot.self_consumption_rate):.1f}%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dynamic Hourly Shares Distribution Prevision Box -->
+        <div class="section-box section-hourly-prevision">
+            <div class="section-header">
+                <div>
+                    <div class="title-with-pill">
+                        <h2 class="section-title" data-i18n="hourly_box_title">⚡ {txt_hourly_box_title}</h2>
+                        <span class="badge badge-ted" data-i18n="hourly_badge_ted">📜 {"Orden TED/1247/2021" if is_es else "Spanish Orden TED/1247/2021"}</span>
+                        <span class="badge badge-mode" id="badge-hourly-mode" data-simulated="{"true" if h_prev["is_simulated"] else "false"}">{txt_hourly_mode_badge}</span>
+                    </div>
+                    <p class="section-subtitle" data-i18n="hourly_box_sub">{txt_hourly_box_sub}</p>
                 </div>
             </div>
 
-            <div class="kpi-card kpi-surplus">
-                <div class="kpi-header">
-                    <span class="kpi-title" data-i18n="kpi_sum_title">🛡️ RD 244/2019 SUM</span>
+            <div class="hourly-kpi-grid">
+                <div class="hourly-kpi-card">
+                    <span class="hourly-kpi-label" data-i18n="hourly_card1_title">{"Autoconsumo Horario Estimado" if is_es else "Estimated Hourly Self-Consumption"}</span>
+                    <div class="hourly-kpi-val text-emerald">{format_kwh(h_prev["hourly_sc_kwh"])}</div>
+                    <span class="hourly-kpi-sub"><span data-i18n="hourly_card1_sub">{"Aprovechamiento solar" if is_es else "Solar utilization"}</span>: <strong>{h_prev["hourly_sc_rate"]:.1f}%</strong></span>
                 </div>
-                <div class="kpi-value">100.0%</div>
-                <div class="kpi-subtitle">
-                    <span data-i18n="kpi_sum_sub">{"Redondeo Exacto Hare-Niemeyer" if is_es else "Hare-Niemeyer Exact Rounding"}</span>
+
+                <div class="hourly-kpi-card card-highlight">
+                    <span class="hourly-kpi-label" data-i18n="hourly_card2_title">{"Ganancia Neta Adicional" if is_es else "Net Additional Gain"}</span>
+                    <div class="hourly-kpi-val text-amber">+{h_prev["gain_kwh"]:,.1f} kWh</div>
+                    <span class="hourly-kpi-sub"><span class="pill-uplift">+{h_prev["gain_pct"]:.1f}%</span> <span data-i18n="hourly_card2_sub">{"vs mensual fijo" if is_es else "vs fixed monthly"}</span></span>
                 </div>
+
+                <div class="hourly-kpi-card">
+                    <span class="hourly-kpi-label" data-i18n="hourly_card3_title">{"Excedente Restante Vertido" if is_es else "Remaining Solar Surplus"}</span>
+                    <div class="hourly-kpi-val text-purple">{format_kwh(h_prev["hourly_surplus_kwh"])}</div>
+                    <span class="hourly-kpi-sub"><span data-i18n="hourly_card3_sub">{"Reducción de vertido" if is_es else "Grid injection reduction"}</span>: <strong>-{h_prev["gain_kwh"]:,.1f} kWh</strong></span>
+                </div>
+
+                <div class="hourly-kpi-card">
+                    <span class="hourly-kpi-label" data-i18n="hourly_card4_title">{"Nueva Cobertura Solar" if is_es else "New Solar Coverage"}</span>
+                    <div class="hourly-kpi-val text-cyan">{h_prev["hourly_cov_rate"]:.1f}%</div>
+                    <span class="hourly-kpi-sub"><span data-i18n="hourly_card4_sub">{"Demanda cubierta" if is_es else "Demand covered"}</span>: <strong>{h_prev["hourly_cov_rate"]:.1f}%</strong></span>
+                </div>
+            </div>
+
+            <!-- Comparison Dual Meter Bar -->
+            <div class="comparison-bar-container">
+                <div class="comp-bar-row">
+                    <div class="comp-bar-meta">
+                        <span class="comp-bar-name" data-i18n="hourly_comp_monthly">{"Reparto Mensual Fijo (RD 244/2019)" if is_es else "Fixed Monthly Share (RD 244/2019)"}</span>
+                        <span class="comp-bar-val">{format_kwh(h_prev["monthly_sc_kwh"])} ({h_prev["monthly_sc_rate"]:.1f}%)</span>
+                    </div>
+                    <div class="comp-bar-track">
+                        <div class="comp-bar-fill fill-monthly" style="width: {h_prev["monthly_sc_rate"]:.1f}%;"></div>
+                    </div>
+                </div>
+
+                <div class="comp-bar-row">
+                    <div class="comp-bar-meta">
+                        <span class="comp-bar-name" data-i18n="hourly_comp_hourly">{"Reparto Horario Dinámico (Orden TED/1247/2021)" if is_es else "Dynamic Hourly Share (Orden TED/1247/2021)"}</span>
+                        <span class="comp-bar-val font-bold text-emerald">{format_kwh(h_prev["hourly_sc_kwh"])} ({h_prev["hourly_sc_rate"]:.1f}%)</span>
+                    </div>
+                    <div class="comp-bar-track">
+                        <div class="comp-bar-fill fill-monthly" style="width: {h_prev["monthly_sc_rate"]:.1f}%;"></div>
+                        <div class="comp-bar-fill fill-uplift" style="width: {max(0.0, h_prev["hourly_sc_rate"] - h_prev["monthly_sc_rate"]):.1f}%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="regulatory-callout">
+                <span class="callout-icon">💡</span>
+                <p data-i18n="hourly_note">{"Bajo la <strong>Orden TED/1247/2021</strong>, las comunidades de propietarios pueden registrar coeficientes horarios variables (24 valores horarios) ante la distribuidora eléctrica sin coste de hardware adicional, optimizando la coincidencia con las curvas de demanda comunitaria." if is_es else "Under Spanish <strong>Order TED/1247/2021</strong>, homeowner associations can submit variable hourly coefficient schedules (24 hourly values) to the electrical distributor (DSO) at zero hardware cost, maximizing alignment with collective community demand curves."}</p>
             </div>
         </div>
 
@@ -1056,7 +1429,7 @@ def generate_interactive_html_report(
             </div>
         </div>
 
-        <!-- Solar Efficiency Profile Section (New) -->
+        <!-- Solar Efficiency Profile Section -->
         <div class="section-box">
             <div class="section-header">
                 <div>
@@ -1140,13 +1513,27 @@ def generate_interactive_html_report(
                 btn_theme: "🌗 Modo",
                 btn_print: "🖨️ PDF / Imprimir",
                 kpi_gen_title: "🌞 Producción Solar Total",
-                kpi_gen_sub: "Excedente a Red",
+                kpi_gen_sub: "100% Fotovoltaica Comunitaria",
                 kpi_dem_title: "⚡ Demanda Comunitaria",
-                kpi_dem_sub: "Cobertura Solar",
+                kpi_dem_sub: "Demanda de Red",
+                kpi_surplus_title: "🛡️ Excedente a Red",
+                kpi_surplus_sub: "Vertido a Red",
                 kpi_sc_title: "🏆 Energía Autoconsumida",
-                kpi_sc_sub: "Aprovechamiento Solar",
-                kpi_sum_title: "🛡️ RD 244/2019 SUM",
-                kpi_sum_sub: "Redondeo Exacto Hare-Niemeyer",
+                kpi_sc_sub: "Aprovechamiento",
+                hourly_box_title: "⚡ Previsión con Coeficientes Horarios Dinámicos",
+                hourly_box_sub: "Impacto estimado de aplicar reparto horario variable según Orden TED/1247/2021 frente a coeficientes mensuales fijos",
+                hourly_badge_ted: "📜 Orden TED/1247/2021",
+                hourly_card1_title: "Autoconsumo Horario Estimado",
+                hourly_card1_sub: "Aprovechamiento solar",
+                hourly_card2_title: "Ganancia Neta Adicional",
+                hourly_card2_sub: "vs mensual fijo",
+                hourly_card3_title: "Excedente Restante Vertido",
+                hourly_card3_sub: "Reducción de vertido",
+                hourly_card4_title: "Nueva Cobertura Solar",
+                hourly_card4_sub: "Demanda cubierta",
+                hourly_comp_monthly: "Reparto Mensual Fijo (RD 244/2019)",
+                hourly_comp_hourly: "Reparto Horario Dinámico (Orden TED/1247/2021)",
+                hourly_note: "Bajo la <strong>Orden TED/1247/2021</strong>, las comunidades de propietarios pueden registrar coeficientes horarios variables (24 valores horarios) ante la distribuidora eléctrica sin coste de hardware adicional, optimizando la coincidencia con las curvas de demanda comunitaria.",
                 chart_traj_title: "📊 Trayectoria Anual de Energía (kWh)",
                 chart_traj_sub: "Generación Solar (ámbar), Demanda Comunitaria (cian) y Autoconsumo Colectivo (verde)",
                 chart_eff_title: "☀️ Eficiencia Solar Fotovoltaica",
@@ -1196,13 +1583,27 @@ def generate_interactive_html_report(
                 btn_theme: "🌗 Theme",
                 btn_print: "🖨️ Print / PDF",
                 kpi_gen_title: "🌞 Total Solar Generation",
-                kpi_gen_sub: "Solar Surplus",
+                kpi_gen_sub: "100% Shared Photovoltaic",
                 kpi_dem_title: "⚡ Collective Demand",
-                kpi_dem_sub: "Solar Coverage",
+                kpi_dem_sub: "Grid Demand",
+                kpi_surplus_title: "🛡️ Solar Surplus (Grid)",
+                kpi_surplus_sub: "Grid Injection",
                 kpi_sc_title: "🏆 Self-Consumed Energy",
-                kpi_sc_sub: "Solar Utilization",
-                kpi_sum_title: "🛡️ RD 244/2019 SUM",
-                kpi_sum_sub: "Hare-Niemeyer Exact Rounding",
+                kpi_sc_sub: "Utilization",
+                hourly_box_title: "⚡ Prevision with Dynamic Hourly Coefficients",
+                hourly_box_sub: "Estimated impact of applying variable hourly distribution under Spanish Orden TED/1247/2021 versus fixed monthly shares",
+                hourly_badge_ted: "📜 Spanish Orden TED/1247/2021",
+                hourly_card1_title: "Estimated Hourly Self-Consumption",
+                hourly_card1_sub: "Solar utilization",
+                hourly_card2_title: "Net Additional Gain",
+                hourly_card2_sub: "vs fixed monthly",
+                hourly_card3_title: "Remaining Solar Surplus",
+                hourly_card3_sub: "Grid injection reduction",
+                hourly_card4_title: "New Solar Coverage",
+                hourly_card4_sub: "Demand covered",
+                hourly_comp_monthly: "Fixed Monthly Share (RD 244/2019)",
+                hourly_comp_hourly: "Dynamic Hourly Share (Orden TED/1247/2021)",
+                hourly_note: "Under Spanish <strong>Order TED/1247/2021</strong>, homeowner associations can submit variable hourly coefficient schedules (24 hourly values) to the electrical distributor (DSO) at zero hardware cost, maximizing alignment with collective community demand curves.",
                 chart_traj_title: "📊 Annual Energy Trajectory (kWh)",
                 chart_traj_sub: "Solar Generation (amber), Collective Demand (cyan), and Self-Consumption (green)",
                 chart_eff_title: "☀️ Photovoltaic Solar Efficiency",
@@ -1290,6 +1691,17 @@ def generate_interactive_html_report(
                 cupsBadge.textContent = lang === 'es'
                     ? `👥 ${{cupsCount}} Suministros (CUPS)`
                     : `👥 ${{cupsCount}} Supply Points (CUPS)`;
+            }}
+
+            // Update hourly simulation badge
+            const hourlyModeBadge = document.getElementById('badge-hourly-mode');
+            if (hourlyModeBadge) {{
+                const isSim = hourlyModeBadge.getAttribute('data-simulated') === 'true';
+                if (lang === 'es') {{
+                    hourlyModeBadge.textContent = isSim ? 'Simulación Horaria Diurna' : 'Previsión Diurna Modelada';
+                }} else {{
+                    hourlyModeBadge.textContent = isSim ? 'Hourly Diurnal Simulation' : 'Modeled Diurnal Prevision';
+                }}
             }}
 
             // Update strategy badge if present

@@ -300,11 +300,15 @@ def test_export_hourly_files(tmp_path: Path) -> None:
     assert "hourly_profile" in data
     assert data["hourly_profile"]["hours"] == hours
 
-    # export_all with markdown should render hourly section
+    # export_all with markdown should render hourly section in both ES and EN
     md_paths = export_all(opt_result, meta, tmp_path, formats="markdown")
-    assert len(md_paths) == 1
-    md_content = md_paths[0].read_text(encoding="utf-8")
-    assert "Diurnal Distribution Share Profile" in md_content
+    assert len(md_paths) == 2
+    es_path = next(p for p in md_paths if "_es.md" in p.name)
+    en_path = next(p for p in md_paths if "_en.md" in p.name)
+    assert es_path.exists()
+    assert en_path.exists()
+    assert "Perfil Diario de Coeficientes de Reparto" in es_path.read_text(encoding="utf-8")
+    assert "Diurnal Distribution Share Profile" in en_path.read_text(encoding="utf-8")
 
 
 def test_export_csvs_semicolon_separator_comma_decimal(tmp_path: Path) -> None:

@@ -118,8 +118,18 @@ def test_generate_interactive_html_report_structure() -> None:
     assert "chart-eff-svg" in html_en
     assert "eff-cards-grid" in html_en
     assert "kpi-grid" in html_en
+    assert "kpi-gen" in html_en
+    assert "kpi-dem" in html_en
+    assert "kpi-surplus" in html_en
+    assert "kpi-sc" in html_en
+    assert "Hare-Niemeyer" not in html_en
     assert "Aerotermia" in html_en
     assert "Garaje" in html_en
+
+    # Dynamic hourly shares distribution prevision box
+    assert "section-hourly-prevision" in html_en
+    assert "TED/1247/2021" in html_en
+    assert "Prevision with Dynamic Hourly Coefficients" in html_en
 
     # Removed components: simulator and resolution annex
     assert "sim-slider" not in html_en
@@ -141,8 +151,10 @@ def test_generate_interactive_html_report_structure() -> None:
     assert "Informe Ejecutivo de Autoconsumo Colectivo" in html_es
     assert "Eficiencia Solar Fotovoltaica" in html_es
     assert "Producción Solar Total" in html_es
+    assert "Previsión con Coeficientes Horarios Dinámicos" in html_es
     assert "sim-slider" not in html_es
     assert "resolution-box" not in html_es
+    assert "Hare-Niemeyer" not in html_es
 
 
 def test_export_interactive_html_file(tmp_path: Path) -> None:

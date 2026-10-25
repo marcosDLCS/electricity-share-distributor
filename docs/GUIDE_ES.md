@@ -216,9 +216,9 @@ Al ejecutar `esd calculate`, se generan automáticamente los archivos en `.outpu
 
 | Nombre de Archivo | Formato | Utilidad Práctica |
 | :--- | :--- | :--- |
-| `*_esd_interactive_report.html` | HTML (Independiente) | Cuadro de mando interactivo offline con selector dinámico bilingüe ES/EN, trayectoria energética multibarrita, gráfica de eficiencia solar fotovoltaica y mapa de calor de coeficientes mensuales. |
+| `*_esd_interactive_report.html` | HTML (Independiente) | Cuadro de mando ejecutivo interactivo offline con selector dinámico bilingüe ES/EN, 4 tarjetas KPI principales, previsión de coeficientes horarios dinámicos (Orden TED/1247/2021), trayectoria energética multibarrita, gráfica de eficiencia solar fotovoltaica y mapa de calor de coeficientes mensuales. |
 | `*_esd_coefficients_matrix.csv` | CSV (delimitado por `;`) | Tabla en formato hoja de cálculo lista para su presentación oficial ante la compañía distribuidora de electricidad (DSO). |
-| `*_esd_optimization_summary.md` | Markdown | Informe ejecutivo completo con el anexo del acuerdo de reparto comunitario listo para la firma de la junta de propietarios. |
+| `*_esd_optimization_summary.md` | Markdown | Informe ejecutivo completo con el anexo del acuerdo de reparto comunitario listo para la firma de la junta de propietarios (genera documentos en ES y EN al ejecutar con `--hourly`). |
 | `*_esd_coefficients.csv` | CSV (delimitado por `;`) | Desglose detallado por CUPS: kWh autoconsumidos, excedentes vertidos y demanda remanente de red. |
 | `*_esd_results.json` | JSON | Archivo de datos estructurado para integraciones informáticas o cuadros de mando comunitarios. |
 | `*_esd_hourly_shares.csv` | CSV (delimitado por `;`) | Serie temporal horaria con consumo, producción, cuotas y el Índice de Eficiencia Solar (entero 1-100 en horas de generación, 0 sin generación), ordenada por fecha y uso. |
