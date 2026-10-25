@@ -221,6 +221,8 @@ For developers and autonomous agents navigating the codebase:
 | Architecture Layer | Module | Key Classes / Functions | Responsibility |
 | :--- | :--- | :--- | :--- |
 | **CLI & Commands** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `curate_command`, `weather_command`, `doctor_command` | Typer command routing, parameter validation, and user workflow dispatch. |
+| **Application Services** | [`src/services/`](../src/services) | `CalculationService`, `CurationService`, `DoctorService` | Core workflow orchestrators encapsulating business processes. |
+| **Domain Core** | [`src/domain/`](../src/domain) | `SupplyPoint`, `ShareAllocation`, `EnergyBalance`, `EsdError` | Pure domain models, value objects, and centralized domain exceptions. |
 | **Configuration** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision`, `get_weather_dir` | Settings persistence (`.esd_config.json`) and folder resolution. |
 | **Localization** | [`src/i18n.py`](../src/i18n.py) | `t()`, `TRANSLATIONS` | English and Spanish dictionary lookups with string interpolation. |
 | **Ingestion: Consumption** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | DATADIS CSV discovery, encoding detection, and reading. |
@@ -230,6 +232,6 @@ For developers and autonomous agents navigating the codebase:
 | **Curation & Reconciliation** | [`src/curation/`](../src/curation) | `DataCurator`, `CuratedDataset` | Fake-zero reconciliation, CUPS metadata lookup, and curated CSV export. |
 | **Optimization: Models** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Matrix structures, diurnal profiles, and community metrics. |
 | **Optimization: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Linear programming solver, diurnal profile engine, baselines, and Hare-Niemeyer rounding. |
-| **Presentation: Views** | [`src/presentation/views.py`](../src/presentation/views.py) | `render_coefficients_matrix_table`, `render_weather_result` | Rich terminal tables, adaptive 80-column formatting, and curation summaries. |
+| **Presentation: Views** | [`src/presentation/views/`](../src/presentation/views) | `render_coefficients_matrix_table`, `render_community_summary` | Rich terminal tables, executive KPI cards, two-tone heatmaps, and adaptive 80-column formatting. |
 | **Presentation: Exports** | [`src/presentation/export.py`](../src/presentation/export.py) | `export_all`, `export_hourly_shares_csv` | Markdown summary generation, CSV spreadsheets, and JSON serialization. |
 | **Security & Privacy** | [`src/security.py`](../src/security.py) | `CupsPrivacyChecker`, `scan_git_history` | GDPR enforcement and synthetic CUPS verification harness. |

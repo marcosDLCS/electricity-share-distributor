@@ -24,11 +24,13 @@ It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/da
 
 The codebase is organized into focused, modular layers with clean separation of concerns:
 - **CLI & Dispatch (`src/cli.py`):** Typer application orchestrating command dispatch, parameter validation, and user workflow.
+- **Application Services (`src/services/`):** Workflow orchestrators (`CalculationService`, `CurationService`, `DoctorService`) encapsulating business processes.
+- **Domain Core (`src/domain/`):** Pure domain models, value objects (`SupplyPoint`, `ShareAllocation`, `EnergyBalance`), and centralized domain exceptions (`EsdError`, `IngestionError`, `AlignmentError`, `CurationError`, `OptimizationError`).
 - **Configuration & Localization (`src/config.py`, `src/i18n.py`):** Persistent settings (`.esd_config.json`) and bilingual English/Spanish lookup engine.
 - **Ingestion & Alignment (`src/ingestion/`):** DATADIS CSV loader, solar inverter Excel loader, Open-Meteo weather downloader/loader, `DataDoctor` pre-flight auditor, and DST-aware `TimeSeriesAligner`.
 - **Curation & Reconciliation (`src/curation/`):** Primary CUPS fake-zero load reconciliation, metadata enrichment, weather integration (temperature, cloud cover), and canonical long-format CSV curation.
 - **Optimization Core (`src/optimization/`):** RD 244/2019 linear programming solver (`scipy.optimize.linprog`), baseline comparisons, Hare-Niemeyer exact rounding, and multi-year calendar prevision engine.
-- **Presentation & Reporting (`src/presentation/`):** Rich 80-column terminal tables, views, and multi-format exporters (CSV, JSON, Markdown).
+- **Presentation & Reporting (`src/presentation/`):** Rich 80-column terminal tables, modular views (`src/presentation/views/`), two-tone heatmaps, KPI cards, and multi-format exporters (CSV, JSON, Markdown).
 - **Security & Versioning (`src/security.py`, `src/version.py`):** GDPR CUPS privacy audit harness and automated CalVer release manager.
 
 ---

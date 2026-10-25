@@ -9,11 +9,12 @@ from typing import Any
 
 import pandas as pd
 
-from src.ingestion.schema import EsdError
-
-
-class CurationError(EsdError):
-    """Raised when data curation or reconciliation fails."""
+from src.domain.exceptions import (
+    CurationError as CurationError,
+)
+from src.domain.exceptions import (
+    EsdError as EsdError,
+)
 
 
 @dataclass

@@ -6,13 +6,15 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-
-class EsdError(Exception):
-    """Base exception for all Electricity Share Distributor errors."""
-
-
-class IngestionError(EsdError):
-    """Raised when data discovery, reading, or loading fails."""
+from src.domain.exceptions import (
+    AlignmentError as AlignmentError,
+)
+from src.domain.exceptions import (
+    EsdError as EsdError,
+)
+from src.domain.exceptions import (
+    IngestionError as IngestionError,
+)
 
 
 class ParseError(IngestionError):
@@ -21,10 +23,6 @@ class ParseError(IngestionError):
 
 class ValidationError(IngestionError):
     """Raised when schema validation, columns, or data types are invalid."""
-
-
-class AlignmentError(EsdError):
-    """Raised when aligning consumption and generation time-series fails."""
 
 
 @dataclass(frozen=True)

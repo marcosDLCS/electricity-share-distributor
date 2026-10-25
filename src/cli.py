@@ -24,18 +24,15 @@ from src.config import (
     set_precision,
     validate_share_precision,
 )
-from src.curation import DataCurator
+from src.domain.exceptions import EsdError
 from src.i18n import t
 from src.ingestion import (
-    DataDoctor,
-    EsdError,
     OpenMeteoWeatherDownloader,
     WeatherDownloadResult,
     extract_coordinates_from_cups_file,
 )
-from src.optimization import DistributionOptimizer, OptimizationStrategy
+from src.optimization import OptimizationStrategy
 from src.presentation.console import console
-from src.presentation.export import export_all
 from src.presentation.views import (
     render_cleanup_result,
     render_coefficients_matrix_table,
@@ -53,6 +50,14 @@ from src.presentation.views import (
     render_strategy_comparison_table,
     render_version,
     render_weather_result,
+)
+from src.services import (
+    CalculationRequest,
+    CalculationService,
+    CurationRequest,
+    CurationService,
+    DoctorRequest,
+    DoctorService,
 )
 from src.version import get_version
 
@@ -219,13 +224,13 @@ def doctor_command(
     cups_path = resolve_cups_config_path(custom_path=cups_file, config=cfg)
 
     with console.status(f"[bold cyan]{t('status_doctor', lang=active_lang)}[/bold cyan]"):
-        doc = DataDoctor(
+        req = DoctorRequest(
             consumption_dir=target_consumption_dir,
             generation_dir=target_generation_dir,
             weather_dir=target_weather_dir,
             cups_config_path=cups_path,
         )
-        report = doc.diagnose()
+        report = DoctorService.execute(req)
 
     render_doctor_report(report, verbose=verbose, lang=active_lang)
 
@@ -313,24 +318,22 @@ def curate_command(
 
     try:
         with console.status(f"[bold cyan]{t('status_curating', lang=active_lang)}[/bold cyan]"):
-            curator = DataCurator(
+            req = CurationRequest(
                 consumption_dir=target_consumption_dir,
                 generation_dir=target_generation_dir,
-                cups_config_path=cups_path,
                 curated_dir=target_curated_dir,
+                cups_config_path=cups_path,
+                output_name=name,
+                delimiter=delimiter,
+                year=year,
+                month=month,
                 weather_dir=target_weather_dir,
             )
-            dataset = curator.curate(year=year, month=month)
-            csv_path = curator.export_csv(
-                dataset,
-                curated_dir=target_curated_dir,
-                base_name=name,
-                delimiter=delimiter,
-            )
+            cur_result = CurationService.execute(req)
 
         render_curate_summary(
-            dataset=dataset,
-            csv_path=csv_path,
+            dataset=cur_result.dataset,
+            csv_path=cur_result.csv_path,
             lang=active_lang,
         )
 
@@ -569,51 +572,33 @@ def calculate_command(
     is_hourly = hourly or (view_mode == "hourly")
 
     try:
-        curator = DataCurator(
+        req = CalculationRequest(
             consumption_dir=target_consumption_dir,
             generation_dir=target_generation_dir,
-            cups_config_path=cups_path,
             curated_dir=target_curated_dir,
+            output_dir=target_output_dir,
+            cups_config_path=cups_path,
+            force_curate=force_curate,
+            is_custom_input=(consumption_dir is not None or generation_dir is not None),
+            is_custom_curated=(curated_dir is not None),
+            year=year,
+            month=month,
+            strategy=opt_strat,
+            precision=active_precision,
+            compute_hourly=is_hourly,
+            export_format=export_format,
+            lang=active_lang,
         )
-
-        curated_csv = (
-            target_curated_dir / "curated.csv"
-            if target_curated_dir.is_dir()
-            else target_curated_dir
-        )
-        is_custom_input = consumption_dir is not None or generation_dir is not None
-        is_custom_curated = curated_dir is not None
-        needs_curation = (
-            force_curate or not curated_csv.exists() or (is_custom_input and not is_custom_curated)
-        )
-
-        if needs_curation:
-            with console.status(
-                f"[bold cyan]{t('status_curating_auto', lang=active_lang)}[/bold cyan]"
-            ):
-                curated_csv = curator.ensure_curated(force=True)
-
-        with console.status(
-            f"[bold cyan]{t('status_loading_curated', lang=active_lang, curated_path=str(curated_csv))}[/bold cyan]"
-        ):
-            aligned = curator.load_aligned_dataset(
-                curated_csv,
-                year=year,
-                month=month,
-            )
 
         with console.status(f"[bold green]{t('status_optimizing', lang=active_lang)}[/bold green]"):
-            opt_result = DistributionOptimizer.optimize_dataset(
-                aligned,
-                strategy=opt_strat,
-                include_baselines=True,
-                precision=active_precision,
-                compute_hourly=is_hourly,
-            )
+            calc_result = CalculationService.execute(req)
+
+        opt_result = calc_result.opt_result
+        metadata = calc_result.metadata
 
         # Presentation Views
         if view_mode in ("summary", "all"):
-            render_community_summary(aligned.metadata, opt_result.total_summary, lang=active_lang)
+            render_community_summary(metadata, opt_result.total_summary, lang=active_lang)
             render_monthly_trajectory_table(opt_result, lang=active_lang)
             render_strategy_comparison_table(opt_result, lang=active_lang)
             render_coefficients_matrix_table(
@@ -643,18 +628,9 @@ def calculate_command(
         elif view_mode == "comparison":
             render_strategy_comparison_table(opt_result, lang=active_lang)
 
-        # File Exports
-        fmt_clean = export_format.lower().strip()
-        if fmt_clean not in ("table", "none"):
-            exported_paths = export_all(
-                opt_result,
-                aligned.metadata,
-                output_dir=target_output_dir,
-                formats=fmt_clean,
-                lang=active_lang,
-                precision=active_precision,
-            )
-            render_export_success(exported_paths, lang=active_lang)
+        # File Exports Feedback
+        if calc_result.exported_paths:
+            render_export_success(calc_result.exported_paths, lang=active_lang)
 
     except EsdError as err:
         console.print(f"\n[bold red]Error:[/bold red] {err}\n")

@@ -9,7 +9,13 @@ import pandas as pd
 import scipy.optimize as opt
 from scipy.sparse import dok_matrix
 
-from src.ingestion.schema import AlignedDataset, EsdError
+from src.domain.exceptions import (
+    EsdError as EsdError,
+)
+from src.domain.exceptions import (
+    OptimizationError as OptimizationError,
+)
+from src.ingestion.schema import AlignedDataset
 from src.optimization.efficiency import calculate_solar_efficiency
 from src.optimization.models import (
     CommunityMonthlyMetrics,
@@ -19,10 +25,6 @@ from src.optimization.models import (
     OptimizationResult,
     OptimizationStrategy,
 )
-
-
-class OptimizationError(EsdError):
-    """Raised when coefficient optimization fails or produces invalid results."""
 
 
 class DistributionOptimizer:
