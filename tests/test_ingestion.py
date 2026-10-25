@@ -180,16 +180,18 @@ def test_generation_loader_with_autoconsumo(tmp_path: Path) -> None:
     xlsx_file = tmp_path / "Informe_planta_autoconsumo.xlsx"
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.append(["Informe de plantas_TEST", "", "", "", "", ""])
+    ws.append(["Informe de plantas_TEST", "", "", "", "", "", ""])
     ws.append(
         [
             "Período estadístico",
             "Rendimiento FV (kWh)",
             "Consumo (kWh)",
             "Autoconsumo (kWh)",
+            "Energía exportada (kWh)",
+            "Importación (kWh)",
         ]
     )
-    ws.append(["2026-06-01 12:00:00", 10.5, 8.0, 7.5])
+    ws.append(["2026-06-01 12:00:00", 10.5, 8.0, 7.5, 3.0, 0.5])
     wb.save(xlsx_file)
 
     loader = HuaweiGenerationLoader(tmp_path)
@@ -199,4 +201,8 @@ def test_generation_loader_with_autoconsumo(tmp_path: Path) -> None:
     assert "generation_kwh" in df.columns
     assert "consumption_kwh" in df.columns
     assert "self_consumption_kwh" in df.columns
+    assert "exported_energy_kwh" in df.columns
+    assert "imported_energy_kwh" in df.columns
     assert df["self_consumption_kwh"].iloc[0] == 7.5
+    assert df["exported_energy_kwh"].iloc[0] == 3.0
+    assert df["imported_energy_kwh"].iloc[0] == 0.5

@@ -78,15 +78,15 @@ Cuando el contador de la calle marca cero (o un valor artificialmente bajo) mien
 El entregable es una tabla única, estandarizada y limpia (con delimitador `;`, coma `,` para decimales y sin separadores de miles), agrupando las dimensiones analíticas por afinidad:
 1. **Coordenadas temporales:** `timestamp`, `year`, `month`, `day`, `hour`, `day_of_week`, `is_weekend`
 2. **Consumidor individual:** `cups_id`, `use`, `consumption`
-3. **Balance comunitario y solar:** `community_demand`, `generation`, `self_consumption`
+3. **Balance comunitario y solar:** `community_demand`, `generation`, `self_consumption`, `hourly_self_consumption`, `exported_energy`, `imported_energy`
 4. **Contexto meteorológico:** `temperature`, `cloud_cover`
 
 ```csv
-timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption;community_demand;generation;self_consumption;temperature;cloud_cover
-2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000001AA;Aerotermia;8,5;9,7;12,5;6,0;21,4;12
-2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000002BB;Garaje;1,2;9,7;12,5;0,0;21,4;12
+timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption;community_demand;generation;self_consumption;hourly_self_consumption;exported_energy;imported_energy;temperature;cloud_cover
+2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000001AA;Aerotermia;8,5;9,7;12,5;6,0;8,5;6,0;2,5;21,4;12
+2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000002BB;Garaje;1,2;9,7;12,5;0,0;0,0;0,0;0,0;21,4;12
 ```
-Para el suministro principal de la instalación, `esd` adopta siempre el mayor consumo entre la distribuidora (DATADIS) y el sensor de potencia del inversor solar ($\max(C_{\text{DATADIS}}, C_{\text{inversor}})$). Esto garantiza registrar la demanda real y completa de la instalación eliminando los falsos ceros. La energía horaria autoconsumida (`self_consumption` en kWh) proveniente del inversor se asigna exclusivamente al punto de suministro principal, mientras que el resto de puntos participantes reciben cero. El archivo CSV se encuentra ordenado cronológicamente por marca de tiempo (fecha/hora) y, dentro de cada hora, alfabéticamente por uso del suministro. Además, cada intervalo horario incorpora el contexto meteorológico local (`temperature` en °C y porcentaje de nubosidad `cloud_cover` de 0 a 100%). Si los datos meteorológicos no están disponibles localmente en `.input/weather/`, `esd curate` ejecuta automáticamente la consulta a Open-Meteo utilizando la ubicación por defecto de la comunidad en `.input/cups/cups.json`.
+Para el suministro principal de la instalación, `esd` adopta siempre el mayor consumo entre la distribuidora (DATADIS) y el sensor de potencia del inversor solar ($\max(C_{\text{DATADIS}}, C_{\text{inversor}})$). Esto garantiza registrar la demanda real y completa de la instalación eliminando los falsos ceros. El punto de suministro principal recibe además las métricas detalladas del balance solar: el autoconsumo físico instantáneo (`self_consumption`), el autoconsumo regulatorio en balance horario (`hourly_self_consumption` = $\min(C_h, G_h)$), los excedentes solares vertidos a la red (`exported_energy`) y la energía importada de la red (`imported_energy`). El resto de puntos participantes reciben cero para estos flujos individuales previos al reparto colectivo. El archivo CSV se encuentra ordenado cronológicamente por marca de tiempo (fecha/hora) y, dentro de cada hora, alfabéticamente por uso del suministro. Además, cada intervalo horario incorpora el contexto meteorológico local (`temperature` en °C y porcentaje de nubosidad `cloud_cover` de 0 a 100%). Si los datos meteorológicos no están disponibles localmente en `.input/weather/`, `esd curate` ejecuta automáticamente la consulta a Open-Meteo utilizando la ubicación por defecto de la comunidad en `.input/cups/cups.json`.
 
 ---
 

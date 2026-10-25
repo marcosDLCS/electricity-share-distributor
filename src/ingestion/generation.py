@@ -97,6 +97,31 @@ class HuaweiGenerationLoader:
                 self_cons_col = col
                 break
 
+        # Locate export column if present (e.g. 'Energía exportada (kWh)', 'Exported energy (kWh)')
+        exp_col = None
+        for col in df.columns:
+            c_low = col.lower()
+            if (
+                ("exportada" in c_low or "exported" in c_low or "export" in c_low)
+                and "pérdida" not in c_low
+                and "perdida" not in c_low
+            ):
+                exp_col = col
+                break
+
+        # Locate import column if present (e.g. 'Importación (kWh)', 'Importacion (kWh)', 'Imported energy (kWh)')
+        imp_col = None
+        for col in df.columns:
+            c_low = col.lower()
+            if (
+                "importación" in c_low
+                or "importacion" in c_low
+                or "imported" in c_low
+                or "import" in c_low
+            ):
+                imp_col = col
+                break
+
         # Drop rows where timestamp is NaN
         clean_df = df.dropna(subset=[ts_col]).copy()
 
@@ -120,6 +145,16 @@ class HuaweiGenerationLoader:
                 clean_df[self_cons_col].astype(str).str.replace(",", "."), errors="coerce"
             ).fillna(0.0)
             data_dict["self_consumption_kwh"] = self_cons_values
+        if exp_col:
+            exp_values = pd.to_numeric(
+                clean_df[exp_col].astype(str).str.replace(",", "."), errors="coerce"
+            ).fillna(0.0)
+            data_dict["exported_energy_kwh"] = exp_values
+        if imp_col:
+            imp_values = pd.to_numeric(
+                clean_df[imp_col].astype(str).str.replace(",", "."), errors="coerce"
+            ).fillna(0.0)
+            data_dict["imported_energy_kwh"] = imp_values
 
         result_df = pd.DataFrame(data_dict)
 
@@ -134,7 +169,8 @@ class HuaweiGenerationLoader:
 
         Returns:
             DataFrame with columns ['timestamp', 'generation_kwh'] (and optionally
-            'consumption_kwh' and 'self_consumption_kwh' if present in the reports) sorted chronologically.
+            'consumption_kwh', 'self_consumption_kwh', 'exported_energy_kwh', 'imported_energy_kwh'
+            if present in the reports) sorted chronologically.
         """
         files = self.discover_files()
         dfs = []
@@ -149,6 +185,10 @@ class HuaweiGenerationLoader:
             agg_rules["consumption_kwh"] = "max"
         if "self_consumption_kwh" in combined.columns:
             agg_rules["self_consumption_kwh"] = "max"
+        if "exported_energy_kwh" in combined.columns:
+            agg_rules["exported_energy_kwh"] = "max"
+        if "imported_energy_kwh" in combined.columns:
+            agg_rules["imported_energy_kwh"] = "max"
 
         combined = (
             combined.groupby("timestamp", as_index=False)

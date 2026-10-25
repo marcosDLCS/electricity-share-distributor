@@ -70,7 +70,15 @@ def dataframe_to_aligned_dataset(
         raise CurationError(f"Curated dataset is missing required columns: {sorted(missing_cols)}")
 
     df_clean = df.copy()
-    for num_col in ("consumption", "generation", "community_demand", "self_consumption"):
+    for num_col in (
+        "consumption",
+        "generation",
+        "community_demand",
+        "self_consumption",
+        "hourly_self_consumption",
+        "exported_energy",
+        "imported_energy",
+    ):
         if num_col in df_clean.columns and df_clean[num_col].dtype == object:
             df_clean[num_col] = (
                 df_clean[num_col].astype(str).str.replace(",", ".", regex=False).str.strip()
@@ -81,10 +89,14 @@ def dataframe_to_aligned_dataset(
         df_clean["community_demand"] = pd.to_numeric(
             df_clean["community_demand"], errors="coerce"
         ).fillna(0.0)
-    if "self_consumption" in df_clean.columns:
-        df_clean["self_consumption"] = pd.to_numeric(
-            df_clean["self_consumption"], errors="coerce"
-        ).fillna(0.0)
+    for add_col in (
+        "self_consumption",
+        "hourly_self_consumption",
+        "exported_energy",
+        "imported_energy",
+    ):
+        if add_col in df_clean.columns:
+            df_clean[add_col] = pd.to_numeric(df_clean[add_col], errors="coerce").fillna(0.0)
 
     # Apply year / month filters if specified
     if year is not None:
@@ -118,10 +130,14 @@ def dataframe_to_aligned_dataset(
         aligned_df["community_demand"] = (
             df_clean.groupby("timestamp")["community_demand"].first().loc[aligned_df.index]
         )
-    if "self_consumption" in df_clean.columns:
-        aligned_df["self_consumption"] = (
-            df_clean.groupby("timestamp")["self_consumption"].sum().loc[aligned_df.index]
-        )
+    for add_col in (
+        "self_consumption",
+        "hourly_self_consumption",
+        "exported_energy",
+        "imported_energy",
+    ):
+        if add_col in df_clean.columns:
+            aligned_df[add_col] = df_clean.groupby("timestamp")[add_col].sum().loc[aligned_df.index]
     if "temperature" in df_clean.columns:
         aligned_df["temperature"] = (
             df_clean.groupby("timestamp")["temperature"].first().loc[aligned_df.index]
@@ -437,6 +453,18 @@ class DataCurator:
             if g_has_self_cons
             else pd.Series(dtype=float)
         )
+        g_has_exp = "exported_energy_kwh" in g_df.columns
+        g_exp_series: pd.Series[float] = (
+            g_df.set_index("timestamp")["exported_energy_kwh"]
+            if g_has_exp
+            else pd.Series(dtype=float)
+        )
+        g_has_imp = "imported_energy_kwh" in g_df.columns
+        g_imp_series: pd.Series[float] = (
+            g_df.set_index("timestamp")["imported_energy_kwh"]
+            if g_has_imp
+            else pd.Series(dtype=float)
+        )
 
         # Determine all calendar years present in the aligned dataset
         years_present = sorted({int(str(ts)[:4]) for ts in aligned.data.index})
@@ -525,6 +553,26 @@ class DataCurator:
                     except ValueError, TypeError:
                         hw_sc_val = 0.0
 
+            # Huawei meter export reading for this interval if present
+            hw_exp_val = 0.0
+            if g_has_exp and ts_str in g_exp_series.index:
+                exp_raw = g_exp_series.loc[ts_str]
+                if pd.notna(exp_raw):
+                    try:
+                        hw_exp_val = max(0.0, float(exp_raw))
+                    except ValueError, TypeError:
+                        hw_exp_val = 0.0
+
+            # Huawei meter import reading for this interval if present
+            hw_imp_val = 0.0
+            if g_has_imp and ts_str in g_imp_series.index:
+                imp_raw = g_imp_series.loc[ts_str]
+                if pd.notna(imp_raw):
+                    try:
+                        hw_imp_val = max(0.0, float(imp_raw))
+                    except ValueError, TypeError:
+                        hw_imp_val = 0.0
+
             cups_readings: list[CuratedCupsReading] = []
             hour_cons_sum = 0.0
 
@@ -551,6 +599,10 @@ class DataCurator:
 
                 # Self-consumed electricity: primary CUPS receives the Huawei reading, others receive 0.0
                 c_self_cons = hw_sc_val if cfg.primary else 0.0
+                # Regulatory hourly self-consumption for primary CUPS: min(final_cons, gen_val)
+                c_hourly_sc = min(final_cons, gen_val) if cfg.primary else 0.0
+                c_exp = hw_exp_val if cfg.primary else 0.0
+                c_imp = hw_imp_val if cfg.primary else 0.0
 
                 cups_total_cons[cups_id] += final_cons
                 hour_cons_sum += final_cons
@@ -563,6 +615,9 @@ class DataCurator:
                         primary=cfg.primary,
                         reconciled=is_reconciled,
                         self_consumption=format_energy_value(c_self_cons),
+                        hourly_self_consumption=format_energy_value(c_hourly_sc),
+                        exported_energy=format_energy_value(c_exp),
+                        imported_energy=format_energy_value(c_imp),
                     )
                 )
 
@@ -576,6 +631,12 @@ class DataCurator:
             w_reading = weather_map.get(ts_str)
             temp_val, cloud_val = w_reading if w_reading is not None else (None, None)
 
+            pri_hourly_sc = 0.0
+            for cr in cups_readings:
+                if cr.primary:
+                    pri_hourly_sc = float(cr.hourly_self_consumption)
+                    break
+
             records.append(
                 CuratedHourRecord(
                     date=date_str,
@@ -587,6 +648,9 @@ class DataCurator:
                     solar_surplus=format_energy_value(surplus),
                     net_grid_demand=format_energy_value(grid_demand),
                     self_consumption=format_energy_value(hw_sc_val),
+                    hourly_self_consumption=format_energy_value(pri_hourly_sc),
+                    exported_energy=format_energy_value(hw_exp_val),
+                    imported_energy=format_energy_value(hw_imp_val),
                     temperature=temp_val,
                     cloud_cover=cloud_val,
                 )
@@ -677,6 +741,9 @@ class DataCurator:
                     and "temperature" in cols
                     and "cloud_cover" in cols
                     and "self_consumption" in cols
+                    and "hourly_self_consumption" in cols
+                    and "exported_energy" in cols
+                    and "imported_energy" in cols
                     and "primary" not in cols
                     and "reconciled" not in cols
                 ):
