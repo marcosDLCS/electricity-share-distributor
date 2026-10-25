@@ -70,13 +70,17 @@ def dataframe_to_aligned_dataset(
         raise CurationError(f"Curated dataset is missing required columns: {sorted(missing_cols)}")
 
     df_clean = df.copy()
-    for num_col in ("consumption", "generation"):
+    for num_col in ("consumption", "generation", "community_demand"):
         if num_col in df_clean.columns and df_clean[num_col].dtype == object:
             df_clean[num_col] = (
                 df_clean[num_col].astype(str).str.replace(",", ".", regex=False).str.strip()
             )
     df_clean["consumption"] = pd.to_numeric(df_clean["consumption"], errors="coerce").fillna(0.0)
     df_clean["generation"] = pd.to_numeric(df_clean["generation"], errors="coerce").fillna(0.0)
+    if "community_demand" in df_clean.columns:
+        df_clean["community_demand"] = pd.to_numeric(
+            df_clean["community_demand"], errors="coerce"
+        ).fillna(0.0)
 
     # Apply year / month filters if specified
     if year is not None:
@@ -106,6 +110,10 @@ def dataframe_to_aligned_dataset(
     # Combine into aligned DataFrame
     aligned_df = pivot_cons.copy()
     aligned_df["generation_kwh"] = gen_series.loc[aligned_df.index]
+    if "community_demand" in df_clean.columns:
+        aligned_df["community_demand"] = (
+            df_clean.groupby("timestamp")["community_demand"].first().loc[aligned_df.index]
+        )
     if "temperature" in df_clean.columns:
         aligned_df["temperature"] = (
             df_clean.groupby("timestamp")["temperature"].first().loc[aligned_df.index]
@@ -607,7 +615,9 @@ class DataCurator:
                 sep = delimiter if delimiter in first_line else (";" if ";" in first_line else ",")
                 cols = [c.strip() for c in first_line.split(sep)]
                 if (
-                    "temperature" in cols
+                    "community_demand" in cols
+                    and "year" in cols
+                    and "temperature" in cols
                     and "cloud_cover" in cols
                     and "primary" not in cols
                     and "reconciled" not in cols

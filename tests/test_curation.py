@@ -235,14 +235,24 @@ def test_curation_exports_csv(tmp_path: Path) -> None:
     csv_lines = csv_path.read_text(encoding="utf-8").strip().splitlines()
     assert len(csv_lines) == 25  # 1 header + 24 rows
     header = csv_lines[0]
-    assert header == "timestamp;generation;cups_id;use;consumption;temperature;cloud_cover"
+    expected_header = (
+        "timestamp;year;month;day;hour;day_of_week;is_weekend;"
+        "cups_id;use;consumption;community_demand;generation;temperature;cloud_cover"
+    )
+    assert header == expected_header
     assert "date" not in header.split(";")
-    assert "hour" not in header.split(";")
     assert "primary" not in header.split(";")
     assert "reconciled" not in header.split(";")
     assert pri_cups in csv_lines[1]
     assert "Comunidad" in csv_lines[1]
     assert "2026-05-01 00:00:00" in csv_lines[1]
+    parts = csv_lines[1].split(";")
+    assert parts[1] == "2026"  # year
+    assert parts[2] == "5"  # month
+    assert parts[3] == "1"  # day
+    assert parts[4] == "0"  # hour
+    assert parts[5] == "Friday"  # day_of_week
+    assert parts[6] == "False"  # is_weekend
 
 
 def test_cli_curate_command(tmp_path: Path) -> None:
@@ -875,22 +885,145 @@ def test_curated_csv_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
     content = csv_file.read_text(encoding="utf-8")
     lines = content.strip().splitlines()
     header = lines[0]
-    assert header == "timestamp;generation;cups_id;use;consumption;temperature;cloud_cover"
+    expected_header = (
+        "timestamp;year;month;day;hour;day_of_week;is_weekend;"
+        "cups_id;use;consumption;community_demand;generation;temperature;cloud_cover"
+    )
+    assert header == expected_header
 
     # Check a sample line: should contain ';' separator and ',' decimal (e.g. '0,0' or '2,5')
     sample_line = lines[1]
     assert ";" in sample_line
     parts = sample_line.split(";")
-    assert len(parts) == 7
+    assert len(parts) == 14
     # Verify no thousand separators (e.g. no '.' within numeric values when ',' is decimal)
-    # Check that generation and consumption parse as float with comma decimal
-    gen_val = float(parts[1].replace(",", "."))
-    cons_val = float(parts[4].replace(",", "."))
-    assert isinstance(gen_val, float)
+    # Check that consumption, community_demand, and generation parse as float with comma decimal
+    cons_val = float(parts[9].replace(",", "."))
+    comm_val = float(parts[10].replace(",", "."))
+    gen_val = float(parts[11].replace(",", "."))
     assert isinstance(cons_val, float)
+    assert isinstance(comm_val, float)
+    assert isinstance(gen_val, float)
 
     # Verify load_aligned_dataset reconstructs properly
     aligned = curator.load_aligned_dataset(csv_file)
     assert aligned.cups_list == [cups_id]
     assert len(aligned.data) > 0
     assert float(aligned.data[cups_id].iloc[0]) == cons_val
+
+
+def test_curated_dataset_calendar_decomposition_and_community_demand() -> None:
+    """Verify that CuratedDataset.to_dataframe extracts calendar dimensions and community demand correctly."""
+    from src.curation.models import (
+        CuratedCupsReading,
+        CuratedDataset,
+        CuratedHourRecord,
+        CuratedSummary,
+    )
+
+    rec_sat = CuratedHourRecord(
+        date="2026-10-24",
+        hour="14:00",
+        generation=12.5,
+        timestamp="2026-10-24 14:00:00",
+        total_consumption=8.0,
+        temperature=18.5,
+        cloud_cover=25,
+        cups=[
+            CuratedCupsReading(
+                id="ES0021000000000001AA",
+                use="Aerotermia",
+                consumption=5.5,
+            ),
+            CuratedCupsReading(
+                id="ES0021000000000002BB",
+                use="Garaje",
+                consumption=2.5,
+            ),
+        ],
+    )
+    rec_mon = CuratedHourRecord(
+        date="2026-10-26",
+        hour="09:00",
+        generation=4.0,
+        timestamp="2026-10-26 09:00:00",
+        total_consumption=3.0,
+        temperature=15.0,
+        cloud_cover=0,
+        cups=[
+            CuratedCupsReading(
+                id="ES0021000000000001AA",
+                use="Aerotermia",
+                consumption=3.0,
+            ),
+        ],
+    )
+
+    dataset = CuratedDataset(
+        records=[rec_sat, rec_mon],
+        summary=CuratedSummary(
+            total_hours=2,
+            reconciled_hours_count=0,
+            recovered_kwh=0.0,
+            total_generation_kwh=16.5,
+            total_consumption_kwh=11.0,
+            start_time="2026-10-24 14:00:00",
+            end_time="2026-10-26 09:00:00",
+            cups_count=2,
+            primary_cups="ES0021000000000001AA",
+        ),
+        cups_configs={},
+    )
+
+    df = dataset.to_dataframe()
+    assert len(df) == 3  # 2 for Saturday + 1 for Monday
+    expected_cols = [
+        "timestamp",
+        "year",
+        "month",
+        "day",
+        "hour",
+        "day_of_week",
+        "is_weekend",
+        "cups_id",
+        "use",
+        "consumption",
+        "community_demand",
+        "generation",
+        "temperature",
+        "cloud_cover",
+    ]
+    assert list(df.columns) == expected_cols
+
+    # Saturday checks
+    row_sat = df[df["timestamp"] == "2026-10-24 14:00:00"].iloc[0]
+    assert row_sat["year"] == 2026
+    assert row_sat["month"] == 10
+    assert row_sat["day"] == 24
+    assert row_sat["hour"] == 14
+    assert row_sat["day_of_week"] == "Saturday"
+    assert row_sat["is_weekend"] is True or row_sat["is_weekend"] == 1
+    assert row_sat["community_demand"] == 8.0
+    assert row_sat["generation"] == 12.5
+    assert row_sat["temperature"] == 18.5
+    assert row_sat["cloud_cover"] == 25
+
+    # Monday checks
+    row_mon = df[df["timestamp"] == "2026-10-26 09:00:00"].iloc[0]
+    assert row_mon["year"] == 2026
+    assert row_mon["month"] == 10
+    assert row_mon["day"] == 26
+    assert row_mon["hour"] == 9
+    assert row_mon["day_of_week"] == "Monday"
+    assert row_mon["is_weekend"] is False or row_mon["is_weekend"] == 0
+    assert row_mon["community_demand"] == 3.0
+    assert row_mon["generation"] == 4.0
+
+    # Empty dataset checks
+    empty_df = CuratedDataset(
+        records=[],
+        summary=CuratedSummary(0, 0, 0.0, 0.0, 0.0, "", "", 0, None),
+        cups_configs={},
+    ).to_dataframe()
+    assert list(empty_df.columns) == expected_cols
+    assert empty_df.empty
