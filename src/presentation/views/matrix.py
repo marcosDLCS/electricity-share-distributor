@@ -219,7 +219,12 @@ def _render_single_hourly_table(
     )
 
     for cups in matrix.cups_list:
-        display_cups = f"…{cups[-10:]}" if len(cups) > 12 else cups
+        use_val = matrix.cups_uses.get(cups, "") if hasattr(matrix, "cups_uses") else ""
+        display_cups = (
+            f"{use_val[:11]} (…{cups[-6:]})"
+            if use_val
+            else (f"…{cups[-10:]}" if len(cups) > 12 else cups)
+        )
         row = [display_cups]
         for h_str in matrix.hours:
             raw_val = matrix.matrix.get(cups, {}).get(h_str)

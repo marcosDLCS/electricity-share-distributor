@@ -577,15 +577,18 @@ class DataCurator:
         Returns:
             Path to the generated CSV file.
         """
-        out_path = Path(curated_dir)
-        out_path.mkdir(parents=True, exist_ok=True)
+        from src.presentation.export import ReportExporter
 
-        csv_file = out_path / f"{base_name}.csv"
-        df = dataset.to_dataframe()
-        decimal_char = "," if delimiter == ";" else "."
-        df.to_csv(csv_file, index=False, sep=delimiter, decimal=decimal_char, encoding="utf-8")
-
-        return csv_file
+        exporter = ReportExporter(
+            output_dir=curated_dir,
+            delimiter=delimiter,
+            decimal_char="," if delimiter == ";" else ".",
+        )
+        return exporter.export_curated_dataset(
+            dataset=dataset,
+            curated_dir=curated_dir,
+            base_name=base_name,
+        )
 
     def ensure_curated(
         self,

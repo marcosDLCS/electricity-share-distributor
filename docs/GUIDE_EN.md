@@ -8,7 +8,7 @@
 > ### 🛡️ Maintenance & Synchronization Harness
 > **To developers and autonomous AI agents:**
 > This document is the primary conceptual and operational guide for `electricity-share-distributor`.
-> Whenever modifying the data ingestion schemas ([`src/ingestion/`](../src/ingestion)), curation logic ([`src/curation/`](../src/curation)), optimization solver ([`src/optimization/`](../src/optimization)), terminal presentation ([`src/presentation/views.py`](../src/presentation/views.py)), or file exporters ([`src/presentation/export.py`](../src/presentation/export.py)), you **MUST** update this guide (`GUIDE_EN.md`) and its Spanish counterpart (`GUIDE_ES.md`) in tandem.
+> Whenever modifying the data ingestion schemas ([`src/ingestion/`](../src/ingestion)), curation logic ([`src/curation/`](../src/curation)), optimization solver ([`src/optimization/`](../src/optimization)), terminal presentation ([`src/presentation/views/`](../src/presentation/views)), or file exporters ([`src/presentation/export.py`](../src/presentation/export.py)), you **MUST** update this guide (`GUIDE_EN.md`) and its Spanish counterpart (`GUIDE_ES.md`) in tandem.
 
 ---
 
@@ -224,7 +224,7 @@ For developers and autonomous agents navigating the codebase:
 | **Application Services** | [`src/services/`](../src/services) | `CalculationService`, `CurationService`, `DoctorService` | Core workflow orchestrators encapsulating business processes. |
 | **Domain Core** | [`src/domain/`](../src/domain) | `SupplyPoint`, `ShareAllocation`, `EnergyBalance`, `EsdError` | Pure domain models, value objects, and centralized domain exceptions. |
 | **Configuration** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision`, `get_weather_dir` | Settings persistence (`.esd_config.json`) and folder resolution. |
-| **Localization** | [`src/i18n.py`](../src/i18n.py) | `t()`, `TRANSLATIONS` | English and Spanish dictionary lookups with string interpolation. |
+| **Localization** | [`src/i18n.py`](../src/i18n.py) | `t()`, `I18nNamespace`, `TRANSLATIONS` | Structured domain namespaces (app, cli, doctor, curate, weather, tables, export) with parameter parity and dual-mode resolution. |
 | **Ingestion: Consumption** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | DATADIS CSV discovery, encoding detection, and reading. |
 | **Ingestion: Generation** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `HuaweiGenerationLoader` | Solar inverter `.xlsx` report parsing (solar production and load demand). |
 | **Ingestion: Weather** | [`src/ingestion/weather.py`](../src/ingestion/weather.py) | `OpenMeteoWeatherDownloader`, `WeatherLoader` | Open-Meteo Archive API downloader, WMO weather codes, and weather CSV ingestion. |
@@ -233,5 +233,5 @@ For developers and autonomous agents navigating the codebase:
 | **Optimization: Models** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Matrix structures, diurnal profiles, and community metrics. |
 | **Optimization: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Linear programming solver, diurnal profile engine, baselines, and Hare-Niemeyer rounding. |
 | **Presentation: Views** | [`src/presentation/views/`](../src/presentation/views) | `render_coefficients_matrix_table`, `render_community_summary` | Rich terminal tables, executive KPI cards, two-tone heatmaps, and adaptive 80-column formatting. |
-| **Presentation: Exports** | [`src/presentation/export.py`](../src/presentation/export.py) | `export_all`, `export_hourly_shares_csv` | Markdown summary generation, CSV spreadsheets, and JSON serialization. |
+| **Presentation: Exports** | [`src/presentation/export.py`](../src/presentation/export.py) | `ReportExporter`, `export_all` | Unified report exporter architecture, Markdown summaries, CSV spreadsheets, and JSON serialization. |
 | **Security & Privacy** | [`src/security.py`](../src/security.py) | `CupsPrivacyChecker`, `scan_git_history` | GDPR enforcement and synthetic CUPS verification harness. |

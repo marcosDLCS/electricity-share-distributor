@@ -83,6 +83,8 @@ class EnergyBalance:
     self_consumed_kwh: float
     surplus_kwh: float
     grid_demand_kwh: float
+    cups: str | None = None
+    use: str = ""
 
     @property
     def self_consumption_rate(self) -> float:

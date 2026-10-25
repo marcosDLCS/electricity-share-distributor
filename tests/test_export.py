@@ -17,6 +17,7 @@ from src.optimization.models import (
     OptimizationStrategy,
 )
 from src.presentation.export import (
+    ReportExporter,
     export_all,
     export_coefficients_csv,
     export_coefficients_matrix_csv,
@@ -281,8 +282,8 @@ def test_export_hourly_files(tmp_path: Path) -> None:
     )
     assert matrix_path.exists()
     matrix_content = matrix_path.read_text(encoding="utf-8")
-    assert "cups;00;01;02" in matrix_content
-    assert "TOTAL;100%;100%" in matrix_content
+    assert "cups;use;00;01;02" in matrix_content
+    assert "TOTAL;TOTAL;100%;100%" in matrix_content
 
     # export_all with formats='csv' should export 4 CSVs
     exported = export_all(opt_result, meta, tmp_path, formats="csv")
@@ -385,3 +386,26 @@ def test_export_csvs_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
     h_matrix_text = h_matrix_path.read_text(encoding="utf-8")
     assert "62,50%" in h_matrix_text
     assert "37,50%" in h_matrix_text
+
+
+def test_report_exporter_class(tmp_path: Path) -> None:
+    opt_result, meta = create_dummy_optimization_result()
+    out_dir = tmp_path / "custom_output"
+    exporter = ReportExporter(
+        output_dir=out_dir,
+        delimiter=";",
+        decimal_char=",",
+        timestamp="20261025_120000",
+    )
+    assert exporter.output_dir == out_dir
+    assert exporter.delimiter == ";"
+    assert exporter.decimal_char == ","
+    assert exporter.timestamp == "20261025_120000"
+
+    # Test all exports via ReportExporter instance
+    exported = exporter.export_all(opt_result, meta, formats="all", precision=1)
+    assert len(exported) >= 4
+    for p in exported:
+        assert p.exists()
+        assert p.parent == out_dir
+        assert p.name.startswith("20261025_120000")

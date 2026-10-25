@@ -9,7 +9,7 @@ from src.curation.curator import DataCurator
 from src.ingestion.schema import IngestionSummary
 from src.optimization.engine import DistributionOptimizer
 from src.optimization.models import OptimizationResult, OptimizationStrategy
-from src.presentation.export import export_all
+from src.presentation.export import ReportExporter
 
 
 @dataclass(frozen=True)
@@ -87,10 +87,10 @@ class CalculationService:
         exported_paths: list[Path] = []
         fmt_clean = request.export_format.lower().strip()
         if fmt_clean not in ("table", "none"):
-            exported_paths = export_all(
+            exporter = ReportExporter(output_dir=request.output_dir)
+            exported_paths = exporter.export_all(
                 opt_result,
                 aligned.metadata,
-                output_dir=request.output_dir,
                 formats=fmt_clean,
                 lang=request.lang,
                 precision=request.precision,

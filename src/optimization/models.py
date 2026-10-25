@@ -205,6 +205,7 @@ class CupsHourlyMetrics:
     grid_demand_kwh: float
     self_consumption_rate: float
     solar_coverage_rate: float
+    use: str = ""
 
 
 @dataclass

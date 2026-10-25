@@ -8,7 +8,7 @@
 > ### 🛡️ Arnés de Mantenimiento para Desarrolladores y Agentes IA
 > **Aviso para ingenieros, desarrolladores y agentes autónomos:**
 > Este documento representa la referencia conceptual y operativa fundamental de `electricity-share-distributor`.
-> Cada vez que se modifiquen los esquemas de ingesta ([`src/ingestion/`](../src/ingestion)), la lógica de curado ([`src/curation/`](../src/curation)), los modelos de optimización ([`src/optimization/`](../src/optimization)), las tablas en consola ([`src/presentation/views.py`](../src/presentation/views.py)) o los exportadores de archivos ([`src/presentation/export.py`](../src/presentation/export.py)), **DEBE** actualizarse esta guía (`GUIDE_ES.md`) y su equivalente en inglés (`GUIDE_EN.md`) de forma sincronizada.
+> Cada vez que se modifiquen los esquemas de ingesta ([`src/ingestion/`](../src/ingestion)), la lógica de curado ([`src/curation/`](../src/curation)), los modelos de optimización ([`src/optimization/`](../src/optimization)), las tablas en consola ([`src/presentation/views/`](../src/presentation/views)) o los exportadores de archivos ([`src/presentation/export.py`](../src/presentation/export.py)), **DEBE** actualizarse esta guía (`GUIDE_ES.md`) y su equivalente en inglés (`GUIDE_EN.md`) de forma sincronizada.
 
 ---
 
@@ -224,7 +224,7 @@ Para desarrolladores y agentes autónomos que naveguen por la base de código:
 | **Servicios de Aplicación** | [`src/services/`](../src/services) | `CalculationService`, `CurationService`, `DoctorService` | Orquestadores de flujos y procesos de negocio de la aplicación. |
 | **Núcleo de Dominio** | [`src/domain/`](../src/domain) | `SupplyPoint`, `ShareAllocation`, `EnergyBalance`, `EsdError` | Modelos de dominio puros, objetos de valor y excepciones de dominio centralizadas. |
 | **Configuración** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision`, `get_weather_dir` | Persistencia de ajustes (`.esd_config.json`) y resolución de rutas. |
-| **Localización** | [`src/i18n.py`](../src/i18n.py) | `t()`, `TRANSLATIONS` | Diccionario bilingüe inglés/español con soporte de interpolación. |
+| **Localización** | [`src/i18n.py`](../src/i18n.py) | `t()`, `I18nNamespace`, `TRANSLATIONS` | Espacios de nombres de dominio estructurados (app, cli, doctor, curate, weather, tables, export) con paridad de parámetros y resolución dual. |
 | **Ingesta: Consumo** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | Búsqueda de CSVs de DATADIS, detección de codificación y lectura. |
 | **Ingesta: Producción** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `HuaweiGenerationLoader` | Procesamiento de informes `.xlsx` del inversor solar (producción y demanda). |
 | **Ingesta: Meteorología** | [`src/ingestion/weather.py`](../src/ingestion/weather.py) | `OpenMeteoWeatherDownloader`, `WeatherLoader` | Descargador API Open-Meteo Archive, códigos OMM e ingesta de CSV meteorológicos. |
@@ -233,5 +233,5 @@ Para desarrolladores y agentes autónomos que naveguen por la base de código:
 | **Optimización: Modelos** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Estructuras matriciales, perfiles horarios diarios y métricas comunitarias. |
 | **Optimización: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Programación lineal (HiGHS), perfil horario, comparativas y redondeo Hare-Niemeyer. |
 | **Presentación: Vistas** | [`src/presentation/views/`](../src/presentation/views) | `render_coefficients_matrix_table`, `render_community_summary` | Tablas Rich en consola, tarjetas KPI, mapas de calor bitono y formato de 80 columnas. |
-| **Presentación: Exportación** | [`src/presentation/export.py`](../src/presentation/export.py) | `export_all`, `export_hourly_shares_csv` | Generación de informes en Markdown, hojas CSV y exportación a JSON. |
+| **Presentación: Exportación** | [`src/presentation/export.py`](../src/presentation/export.py) | `ReportExporter`, `export_all` | Arquitectura unificada de exportación, informes en Markdown, hojas CSV y serialización a JSON. |
 | **Seguridad y Privacidad** | [`src/security.py`](../src/security.py) | `CupsPrivacyChecker`, `scan_git_history` | Control de cumplimiento RGPD y verificación de CUPS sintéticos. |
