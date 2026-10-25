@@ -635,14 +635,9 @@ def calculate_command(
                 metadata, opt_result.total_summary, lang=active_lang, opt_result=opt_result
             )
             render_monthly_trajectory_table(opt_result, lang=active_lang)
-            render_strategy_comparison_table(opt_result, lang=active_lang)
             render_coefficients_matrix_table(
                 opt_result, lang=active_lang, precision=active_precision
             )
-            if hourly and opt_result.hourly_result is not None:
-                render_hourly_profile_table(
-                    opt_result.hourly_result, lang=active_lang, precision=active_precision
-                )
         elif view_mode == "hourly":
             if opt_result.hourly_result is not None:
                 render_hourly_profile_table(

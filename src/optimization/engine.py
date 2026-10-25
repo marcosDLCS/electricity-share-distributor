@@ -60,15 +60,20 @@ class DistributionOptimizer:
         n_sun = len(sun_indices)
 
         if n_sun == 0 or np.sum(generation) <= 0:
-            # No solar generation in this period: return uniform or bounded distribution
+            # No solar generation in this period: return uniform or bounded distribution with 1% floor
             raw = np.full(n_cups, 1.0 / n_cups)
             if constraints and constraints.is_active and cups_list:
                 for i, cups in enumerate(cups_list):
                     l_b, u_b = constraints.get_bounds(cups)
+                    l_b = max(0.01, l_b)
+                    u_b = max(l_b, u_b)
                     raw[i] = max(l_b, min(u_b, raw[i]))
                 raw_sum = float(np.sum(raw))
                 if raw_sum > 0:
                     raw = raw / raw_sum
+            elif n_cups * 0.01 <= 1.0:
+                raw = np.maximum(raw, 0.01)
+                raw = raw / np.sum(raw)
             return raw
 
         # -------------------------------------------------------------------------
@@ -120,12 +125,14 @@ class DistributionOptimizer:
                 row += 1
 
         # Variable Bounds:
-        # beta_i in [lower_bound, upper_bound] (from bylaw constraints or [0.0, 1.0])
+        # beta_i in [lower_bound, upper_bound] (minimum 1% floor per CUPS)
         # s_{i, k} in [0.0, C_{i, k}] (cannot self-consume more than actual demand)
         bounds: list[tuple[float, float]] = []
         for i in range(n_cups):
             cups = cups_list[i] if cups_list and i < len(cups_list) else str(i)
             l_b, u_b = constraints.get_bounds(cups) if constraints else (0.0, 1.0)
+            l_b = max(0.01, l_b)
+            u_b = max(l_b, u_b)
             bounds.append((float(l_b), float(u_b)))
 
         for i in range(n_cups):
@@ -149,6 +156,8 @@ class DistributionOptimizer:
         for i in range(n_cups):
             cups = cups_list[i] if cups_list and i < len(cups_list) else str(i)
             l_b, u_b = constraints.get_bounds(cups) if constraints else (0.0, 1.0)
+            l_b = max(0.01, l_b)
+            u_b = max(l_b, u_b)
             betas[i] = float(np.clip(res.x[i], l_b, u_b))
 
         # Normalize or distribute remaining share if below 1.0
@@ -223,17 +232,19 @@ class DistributionOptimizer:
         floors = np.floor(exact_alloc).astype(int)
         remainders = exact_alloc - floors
 
-        lower_units = np.zeros(n, dtype=int)
+        min_floor_units = max(1, round(0.01 * scale))
+        lower_units = np.full(n, min_floor_units, dtype=int)
         upper_units = np.full(n, scale, dtype=int)
         if constraints and constraints.is_active and cups_list:
             for i, c in enumerate(cups_list):
                 l_b, u_b = constraints.get_bounds(c)
-                lower_units[i] = int(np.floor(round(l_b * scale, 6)))
+                l_b = max(0.01, l_b)
+                lower_units[i] = max(min_floor_units, int(np.floor(round(l_b * scale, 6))))
                 upper_units[i] = int(np.ceil(round(u_b * scale, 6)))
 
-            # Clamp initial floors
-            floors = np.maximum(floors, lower_units)
-            floors = np.minimum(floors, upper_units)
+        # Clamp initial floors
+        floors = np.maximum(floors, lower_units)
+        floors = np.minimum(floors, upper_units)
 
         deficit = scale - int(np.sum(floors))
 
@@ -262,7 +273,7 @@ class DistributionOptimizer:
                         allocated = True
                         break
                 if not allocated:
-                    if floors[order[i % n]] > 0:
+                    if floors[order[i % n]] > lower_units[order[i % n]]:
                         floors[order[i % n]] -= 1
 
         rounded_betas = floors / scale
@@ -291,6 +302,11 @@ class DistributionOptimizer:
             raw = cls._solve_optimal_betas(
                 consumption, generation, cups_list=cups_list, constraints=constraints
             )
+
+        # Ensure 1% minimum share floor per CUPS prior to rounding
+        if n_cups * 0.01 <= 1.0:
+            raw = np.maximum(raw, 0.01)
+            raw = raw / np.sum(raw)
 
         return cls._round_betas(
             raw, precision=precision, cups_list=cups_list, constraints=constraints
@@ -337,6 +353,13 @@ class DistributionOptimizer:
         total_surplus_cups = np.sum(surplus, axis=0)
         total_grid_cups = np.sum(grid_demand, axis=0)
 
+        # Demand specifically during sunlit hours (generation > 1e-4 kWh)
+        sun_mask = generation > 1e-4
+        if np.any(sun_mask):
+            solar_c_cups = np.sum(consumption[sun_mask], axis=0)
+        else:
+            solar_c_cups = np.zeros(len(cups_list))
+
         cups_metrics: list[CupsMonthlyMetrics] = []
         for i, cups in enumerate(cups_list):
             c_kwh = float(total_c_cups[i])
@@ -344,9 +367,11 @@ class DistributionOptimizer:
             sc_kwh = float(total_sc_cups[i])
             surplus_kwh = float(total_surplus_cups[i])
             grid_kwh = float(total_grid_cups[i])
+            solar_c_kwh = float(solar_c_cups[i])
 
             sc_rate = (sc_kwh / alloc_kwh * 100.0) if alloc_kwh > 0 else 0.0
             cov_rate = (sc_kwh / c_kwh * 100.0) if c_kwh > 0 else 0.0
+            solar_cov_rate = (sc_kwh / solar_c_kwh * 100.0) if solar_c_kwh > 0 else 0.0
 
             cups_metrics.append(
                 CupsMonthlyMetrics(
@@ -360,6 +385,8 @@ class DistributionOptimizer:
                     grid_demand_kwh=grid_kwh,
                     self_consumption_rate=sc_rate,
                     solar_coverage_rate=cov_rate,
+                    solar_hours_consumption_kwh=solar_c_kwh,
+                    solar_hours_coverage_rate=solar_cov_rate,
                     use=cups_uses.get(cups, "") if cups_uses else "",
                 )
             )
@@ -370,9 +397,11 @@ class DistributionOptimizer:
         comm_sc = float(np.sum(total_sc_cups))
         comm_surplus = float(comm_gen - comm_sc)
         comm_grid = float(comm_cons - comm_sc)
+        comm_solar_cons = float(np.sum(solar_c_cups))
 
         comm_sc_rate = (comm_sc / comm_gen * 100.0) if comm_gen > 0 else 0.0
         comm_cov_rate = (comm_sc / comm_cons * 100.0) if comm_cons > 0 else 0.0
+        comm_solar_cov_rate = (comm_sc / comm_solar_cons * 100.0) if comm_solar_cons > 0 else 0.0
 
         return CommunityMonthlyMetrics(
             month=month_name,
@@ -386,6 +415,8 @@ class DistributionOptimizer:
             solar_coverage_rate=comm_cov_rate,
             beta_sum=float(np.sum(betas)),
             cups_metrics=cups_metrics,
+            solar_hours_consumption_kwh=comm_solar_cons,
+            solar_hours_coverage_rate=comm_solar_cov_rate,
         )
 
     @staticmethod
@@ -495,6 +526,7 @@ class DistributionOptimizer:
                 res.total_self_consumed_kwh /= k
                 res.total_surplus_kwh /= k
                 res.total_grid_demand_kwh /= k
+                res.solar_hours_consumption_kwh /= k
                 scaled_cups: list[CupsMonthlyMetrics] = []
                 for cm in res.cups_metrics:
                     scaled_cups.append(
@@ -509,6 +541,8 @@ class DistributionOptimizer:
                             grid_demand_kwh=cm.grid_demand_kwh / k,
                             self_consumption_rate=cm.self_consumption_rate,
                             solar_coverage_rate=cm.solar_coverage_rate,
+                            solar_hours_consumption_kwh=cm.solar_hours_consumption_kwh / k,
+                            solar_hours_coverage_rate=cm.solar_hours_coverage_rate,
                             use=cm.use,
                         )
                     )
@@ -617,7 +651,9 @@ class DistributionOptimizer:
 
                 if pri_idx is not None and tot_g_h <= 1e-6:
                     for c in cups_list:
-                        matrix[c][h_str] = 1.0 if c == effective_primary else 0.0
+                        matrix[c][h_str] = (
+                            (1.0 - (n_cups - 1) * 0.01) if c == effective_primary else 0.01
+                        )
                     hourly_sums[h_str] = 1.0
                 else:
                     betas_h = cls.calculate_betas(c_h, g_h, strategy=strategy, precision=precision)
@@ -674,13 +710,18 @@ class DistributionOptimizer:
             with np.errstate(divide="ignore", invalid="ignore"):
                 raw_betas = np.where(c_row_sums > 0, c_arr / c_row_sums, 1.0 / n_cups)
 
+        # Enforce 1% minimum share floor per CUPS row-by-row
+        if n_cups * 0.01 <= 1.0:
+            raw_betas = np.maximum(raw_betas, 0.01)
+            raw_betas = raw_betas / np.sum(raw_betas, axis=1, keepdims=True)
+
         # Apply exact Hare-Niemeyer rounding row-by-row
-        # In zero-generation hours (e.g. night hours), assign 100% to primary CUPS
+        # In zero-generation hours (e.g. night hours), assign 1% to all and remainder to primary CUPS
         rounded_betas = np.zeros_like(raw_betas)
         for t in range(t_steps):
             if pri_idx is not None and g_arr[t] <= 1e-6:
-                rounded_betas[t] = 0.0
-                rounded_betas[t, pri_idx] = 1.0
+                rounded_betas[t] = 0.01
+                rounded_betas[t, pri_idx] = 1.0 - (n_cups - 1) * 0.01
             else:
                 rounded_betas[t] = cls._round_betas(raw_betas[t], precision=precision)
 
@@ -721,7 +762,9 @@ class DistributionOptimizer:
                 cons_val = round(float(c_arr[t, i]), 4)
                 actual_share = f"{rounded_betas[t, i] * 100:.{precision}f}%"
                 if is_zero_gen:
-                    est_val = 100.0 if cups == effective_primary else 0.0
+                    est_val = (
+                        (1.0 - (n_cups - 1) * 0.01) * 100.0 if cups == effective_primary else 1.0
+                    )
                     est_share = f"{est_val:.{precision}f}%"
                 else:
                     est_share = profile_matrix.format_cell(cups, h_str, precision=precision)
@@ -906,9 +949,11 @@ class DistributionOptimizer:
         tot_sc = sum(m.total_self_consumed_kwh for m in active_months)
         tot_surplus = sum(m.total_surplus_kwh for m in active_months)
         tot_grid = sum(m.total_grid_demand_kwh for m in active_months)
+        tot_solar_cons = sum(m.solar_hours_consumption_kwh for m in active_months)
 
         sc_rate = (tot_sc / tot_gen * 100.0) if tot_gen > 0 else 0.0
         cov_rate = (tot_sc / tot_cons * 100.0) if tot_cons > 0 else 0.0
+        solar_cov_rate = (tot_sc / tot_solar_cons * 100.0) if tot_solar_cons > 0 else 0.0
 
         # Aggregate per CUPS
         cups_aggregates: dict[str, dict[str, float]] = {
@@ -919,6 +964,7 @@ class DistributionOptimizer:
                 "surplus": 0.0,
                 "grid": 0.0,
                 "weighted_beta": 0.0,
+                "solar_cons": 0.0,
             }
             for c in cups_list
         }
@@ -933,6 +979,7 @@ class DistributionOptimizer:
                 entry["surplus"] += cm.surplus_kwh
                 entry["grid"] += cm.grid_demand_kwh
                 entry["weighted_beta"] += cm.beta * m_gen
+                entry["solar_cons"] += cm.solar_hours_consumption_kwh
 
         cups_summary_metrics: list[CupsMonthlyMetrics] = []
         for cups in cups_list:
@@ -942,12 +989,14 @@ class DistributionOptimizer:
             c_sc = c_data["sc"]
             c_surplus = c_data["surplus"]
             c_grid = c_data["grid"]
+            c_solar_cons = c_data["solar_cons"]
             avg_beta = (
                 (c_data["weighted_beta"] / tot_gen) if tot_gen > 0 else (1.0 / len(cups_list))
             )
 
             c_sc_rate = (c_sc / c_alloc * 100.0) if c_alloc > 0 else 0.0
             c_cov_rate = (c_sc / c_cons * 100.0) if c_cons > 0 else 0.0
+            c_solar_cov_rate = (c_sc / c_solar_cons * 100.0) if c_solar_cons > 0 else 0.0
 
             cups_summary_metrics.append(
                 CupsMonthlyMetrics(
@@ -961,6 +1010,8 @@ class DistributionOptimizer:
                     grid_demand_kwh=c_grid,
                     self_consumption_rate=c_sc_rate,
                     solar_coverage_rate=c_cov_rate,
+                    solar_hours_consumption_kwh=c_solar_cons,
+                    solar_hours_coverage_rate=c_solar_cov_rate,
                     use=cups_uses.get(cups, "") if cups_uses else "",
                 )
             )
@@ -978,4 +1029,6 @@ class DistributionOptimizer:
             beta_sum=1.0,
             cups_metrics=cups_summary_metrics,
             has_data=True,
+            solar_hours_consumption_kwh=tot_solar_cons,
+            solar_hours_coverage_rate=solar_cov_rate,
         )

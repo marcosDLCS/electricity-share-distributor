@@ -93,10 +93,10 @@ class CalculationService:
         if progress_callback:
             progress_callback(3, t("status_step_3", lang=request.lang))
 
-        # Resolve bylaw constraints from request parameters and CUPS config
+        # Resolve bylaw constraints from request parameters and CUPS config (with 1% minimum floor)
         cups_cfg = curator.load_cups_config()
         cups_min: dict[str, float] = {
-            c.cups: c.min_share
+            c.cups: max(0.01, c.min_share)
             for c in cups_cfg.values()
             if getattr(c, "min_share", None) is not None
         }
@@ -105,8 +105,11 @@ class CalculationService:
             for c in cups_cfg.values()
             if getattr(c, "max_share", None) is not None
         }
+        effective_min_share = max(
+            0.01, request.min_share if request.min_share is not None else 0.01
+        )
         constraints = BylawConstraints(
-            min_share=request.min_share,
+            min_share=effective_min_share,
             max_share=request.max_share,
             cups_min_shares=cups_min,
             cups_max_shares=cups_max,

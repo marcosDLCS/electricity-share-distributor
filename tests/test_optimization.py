@@ -593,11 +593,11 @@ def test_compute_hourly_optimization_night_zero_generation_primary() -> None:
     for h in range(24):
         h_str = f"{h:02d}"
         if h < 7 or h > 20:
-            # Night hours: exact zero generation
-            assert matrix_p0.matrix[pri_cups][h_str] == 1.0
-            assert matrix_p0.matrix[sec_cups][h_str] == 0.0
-            assert matrix_p0.format_cell(pri_cups, h_str, precision=0) == "100%"
-            assert matrix_p0.format_cell(sec_cups, h_str, precision=0) == "0%"
+            # Night hours: 1% minimum floor to secondary and 99% to primary
+            assert np.isclose(matrix_p0.matrix[pri_cups][h_str], 0.99)
+            assert np.isclose(matrix_p0.matrix[sec_cups][h_str], 0.01)
+            assert matrix_p0.format_cell(pri_cups, h_str, precision=0) == "99%"
+            assert matrix_p0.format_cell(sec_cups, h_str, precision=0) == "1%"
         else:
             # Daytime hours: positive generation divided between participants
             assert matrix_p0.matrix[sec_cups][h_str] > 0.0
@@ -610,14 +610,14 @@ def test_compute_hourly_optimization_night_zero_generation_primary() -> None:
         sec_row = ts_slice[ts_slice["cups"] == sec_cups].iloc[0]
 
         if h < 7 or h > 20:
-            assert pri_row["share_pct"] == "100%"
-            assert pri_row["estimated_share_pct"] == "100%"
-            assert sec_row["share_pct"] == "0%"
-            assert sec_row["estimated_share_pct"] == "0%"
+            assert pri_row["share_pct"] == "99%"
+            assert pri_row["estimated_share_pct"] == "99%"
+            assert sec_row["share_pct"] == "1%"
+            assert sec_row["estimated_share_pct"] == "1%"
         else:
-            assert pri_row["share_pct"] != "100%"
+            assert pri_row["share_pct"] != "99%"
 
-    # Test with precision=1 (e.g. '100.0%' and '0.0%')
+    # Test with precision=1 (e.g. '99.0%' and '1.0%')
     res_p1 = DistributionOptimizer.compute_hourly_optimization(
         dataset, strategy=OptimizationStrategy.OPTIMAL, precision=1
     )
@@ -626,7 +626,70 @@ def test_compute_hourly_optimization_night_zero_generation_primary() -> None:
     night_slice = ts_df_p1[ts_df_p1["timestamp"] == night_ts]
     pri_row1 = night_slice[night_slice["cups"] == pri_cups].iloc[0]
     sec_row1 = night_slice[night_slice["cups"] == sec_cups].iloc[0]
-    assert pri_row1["share_pct"] == "100.0%"
-    assert pri_row1["estimated_share_pct"] == "100.0%"
-    assert sec_row1["share_pct"] == "0.0%"
-    assert sec_row1["estimated_share_pct"] == "0.0%"
+    assert pri_row1["share_pct"] == "99.0%"
+    assert pri_row1["estimated_share_pct"] == "99.0%"
+    assert sec_row1["share_pct"] == "1.0%"
+    assert sec_row1["estimated_share_pct"] == "1.0%"
+
+
+def test_minimum_share_one_percent_floor() -> None:
+    """Verify that every participating CUPS receives at least 1% share across all strategies."""
+    # CUPS 0 has huge demand, CUPS 1 has zero demand
+    c_arr = np.array([[100.0, 0.0], [50.0, 0.0], [80.0, 0.0]])
+    g_arr = np.array([20.0, 30.0, 25.0])
+
+    for strat in (
+        OptimizationStrategy.OPTIMAL,
+        OptimizationStrategy.CONSUMPTION_SHARE,
+        OptimizationStrategy.EQUAL,
+    ):
+        betas = DistributionOptimizer.calculate_betas(c_arr, g_arr, strategy=strat, precision=0)
+        assert betas[0] >= 0.01
+        assert betas[1] >= 0.01
+        assert np.isclose(np.sum(betas), 1.0)
+        assert betas[1] >= 0.01  # zero-demand CUPS gets 1% floor
+
+        betas_p1 = DistributionOptimizer.calculate_betas(c_arr, g_arr, strategy=strat, precision=1)
+        assert betas_p1[0] >= 0.01
+        assert betas_p1[1] >= 0.01
+        assert np.isclose(np.sum(betas_p1), 1.0)
+
+
+def test_solar_hours_consumption_and_coverage() -> None:
+    """Verify that solar_hours_consumption_kwh and coverage rate only count sunlit hours."""
+    cups_list = ["ES0021000000000001AA", "ES0021000000000002BB"]
+    # 4 time steps: 2 night (gen=0), 2 day (gen>0)
+    # Night: c1=10, c2=20 (total=30)
+    # Day: c1=5, c2=15 (total=20)
+    # Total consumption = 50. Solar hours consumption = 20.
+    df = pd.DataFrame(
+        {
+            cups_list[0]: [10.0, 10.0, 5.0, 5.0],
+            cups_list[1]: [20.0, 20.0, 15.0, 15.0],
+            "generation_kwh": [0.0, 0.0, 10.0, 10.0],
+        },
+        index=[
+            "2026-05-01 02:00:00",
+            "2026-05-01 03:00:00",
+            "2026-05-01 12:00:00",
+            "2026-05-01 13:00:00",
+        ],
+    )
+
+    res = DistributionOptimizer.evaluate_month(df, cups_list, "2026-05")
+    assert res.total_consumption_kwh == 100.0
+    assert res.solar_hours_consumption_kwh == 40.0
+    # Day gen = 20 kWh. Total day demand = 40 kWh. Total self-consumed = 20 kWh.
+    assert np.isclose(res.total_self_consumed_kwh, 20.0)
+    # Regular coverage rate = 20 / 100 = 20.0%
+    assert np.isclose(res.solar_coverage_rate, 20.0)
+    # Solar hours coverage rate = 20 / 40 = 50.0%!
+    assert np.isclose(res.solar_hours_coverage_rate, 50.0)
+
+    # Per CUPS checks
+    cm1 = next(c for c in res.cups_metrics if c.cups == cups_list[0])
+    cm2 = next(c for c in res.cups_metrics if c.cups == cups_list[1])
+    assert cm1.consumption_kwh == 30.0
+    assert cm1.solar_hours_consumption_kwh == 10.0
+    assert cm2.consumption_kwh == 70.0
+    assert cm2.solar_hours_consumption_kwh == 30.0

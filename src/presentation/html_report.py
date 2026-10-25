@@ -118,6 +118,8 @@ def _generate_svg_monthly_chart(
                 "month_num": m_2d,
                 "gen": f"{m.total_generation_kwh:,.1f} kWh",
                 "dem": f"{m.total_consumption_kwh:,.1f} kWh",
+                "solar_dem": f"{m.solar_hours_consumption_kwh:,.1f} kWh",
+                "solar_cov": f"{m.solar_hours_coverage_rate:.1f}%",
                 "sc": f"{m.total_self_consumed_kwh:,.1f} kWh",
                 "surplus": f"{m.total_surplus_kwh:,.1f} kWh",
                 "cov": f"{m.solar_coverage_rate:.1f}%",
@@ -1630,6 +1632,8 @@ def generate_interactive_html_report(
                 col_avg: "Media Anual",
                 tip_gen: "Generación",
                 tip_dem: "Demanda",
+                tip_solar_dem: "Demanda Horas Sol",
+                tip_solar_cov: "Cobertura Horas Sol",
                 tip_sc: "Autoconsumo",
                 tip_surplus: "Excedente",
                 tip_coverage: "Cobertura",
@@ -1700,6 +1704,8 @@ def generate_interactive_html_report(
                 col_avg: "Annual Avg",
                 tip_gen: "Generation",
                 tip_dem: "Demand",
+                tip_solar_dem: "Solar Hours Demand",
+                tip_solar_cov: "Solar Hours Coverage",
                 tip_sc: "Self-Consumed",
                 tip_surplus: "Surplus",
                 tip_coverage: "Coverage",
@@ -1816,6 +1822,7 @@ def generate_interactive_html_report(
                 </div>
                 <div>🌞 ${{t.tip_gen}}: <strong>${{data.gen}}</strong></div>
                 <div>⚡ ${{t.tip_dem}}: <strong>${{data.dem}}</strong></div>
+                ${{data.solar_dem ? `<div>☀️ ${{t.tip_solar_dem}}: <strong>${{data.solar_dem}}</strong> <span style="font-size:0.75rem; color:var(--text-muted);">(${{data.solar_cov}} ${{t.tip_coverage.toLowerCase()}})</span></div>` : ''}}
                 <div>🏆 ${{t.tip_sc}}: <strong style="color:var(--accent-sc);">${{data.sc}}</strong></div>
                 <div>🛡️ ${{t.tip_surplus}}: <strong>${{data.surplus}}</strong></div>
                 <div style="margin-top:4px; font-size:0.75rem; color:var(--text-muted);">

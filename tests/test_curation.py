@@ -533,9 +533,9 @@ def test_curated_data_loads_primary_cups_and_hourly_assigns_100_percent_night(
         share = cols[share_idx]
         if h < 7 or h > 20:
             if c == pri_cups:
-                assert share == "100%"
+                assert share == "99%"
             else:
-                assert share == "0%"
+                assert share == "1%"
 
 
 def test_curation_with_existing_weather_data(tmp_path: Path) -> None:

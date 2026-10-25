@@ -47,6 +47,8 @@ class CupsMonthlyMetrics:
     grid_demand_kwh: float
     self_consumption_rate: float
     solar_coverage_rate: float
+    solar_hours_consumption_kwh: float = 0.0
+    solar_hours_coverage_rate: float = 0.0
     use: str = ""
 
 
@@ -67,6 +69,8 @@ class CommunityMonthlyMetrics:
         beta_sum: Sum of all allocation coefficients (must equal ~1.0).
         cups_metrics: Individual metrics for each participating CUPS.
         has_data: True if the month contains complete data; False if skipped/no-data.
+        solar_hours_consumption_kwh: Total demand during non-zero solar PV generation hours.
+        solar_hours_coverage_rate: Percentage of demand during solar generation hours covered by solar.
     """
 
     month: str
@@ -81,6 +85,8 @@ class CommunityMonthlyMetrics:
     beta_sum: float
     cups_metrics: list[CupsMonthlyMetrics] = field(default_factory=list)
     has_data: bool = True
+    solar_hours_consumption_kwh: float = 0.0
+    solar_hours_coverage_rate: float = 0.0
 
 
 @dataclass

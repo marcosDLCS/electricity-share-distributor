@@ -124,6 +124,8 @@ class ReportExporter:
                         "grid_demand_kwh": round(c.grid_demand_kwh, 2),
                         "self_consumption_rate_pct": round(c.self_consumption_rate, 2),
                         "solar_coverage_rate_pct": round(c.solar_coverage_rate, 2),
+                        "solar_hours_consumption_kwh": round(c.solar_hours_consumption_kwh, 2),
+                        "solar_hours_coverage_rate_pct": round(c.solar_hours_coverage_rate, 2),
                     }
                 )
 
@@ -331,6 +333,7 @@ class ReportExporter:
             t("md_lbl_total_hours", lang=target_lang, hours=ingestion_summary.total_hours),
             t("md_lbl_total_gen", lang=target_lang, gen=tot.total_generation_kwh),
             t("md_lbl_total_dem", lang=target_lang, dem=tot.total_consumption_kwh),
+            t("md_lbl_solar_hours_dem", lang=target_lang, dem=tot.solar_hours_consumption_kwh),
             t(
                 "md_lbl_total_sc",
                 lang=target_lang,
@@ -339,13 +342,14 @@ class ReportExporter:
             ),
             t("md_lbl_total_surplus", lang=target_lang, surplus=tot.total_surplus_kwh),
             t("md_lbl_solar_coverage", lang=target_lang, cov=tot.solar_coverage_rate),
+            t("md_lbl_solar_hours_cov", lang=target_lang, cov=tot.solar_hours_coverage_rate),
             "",
             "---",
             "",
             t("md_sec_trajectory", lang=target_lang),
             "",
             t("md_traj_header", lang=target_lang),
-            "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
+            "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
         ]
 
         abbr_map = MONTH_ABBR_ES if target_lang == "es" else MONTH_ABBR_EN
@@ -354,17 +358,17 @@ class ReportExporter:
             if m.has_data:
                 lines.append(
                     f"| **{m_label}** | {m.total_generation_kwh:,.1f} | {m.total_consumption_kwh:,.1f} | "
-                    f"{m.total_self_consumed_kwh:,.1f} | {m.total_surplus_kwh:,.1f} | {m.total_grid_demand_kwh:,.1f} | "
-                    f"{m.self_consumption_rate:.1f}% | {m.solar_coverage_rate:.1f}% |"
+                    f"{m.solar_hours_consumption_kwh:,.1f} | {m.total_self_consumed_kwh:,.1f} | {m.total_surplus_kwh:,.1f} | "
+                    f"{m.total_grid_demand_kwh:,.1f} | {m.self_consumption_rate:.1f}% | {m.solar_coverage_rate:.1f}% |"
                 )
             else:
-                lines.append(f"| **{m_label}** | — | — | — | — | — | — | — |")
+                lines.append(f"| **{m_label}** | — | — | — | — | — | — | — | — |")
 
         lines.extend(
             [
                 f"| **{t('lbl_total', lang=target_lang)}** | **{tot.total_generation_kwh:,.1f}** | **{tot.total_consumption_kwh:,.1f}** | "
-                f"**{tot.total_self_consumed_kwh:,.1f}** | **{tot.total_surplus_kwh:,.1f}** | **{tot.total_grid_demand_kwh:,.1f}** | "
-                f"**{tot.self_consumption_rate:.1f}%** | **{tot.solar_coverage_rate:.1f}%** |",
+                f"**{tot.solar_hours_consumption_kwh:,.1f}** | **{tot.total_self_consumed_kwh:,.1f}** | **{tot.total_surplus_kwh:,.1f}** | "
+                f"**{tot.total_grid_demand_kwh:,.1f}** | **{tot.self_consumption_rate:.1f}%** | **{tot.solar_coverage_rate:.1f}%** |",
                 "",
                 "---",
                 "",

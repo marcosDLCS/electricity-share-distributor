@@ -378,7 +378,7 @@ def test_cli_calculate_spanish() -> None:
     assert result.exit_code == 0
     assert "RESUMEN DE LA COMUNIDAD DE AUTOCONSUMO COLECTIVO" in result.output
     assert "Trayectoria Energética Mensual" in result.output
-    assert "Comparativa de Eficiencia según Estrategia de Reparto" in result.output
+    assert "Comparativa de Eficiencia según Estrategia de Reparto" not in result.output
     assert "Propuesta de Coeficientes Mensuales" not in result.output
 
 
@@ -392,26 +392,25 @@ def test_cli_doctor_spanish() -> None:
 
 
 def test_cli_calculate_hourly_flag() -> None:
-    """Ensure calculate --hourly displays the diurnal distribution profile."""
+    """Ensure calculate --hourly performs calculation without dumping the diurnal profile in console."""
     result = runner.invoke(
         app,
         ["calculate", "-y", "2026", "-m", "5", "--hourly", "--format", "none", "--lang", "en"],
     )
     assert result.exit_code == 0
-    assert "Diurnal Distribution Share Profile" in result.output
-    assert "00h" in result.output
-    assert "12h" in result.output
-    assert "23h" in result.output
+    assert "Diurnal Distribution Share Profile" not in result.output
+    assert "Allocation Strategy Efficiency Comparison" not in result.output
 
 
 def test_cli_calculate_hourly_short_flag() -> None:
-    """Ensure calculate -H displays the diurnal distribution profile."""
+    """Ensure calculate -H performs calculation without dumping the diurnal profile in console."""
     result = runner.invoke(
         app,
         ["calculate", "-y", "2026", "-m", "5", "-H", "--format", "none", "--lang", "en"],
     )
     assert result.exit_code == 0
-    assert "Diurnal Distribution Share Profile" in result.output
+    assert "Diurnal Distribution Share Profile" not in result.output
+    assert "Allocation Strategy Efficiency Comparison" not in result.output
 
 
 def test_cli_calculate_view_hourly() -> None:

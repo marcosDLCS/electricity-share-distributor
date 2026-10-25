@@ -35,9 +35,17 @@ def render_community_summary(
         padding=(0, 1),
     )
 
+    solar_dem_line = ""
+    if tot.solar_hours_consumption_kwh > 0:
+        solar_dem_line = (
+            f"\n[dim]{t('lbl_solar_hours_demand', lang=lang)}: {format_kwh(tot.solar_hours_consumption_kwh)} "
+            f"({tot.solar_hours_coverage_rate:.1f}% cov)[/dim]"
+        )
+
     demand_card = Panel(
         f"[bold bright_cyan]{format_kwh(tot.total_consumption_kwh)}[/bold bright_cyan]\n"
-        f"[dim]{t('col_cov_rate', lang=lang)}: {tot.solar_coverage_rate:.1f}%[/dim]",
+        f"[dim]{t('col_cov_rate', lang=lang)}: {tot.solar_coverage_rate:.1f}%[/dim]"
+        f"{solar_dem_line}",
         title=f"⚡ {t('lbl_total_cons', lang=lang)}",
         title_align="left",
         border_style="cyan",

@@ -221,10 +221,10 @@ Running `esd calculate` generates ready-to-use artifacts in `.output/`:
 | `*_esd_interactive_report.html` | HTML (Standalone) | Offline interactive executive dashboard with dynamic bilingual ES/EN switcher, 4 primary energy KPI cards, dynamic hourly coefficient prevision (Orden TED/1247/2021), energy trajectory multi-bars, Photovoltaic Solar Efficiency Index graphic, and monthly coefficient matrix heatmap. |
 | `*_esd_coefficients_matrix.csv` | CSV (`;` delimited) | Ready-to-import spreadsheet table formatted for official submission to the electrical utility distributor (DSO). |
 | `*_esd_optimization_summary.md` | Markdown | Executive summary report including the community agreement annex ready for community board review (generates both ES and EN documents when running with `--hourly`). |
-| `*_esd_coefficients.csv` | CSV (`;` delimited) | Detailed breakdown per CUPS: monthly self-consumed kWh, solar surplus, and remaining grid demand. |
-| `*_esd_results.json` | JSON | Machine-readable data file for software integrations and community dashboards. |
-| `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Full hourly time-series recording consumption, generation, shares, and the Solar Efficiency Index (integer 1-100 for generation hours, 0 without generation), ordered by timestamp and use. |
-| `*_esd_hourly_profile_matrix.csv` | CSV (`;` delimited) | 24-hour diurnal table for variable hourly coefficient filing under Spanish regulation (Orden TED/1247/2021). |
+| `*_esd_coefficients.csv` | CSV (`;` delimited) | Detailed breakdown per CUPS: monthly self-consumed kWh, solar surplus, remaining grid demand, solar hours demand (kWh), and solar hours coverage rate (%). Minimum share floor of 1% is guaranteed for every CUPS. |
+| `*_esd_results.json` | JSON | Machine-readable data file for software integrations and community dashboards, including solar hours demand metrics. |
+| `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Full hourly time-series recording consumption, generation, shares (with 1% floor), and the Solar Efficiency Index (integer 1-100 for generation hours, 0 without generation), ordered by timestamp and use. |
+| `*_esd_hourly_profile_matrix.csv` | CSV (`;` delimited) | 24-hour diurnal table for variable hourly coefficient filing under Spanish regulation (Orden TED/1247/2021) with 1% floor per participating CUPS. |
 
 ---
 
