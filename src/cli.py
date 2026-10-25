@@ -334,6 +334,7 @@ def curate_command(
         render_curate_summary(
             dataset=cur_result.dataset,
             csv_path=cur_result.csv_path,
+            excel_path=cur_result.excel_path,
             lang=active_lang,
         )
 

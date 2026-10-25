@@ -31,14 +31,15 @@ class CurationResult:
 
     dataset: CuratedDataset
     csv_path: Path
+    excel_path: Path | None = None
 
 
 class CurationService:
-    """Orchestrates fake-zero load reconciliation, metadata enrichment, and curated CSV generation."""
+    """Orchestrates fake-zero load reconciliation, metadata enrichment, and curated CSV/Excel generation."""
 
     @staticmethod
     def execute(request: CurationRequest) -> CurationResult:
-        """Run curation workflow and return curated dataset with exported CSV path."""
+        """Run curation workflow and return curated dataset with exported CSV and Excel paths."""
         curator = DataCurator(
             consumption_dir=request.consumption_dir,
             generation_dir=request.generation_dir,
@@ -57,4 +58,5 @@ class CurationService:
             base_name=request.output_name,
             delimiter=request.delimiter,
         )
-        return CurationResult(dataset=dataset, csv_path=csv_path)
+        excel_path = request.curated_dir / f"{request.output_name}.xlsx"
+        return CurationResult(dataset=dataset, csv_path=csv_path, excel_path=excel_path)

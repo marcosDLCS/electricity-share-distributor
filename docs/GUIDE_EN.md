@@ -74,8 +74,11 @@ The curation engine ([`src/curation/`](../src/curation)) reconciles two separate
 
 Whenever the utility meter reports zero (or artificially low power) while the inverter confirms that the equipment was actively running, `esd curate` **replaces the fake zero with the real load consumption**.
 
-### The Curated Result (`.curated/curated.csv`)
-The output is a single, clean, standardized table (using `;` as delimiter and `,` for decimals without thousands separators), grouping related analytical dimensions together:
+### The Curated Result (`.curated/curated.csv` and `.curated/curated.xlsx`)
+The output produces two complementary sibling formats in the `.curated/` folder: a standardized CSV and a beautifully styled Excel workbook (`curated.xlsx`):
+
+#### 1. Standardized CSV (`curated.csv`)
+Formatted using `;` as delimiter and `,` for decimals without thousands separators, grouping related analytical dimensions:
 1. **Temporal coordinates:** `timestamp`, `year`, `month`, `day`, `hour`, `day_of_week`, `is_weekend`
 2. **Individual consumer:** `cups_id`, `use`, `consumption`
 3. **Community & solar balance:** `community_demand`, `generation`, `self_consumption`, `hourly_self_consumption`, `exported_energy`, `imported_energy`
@@ -86,7 +89,16 @@ timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption;com
 2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000001AA;Aerotermia;8,5;9,7;12,5;6,0;8,5;6,0;2,5;21,4;12
 2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000002BB;Garaje;1,2;9,7;12,5;0,0;0,0;0,0;0,0;21,4;12
 ```
-For the primary installation point, `esd` always adopts the higher consumption between the utility (DATADIS) and the solar inverter smart power sensor ($\max(C_{\text{DATADIS}}, C_{\text{inverter}})$). This guarantees full equipment demand is captured while avoiding fake zero underreporting. The primary supply point also receives the detailed solar energy balance metrics: physical instantaneous self-consumption (`self_consumption`), regulatory hourly net self-consumption (`hourly_self_consumption` = $\min(C_h, G_h)$), solar generation exported to the grid (`exported_energy`), and grid electricity imported (`imported_energy`). Other participating points receive zero for these plant-level flows prior to collective allocation. The CSV is ordered chronologically by timestamp (date/hour) and within each timestamp alphabetically by facility use. Furthermore, each hourly record includes local weather context (`temperature` in °C and `cloud_cover` percentage from 0 to 100%). If weather data is not already stored locally in `.input/weather/`, `esd curate` automatically queries Open-Meteo using the community's default location from `.input/cups/cups.json`.
+
+#### 2. Styled Excel Workbook (`curated.xlsx`)
+Created alongside the CSV with executive styling for interactive analysis:
+- **Semantic Group Header Colors:** Similar columns share identical harmonious header colors (Steel Slate Blue for Time coordinates, Deep Petrol Teal for CUPS identification, Warm Terracotta for Demand/Consumption, Solar Emerald for Solar Generation & Balance, and Royal Amethyst for Weather).
+- **Hour-Grouped Zebra Pattern:** Rows belonging to the same hour block share the same background, alternating hour-by-hour between pure white and a soft neutral tint (`#F4F6F9`) so all supply points in each interval are visually grouped.
+- **Boolean Emojis:** The `is_weekend` column displays intuitive visual checkmarks (`✅` for weekend, `❌` for weekday).
+- **Freeze Panes & AutoFilter:** The header row is frozen and native Excel filters are enabled across all columns.
+- **Sibling Compatibility:** Automatically symlinked as `curated.xslx` to support alternate filename extensions.
+
+For the primary installation point, `esd` always adopts the higher consumption between the utility (DATADIS) and the solar inverter smart power sensor ($\max(C_{\text{DATADIS}}, C_{\text{inverter}})$). This guarantees full equipment demand is captured while avoiding fake zero underreporting. The primary supply point also receives the detailed solar energy balance metrics: physical instantaneous self-consumption (`self_consumption`), regulatory hourly net self-consumption (`hourly_self_consumption` = $\min(C_h, G_h)$), solar generation exported to the grid (`exported_energy`), and grid electricity imported (`imported_energy`). Other participating points receive zero for these plant-level flows prior to collective allocation. The dataset is ordered chronologically by timestamp (date/hour) and within each timestamp alphabetically by facility use. Furthermore, each hourly record includes local weather context (`temperature` in °C and `cloud_cover` percentage from 0 to 100%). If weather data is not already stored locally in `.input/weather/`, `esd curate` automatically queries Open-Meteo using the community's default location from `.input/cups/cups.json`.
 
 ---
 
@@ -164,7 +176,7 @@ esd doctor -C .input/cups/cups.json -w .input/weather --verbose
 ```
 
 ### Step 2: Automatic or Manual Curation (`esd curate`)
-Reconciles the fake zeros from the primary meter and outputs `.curated/curated.csv`:
+Reconciles the fake zeros from the primary meter and outputs `.curated/curated.csv` and styled `.curated/curated.xlsx`:
 ```bash
 esd curate
 ```

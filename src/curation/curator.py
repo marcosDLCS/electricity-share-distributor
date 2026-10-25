@@ -677,6 +677,32 @@ class DataCurator:
         )
 
     @classmethod
+    def export_excel(
+        cls,
+        dataset: CuratedDataset,
+        curated_dir: Path | str,
+        base_name: str = "curated",
+    ) -> Path:
+        """Export curated dataset to a styled Excel (.xlsx) file.
+
+        Args:
+            dataset: The CuratedDataset to export.
+            curated_dir: Directory where the Excel file should be written.
+            base_name: File basename without extension (e.g. 'curated').
+
+        Returns:
+            Path to the generated Excel file.
+        """
+        from src.presentation.export import ReportExporter
+
+        exporter = ReportExporter(output_dir=curated_dir)
+        return exporter.export_curated_excel(
+            dataset=dataset,
+            curated_dir=curated_dir,
+            base_name=base_name,
+        )
+
+    @classmethod
     def export_csv(
         cls,
         dataset: CuratedDataset,
@@ -684,11 +710,11 @@ class DataCurator:
         base_name: str = "curated",
         delimiter: str = ";",
     ) -> Path:
-        """Export curated dataset to a clean CSV file.
+        """Export curated dataset to a clean CSV file and sibling styled Excel (.xlsx) file.
 
         Args:
             dataset: The CuratedDataset to export.
-            curated_dir: Directory where the CSV file should be written.
+            curated_dir: Directory where the CSV and Excel files should be written.
             base_name: File basename without extension (e.g. 'curated').
             delimiter: CSV delimiter character (defaults to ';').
 
@@ -702,11 +728,17 @@ class DataCurator:
             delimiter=delimiter,
             decimal_char="," if delimiter == ";" else ".",
         )
-        return exporter.export_curated_dataset(
+        csv_file = exporter.export_curated_dataset(
             dataset=dataset,
             curated_dir=curated_dir,
             base_name=base_name,
         )
+        cls.export_excel(
+            dataset=dataset,
+            curated_dir=curated_dir,
+            base_name=base_name,
+        )
+        return csv_file
 
     def ensure_curated(
         self,
@@ -714,7 +746,7 @@ class DataCurator:
         base_name: str = "curated",
         delimiter: str = ";",
     ) -> Path:
-        """Ensure that a curated CSV file exists, generating it if missing or forced.
+        """Ensure that curated CSV and sibling Excel files exist, generating them if missing or forced.
 
         Args:
             force: If True, re-runs curation even if the curated CSV already exists.
@@ -730,7 +762,14 @@ class DataCurator:
 
         target_dir.mkdir(parents=True, exist_ok=True)
         csv_path = target_dir / f"{base_name}.csv"
-        if not force and csv_path.exists() and csv_path.stat().st_size > 0:
+        xlsx_path = target_dir / f"{base_name}.xlsx"
+        if (
+            not force
+            and csv_path.exists()
+            and csv_path.stat().st_size > 0
+            and xlsx_path.exists()
+            and xlsx_path.stat().st_size > 0
+        ):
             try:
                 first_line = csv_path.read_text(encoding="utf-8").splitlines()[0]
                 sep = delimiter if delimiter in first_line else (";" if ";" in first_line else ",")

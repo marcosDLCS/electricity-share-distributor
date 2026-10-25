@@ -241,6 +241,8 @@ def test_curation_exports_csv(tmp_path: Path) -> None:
     assert csv_path.exists()
     assert csv_path.name == "reconciliation.csv"
     assert not (curated_dir / "reconciliation.json").exists()
+    assert (curated_dir / "reconciliation.xlsx").exists()
+    assert (curated_dir / "reconciliation.xslx").exists()
 
     # Validate compatible CSV header and contents
     csv_lines = csv_path.read_text(encoding="utf-8").strip().splitlines()
@@ -1125,3 +1127,114 @@ def test_curation_self_consumption_assigned_to_primary_cups(tmp_path: Path) -> N
     assert float(sec_row["hourly_self_consumption"].replace(",", ".")) == 0.0
     assert float(sec_row["exported_energy"].replace(",", ".")) == 0.0
     assert float(sec_row["imported_energy"].replace(",", ".")) == 0.0
+
+
+def test_curation_exports_styled_excel(tmp_path: Path) -> None:
+    """Verify that curated Excel file is generated with grouped header colors, emojis, and hour-grouped zebra."""
+    cons_dir = tmp_path / "consumption"
+    gen_dir = tmp_path / "generation"
+    curated_dir = tmp_path / "curated"
+    cons_dir.mkdir()
+    gen_dir.mkdir()
+
+    pri_cups = "ES0021000000000001AA"
+    sec_cups = "ES0021000000000002BB"
+    create_mock_datadis_csv(cons_dir / f"{pri_cups}.csv", pri_cups)
+    create_mock_datadis_csv(cons_dir / f"{sec_cups}.csv", sec_cups)
+    create_mock_huawei_excel(gen_dir / "gen.xlsx")
+
+    cups_file = tmp_path / "cups.json"
+    cups_file.write_text(
+        json.dumps(
+            [
+                {"cups": pri_cups, "use": "Aerotermia", "primary": True},
+                {"cups": sec_cups, "use": "Garaje", "primary": False},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    curator = DataCurator(
+        consumption_dir=cons_dir,
+        generation_dir=gen_dir,
+        cups_config_path=cups_file,
+        curated_dir=curated_dir,
+    )
+    dataset = curator.curate()
+    excel_path = curator.export_excel(dataset, curated_dir=curated_dir, base_name="test_curated")
+
+    assert excel_path.exists()
+    assert excel_path.name == "test_curated.xlsx"
+    assert (curated_dir / "test_curated.xslx").exists()
+
+    wb = openpyxl.load_workbook(excel_path)
+    ws = wb.active
+
+    # Check freeze panes and auto filter
+    assert ws.freeze_panes == "A2"
+    assert ws.auto_filter.ref is not None
+
+    # Check header colors by semantic group
+    header_group_expected = {
+        "timestamp": "002B4C7E",
+        "year": "002B4C7E",
+        "month": "002B4C7E",
+        "day": "002B4C7E",
+        "hour": "002B4C7E",
+        "day_of_week": "002B4C7E",
+        "is_weekend": "002B4C7E",
+        "cups_id": "001A535C",
+        "use": "001A535C",
+        "consumption": "009C5B28",
+        "community_demand": "009C5B28",
+        "generation": "002D6A4F",
+        "self_consumption": "002D6A4F",
+        "hourly_self_consumption": "002D6A4F",
+        "exported_energy": "002D6A4F",
+        "imported_energy": "002D6A4F",
+        "temperature": "005C4D7D",
+        "cloud_cover": "005C4D7D",
+    }
+
+    for col in range(1, 19):
+        col_name = str(ws.cell(row=1, column=col).value)
+        assert col_name in header_group_expected
+        expected_color = header_group_expected[col_name]
+        cell_fill = ws.cell(row=1, column=col).fill
+        assert cell_fill is not None
+        assert cell_fill.start_color.rgb == expected_color
+
+    # Check emoji conversion on is_weekend column (col 7)
+    weekend_val_row2 = ws.cell(row=2, column=7).value
+    assert weekend_val_row2 in ("✅", "❌")
+
+    # Check hour-grouped zebra striping
+    # 2 CUPS per hour -> rows 2 & 3 belong to hour 0, rows 4 & 5 belong to hour 1
+    ts_row2 = ws.cell(row=2, column=1).value
+    ts_row3 = ws.cell(row=3, column=1).value
+    ts_row4 = ws.cell(row=4, column=1).value
+    ts_row5 = ws.cell(row=5, column=1).value
+
+    assert ts_row2 == ts_row3  # same hour 00:00:00
+    assert ts_row4 == ts_row5  # same hour 01:00:00
+    assert ts_row2 != ts_row4  # different hours
+
+    # Rows of the same hour share the same fill
+    fill_row2 = (
+        ws.cell(row=2, column=1).fill.start_color.rgb if ws.cell(row=2, column=1).fill else None
+    )
+    fill_row3 = (
+        ws.cell(row=3, column=1).fill.start_color.rgb if ws.cell(row=3, column=1).fill else None
+    )
+    assert fill_row2 == fill_row3
+
+    fill_row4 = (
+        ws.cell(row=4, column=1).fill.start_color.rgb if ws.cell(row=4, column=1).fill else None
+    )
+    fill_row5 = (
+        ws.cell(row=5, column=1).fill.start_color.rgb if ws.cell(row=5, column=1).fill else None
+    )
+    assert fill_row4 == fill_row5
+
+    # Adjacent hours have alternating zebra fill
+    assert fill_row2 != fill_row4

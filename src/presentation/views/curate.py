@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 def render_curate_summary(
     dataset: CuratedDataset,
     csv_path: Path,
+    excel_path: Path | None = None,
     lang: str = "en",
 ) -> None:
     """Render a comprehensive, 80-column rich summary of curated data reconciliation."""
@@ -103,9 +104,15 @@ def render_curate_summary(
     csv_size = f"{csv_path.stat().st_size / 1024:.1f} KB" if csv_path.exists() else "—"
 
     export_text = Text()
-    export_text.append("📊 CSV: ", style="bold green")
+    export_text.append("📊 CSV:   ", style="bold green")
     export_text.append(f"{csv_path} ", style="white")
     export_text.append(f"({csv_size})\n", style="dim")
+
+    if excel_path and excel_path.exists():
+        excel_size = f"{excel_path.stat().st_size / 1024:.1f} KB"
+        export_text.append("📑 Excel: ", style="bold green")
+        export_text.append(f"{excel_path} ", style="white")
+        export_text.append(f"({excel_size})\n", style="dim")
 
     console.print(
         Panel(
