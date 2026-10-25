@@ -218,7 +218,7 @@ Running `esd calculate` generates ready-to-use artifacts in `.output/`:
 
 | File Name | Format | Practical Purpose |
 | :--- | :--- | :--- |
-| `*_esd_interactive_report.html` | HTML (Standalone) | Offline interactive dashboard with SVG trajectory charts, what-if share simulator, and printable Board Resolution Annex (Acta de Junta). |
+| `*_esd_interactive_report.html` | HTML (Standalone) | Offline interactive dashboard with dynamic bilingual ES/EN switcher, energy trajectory multi-bar charts, Photovoltaic Solar Efficiency Index graphic, and monthly coefficient matrix heatmap. |
 | `*_esd_coefficients_matrix.csv` | CSV (`;` delimited) | Ready-to-import spreadsheet table formatted for official submission to the electrical utility distributor (DSO). |
 | `*_esd_optimization_summary.md` | Markdown | Executive summary report including the community agreement annex ready for community board review. |
 | `*_esd_coefficients.csv` | CSV (`;` delimited) | Detailed breakdown per CUPS: monthly self-consumed kWh, solar surplus, and remaining grid demand. |

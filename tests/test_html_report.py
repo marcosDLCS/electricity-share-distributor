@@ -100,7 +100,7 @@ def _create_mock_optimization_result() -> tuple[OptimizationResult, IngestionSum
 
 
 def test_generate_interactive_html_report_structure() -> None:
-    """Verify that generated HTML report contains required sections, SVG chart, and simulator."""
+    """Verify that generated HTML report contains required sections, language switcher, and solar efficiency chart."""
     opt_result, summary = _create_mock_optimization_result()
     html_en = generate_interactive_html_report(opt_result, summary, lang="en")
 
@@ -114,17 +114,35 @@ def test_generate_interactive_html_report_structure() -> None:
     assert '<script src="//' not in html_en
 
     # Core UI components
-    assert "chart-svg" in html_en
+    assert "chart-monthly-svg" in html_en
+    assert "chart-eff-svg" in html_en
+    assert "eff-cards-grid" in html_en
     assert "kpi-grid" in html_en
-    assert "sim-slider" in html_en
-    assert "resolution-box" in html_en
     assert "Aerotermia" in html_en
     assert "Garaje" in html_en
+
+    # Removed components: simulator and resolution annex
+    assert "sim-slider" not in html_en
+    assert "resolution-box" not in html_en
+
+    # Bilingual language selector and JS engine
+    assert "btn-lang-es" in html_en
+    assert "btn-lang-en" in html_en
+    assert "setLang" in html_en
+    assert "showEffTooltip" in html_en
+
+    # English titles & efficiency graphic
+    assert "Executive Collective Solar Distribution Report" in html_en
+    assert "Photovoltaic Solar Efficiency" in html_en
+    assert "Total Solar Generation" in html_en
 
     # Bilingual Spanish generation
     html_es = generate_interactive_html_report(opt_result, summary, lang="es")
     assert "Informe Ejecutivo de Autoconsumo Colectivo" in html_es
-    assert "Junta General de Propietarios" in html_es
+    assert "Eficiencia Solar Fotovoltaica" in html_es
+    assert "Producción Solar Total" in html_es
+    assert "sim-slider" not in html_es
+    assert "resolution-box" not in html_es
 
 
 def test_export_interactive_html_file(tmp_path: Path) -> None:

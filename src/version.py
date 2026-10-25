@@ -8,7 +8,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-__version__ = "2026.10.042"
+__version__ = "2026.10.043"
 
 VERSION_PATTERN = re.compile(r"^(\d{4})\.(\d{2})\.(\d{3})$")
 

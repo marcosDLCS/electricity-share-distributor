@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+from src.optimization.efficiency import calculate_solar_efficiency
 from src.presentation.console import format_kwh
 from src.presentation.views.common import MONTH_ABBR_EN, MONTH_ABBR_ES
 from src.version import get_version
@@ -12,6 +13,15 @@ from src.version import get_version
 if TYPE_CHECKING:
     from src.ingestion.schema import IngestionSummary
     from src.optimization.models import OptimizationResult
+
+
+def _parse_month_int(m_str: str) -> int:
+    """Safely parse month integer from 'MM', 'YYYY-MM', or integer-like strings."""
+    try:
+        val = int(m_str.split("-")[-1]) if "-" in m_str else int(m_str)
+        return max(1, min(12, val))
+    except ValueError, TypeError:
+        return 6
 
 
 def _generate_svg_monthly_chart(
@@ -50,7 +60,7 @@ def _generate_svg_monthly_chart(
     spacing = 3.0
 
     svg_elements: list[str] = [
-        f'<svg viewBox="0 0 {width} {height}" class="chart-svg" xmlns="http://www.w3.org/2000/svg">',
+        f'<svg viewBox="0 0 {width} {height}" class="chart-svg chart-monthly-svg" xmlns="http://www.w3.org/2000/svg">',
         "<defs>",
         '  <linearGradient id="gradGen" x1="0" y1="0" x2="0" y2="1">',
         '    <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.9"/>',
@@ -86,7 +96,9 @@ def _generate_svg_monthly_chart(
     # Bars per month
     for idx, m in enumerate(active_months):
         cx = pad_left + idx * slot_w + (slot_w / 2.0)
-        m_name = abbr_map.get(m.month, m.month)
+        m_int = _parse_month_int(m.month)
+        m_2d = f"{m_int:02d}"
+        m_name = abbr_map.get(m.month, abbr_map.get(m_2d, m.month))
 
         h_gen = (m.total_generation_kwh / y_max) * chart_h
         h_dem = (m.total_consumption_kwh / y_max) * chart_h
@@ -103,6 +115,7 @@ def _generate_svg_monthly_chart(
         tip_data = json.dumps(
             {
                 "month": m_name,
+                "month_num": m_2d,
                 "gen": f"{m.total_generation_kwh:,.1f} kWh",
                 "dem": f"{m.total_consumption_kwh:,.1f} kWh",
                 "sc": f"{m.total_self_consumed_kwh:,.1f} kWh",
@@ -133,7 +146,181 @@ def _generate_svg_monthly_chart(
         )
         # X-axis label
         svg_elements.append(
-            f'  <text x="{cx:.1f}" y="{height - pad_bottom + 22}" text-anchor="middle" class="x-label">{m_name}</text>'
+            f'  <text x="{cx:.1f}" y="{height - pad_bottom + 22}" text-anchor="middle" class="x-label x-label-bar" data-month="{m_2d}">{m_name}</text>'
+        )
+        svg_elements.append("</g>")
+
+    svg_elements.append("</svg>")
+    return "\n".join(svg_elements)
+
+
+def _calculate_monthly_efficiency(
+    opt_result: OptimizationResult,
+) -> list[dict[str, Any]]:
+    """Calculate average and peak solar efficiency index per calendar month."""
+    active_months = [m for m in opt_result.monthly_results if m.has_data]
+    if not active_months:
+        active_m_strs = [f"{i:02d}" for i in range(1, 13)]
+    else:
+        active_m_strs = [m.month for m in active_months]
+
+    has_hourly = (
+        opt_result.hourly_result is not None
+        and opt_result.hourly_result.time_series_df is not None
+        and not opt_result.hourly_result.time_series_df.empty
+        and "solar_efficiency" in opt_result.hourly_result.time_series_df.columns
+    )
+
+    points: list[dict[str, Any]] = []
+
+    if has_hourly and opt_result.hourly_result is not None:
+        df = opt_result.hourly_result.time_series_df
+        sun_df = df[df["generation_kwh"] > 1e-6] if "generation_kwh" in df.columns else df
+        for m_str in active_m_strs:
+            m_int = _parse_month_int(m_str)
+            m_2d = f"{m_int:02d}"
+            mask = (sun_df["timestamp"].str[5:7] == m_2d) | (sun_df["timestamp"].str[:7] == m_str)
+            m_rows = sun_df[mask]
+            if not m_rows.empty and "solar_efficiency" in m_rows.columns:
+                avg_eff = float(m_rows["solar_efficiency"].mean())
+                peak_eff = float(m_rows["solar_efficiency"].max())
+            else:
+                avg_eff = float(
+                    sum(calculate_solar_efficiency(m_int, h) for h in range(8, 19)) / 11.0
+                )
+                peak_eff = float(calculate_solar_efficiency(m_int, 13))
+            points.append(
+                {
+                    "month": m_str,
+                    "avg_eff": round(avg_eff, 1),
+                    "peak_eff": round(peak_eff, 1),
+                }
+            )
+    else:
+        for m_str in active_m_strs:
+            m_int = _parse_month_int(m_str)
+            avg_eff = float(sum(calculate_solar_efficiency(m_int, h) for h in range(8, 19)) / 11.0)
+            peak_eff = float(calculate_solar_efficiency(m_int, 13))
+            points.append(
+                {
+                    "month": m_str,
+                    "avg_eff": round(avg_eff, 1),
+                    "peak_eff": round(peak_eff, 1),
+                }
+            )
+    return points
+
+
+def _generate_svg_efficiency_chart(
+    opt_result: OptimizationResult,
+    is_es: bool,
+) -> str:
+    """Generate responsive inline SVG chart illustrating Photovoltaic Solar Efficiency Index (1-100)."""
+    points = _calculate_monthly_efficiency(opt_result)
+    if not points:
+        return "<p class='no-data'>No solar efficiency data available for charting.</p>"
+
+    abbr_map = MONTH_ABBR_ES if is_es else MONTH_ABBR_EN
+
+    width = 960
+    height = 290
+    pad_left = 65
+    pad_right = 35
+    pad_top = 40
+    pad_bottom = 50
+
+    chart_w = width - pad_left - pad_right
+    chart_h = height - pad_top - pad_bottom
+
+    n_pts = len(points)
+    slot_w = chart_w / n_pts
+
+    coords: list[tuple[float, float, float, dict[str, Any]]] = []
+    for idx, p in enumerate(points):
+        cx = pad_left + idx * slot_w + (slot_w / 2.0)
+        y_avg = pad_top + chart_h - (p["avg_eff"] / 100.0) * chart_h
+        y_peak = pad_top + chart_h - (p["peak_eff"] / 100.0) * chart_h
+        coords.append((cx, y_avg, y_peak, p))
+
+    svg_elements: list[str] = [
+        f'<svg viewBox="0 0 {width} {height}" class="chart-svg chart-eff-svg" xmlns="http://www.w3.org/2000/svg">',
+        "<defs>",
+        '  <linearGradient id="gradEffArea" x1="0" y1="0" x2="0" y2="1">',
+        '    <stop offset="0%" stop-color="#10b981" stop-opacity="0.32"/>',
+        '    <stop offset="70%" stop-color="#10b981" stop-opacity="0.08"/>',
+        '    <stop offset="100%" stop-color="#10b981" stop-opacity="0.0"/>',
+        "  </linearGradient>",
+        '  <filter id="effGlow" x="-20%" y="-20%" width="140%" height="140%">',
+        '    <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#10b981" flood-opacity="0.3"/>',
+        "  </filter>",
+        "</defs>",
+    ]
+
+    # Y-axis gridlines & labels: 0%, 25%, 50%, 75%, 100%
+    y_tiers = [0, 25, 50, 75, 100]
+    for tier in y_tiers:
+        y_pos = pad_top + chart_h - (tier / 100.0) * chart_h
+        svg_elements.append(
+            f'<line x1="{pad_left}" y1="{y_pos:.1f}" x2="{width - pad_right}" y2="{y_pos:.1f}" class="grid-line"/>'
+        )
+        svg_elements.append(
+            f'<text x="{pad_left - 10}" y="{y_pos + 4:.1f}" text-anchor="end" class="axis-label">{tier}%</text>'
+        )
+
+    # Shaded Area under Average Curve
+    area_d_parts = [f"M {coords[0][0]:.1f},{pad_top + chart_h:.1f}"]
+    for cx, y_avg, _, _ in coords:
+        area_d_parts.append(f"L {cx:.1f},{y_avg:.1f}")
+    area_d_parts.append(f"L {coords[-1][0]:.1f},{pad_top + chart_h:.1f} Z")
+    area_d = " ".join(area_d_parts)
+    svg_elements.append(f'<path d="{area_d}" fill="url(#gradEffArea)"/>')
+
+    # Peak solar noon line (dashed amber)
+    peak_line_d = " ".join(
+        [f"M {coords[0][0]:.1f},{coords[0][2]:.1f}"]
+        + [f"L {cx:.1f},{y_peak:.1f}" for cx, _, y_peak, _ in coords[1:]]
+    )
+    svg_elements.append(
+        f'<path d="{peak_line_d}" fill="none" stroke="#f59e0b" stroke-width="2.2" stroke-dasharray="5 4" stroke-linecap="round"/>'
+    )
+
+    # Average efficiency line (solid emerald)
+    avg_line_d = " ".join(
+        [f"M {coords[0][0]:.1f},{coords[0][1]:.1f}"]
+        + [f"L {cx:.1f},{y_avg:.1f}" for cx, y_avg, _, _ in coords[1:]]
+    )
+    svg_elements.append(
+        f'<path d="{avg_line_d}" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" filter="url(#effGlow)"/>'
+    )
+
+    # Hover hit areas, markers, and month labels
+    for cx, y_avg, y_peak, p in coords:
+        m_int = _parse_month_int(p["month"])
+        m_2d = f"{m_int:02d}"
+        m_name = abbr_map.get(p["month"], abbr_map.get(m_2d, p["month"]))
+        eff_tip_data = json.dumps(
+            {
+                "month": m_name,
+                "month_num": m_2d,
+                "avg": p["avg_eff"],
+                "peak": p["peak_eff"],
+            }
+        ).replace('"', "&quot;")
+
+        svg_elements.append(
+            f'<g class="chart-col eff-col" data-eff-tooltip="{eff_tip_data}" onmouseenter="showEffTooltip(event, this)" onmouseleave="hideTooltip()">'
+        )
+        svg_elements.append(
+            f'  <rect x="{cx - slot_w / 2:.1f}" y="{pad_top}" width="{slot_w:.1f}" height="{chart_h}" class="hover-bg"/>'
+        )
+        svg_elements.append(
+            f'  <circle cx="{cx:.1f}" cy="{y_peak:.1f}" r="4" fill="#f59e0b" stroke="#1e293b" stroke-width="1.5"/>'
+        )
+        svg_elements.append(
+            f'  <circle cx="{cx:.1f}" cy="{y_avg:.1f}" r="5.5" fill="#10b981" stroke="#ffffff" stroke-width="2"/>'
+        )
+        svg_elements.append(
+            f'  <text x="{cx:.1f}" y="{height - pad_bottom + 22}" text-anchor="middle" class="x-label x-label-eff" data-month="{m_2d}">{m_name}</text>'
         )
         svg_elements.append("</g>")
 
@@ -171,28 +358,24 @@ def generate_interactive_html_report(
     # Bylaw constraints info
     has_bylaws = opt_result.constraints is not None and opt_result.constraints.is_active
     bylaw_badge = ""
-    bylaw_min_val = 0.0
-    bylaw_max_val = 1.0
+    bylaw_min_str = ""
+    bylaw_max_str = ""
     if has_bylaws and opt_result.constraints:
         c = opt_result.constraints
         parts = []
         if c.min_share is not None:
             parts.append(f"Min: {c.min_share * 100:.1f}%")
-            bylaw_min_val = c.min_share
+            bylaw_min_str = f"{c.min_share * 100:.1f}"
         if c.max_share is not None:
             parts.append(f"Max: {c.max_share * 100:.1f}%")
-            bylaw_max_val = c.max_share
-        bylaw_badge = f'<span class="badge badge-bylaw">⚖️ {" | ".join(parts)}</span>'
+            bylaw_max_str = f"{c.max_share * 100:.1f}"
+        lbl = "Límites Estatutarios" if is_es else "Bylaw Limits"
+        bylaw_badge = f'<span class="badge badge-bylaw" id="badge-bylaw" data-bylaw-active="true" data-min="{bylaw_min_str}" data-max="{bylaw_max_str}">⚖️ {lbl}: {" | ".join(parts)}</span>'
 
-    # Prepare slider initial data
-    initial_shares: dict[str, float] = {}
-    for cups in matrix.cups_list:
-        ann_val = matrix.annual_shares.get(cups)
-        initial_shares[cups] = round(ann_val * 100.0, 1) if ann_val is not None else 0.0
+    svg_monthly_chart = _generate_svg_monthly_chart(opt_result, is_es)
+    svg_eff_chart = _generate_svg_efficiency_chart(opt_result, is_es)
 
-    svg_chart = _generate_svg_monthly_chart(opt_result, is_es)
-
-    # Localized texts
+    # Initial localized texts
     txt_title = (
         "Informe Ejecutivo de Autoconsumo Colectivo"
         if is_es
@@ -207,24 +390,31 @@ def generate_interactive_html_report(
     txt_total_dem = "Demanda Comunitaria" if is_es else "Collective Demand"
     txt_total_sc = "Energía Autoconsumida" if is_es else "Self-Consumed Energy"
     txt_total_surplus = "Excedente a Red" if is_es else "Solar Surplus"
-    txt_eff = "Eficiencia de Autoconsumo" if is_es else "Self-Consumption Efficiency"
+    txt_eff = "Aprovechamiento Solar" if is_es else "Solar Utilization"
     txt_coverage = "Cobertura Solar" if is_es else "Solar Coverage"
+    txt_traj_title = (
+        "Trayectoria Anual de Energía (kWh)" if is_es else "Annual Energy Trajectory (kWh)"
+    )
+    txt_traj_sub = (
+        "Generación Solar (ámbar), Demanda Comunitaria (cian) y Autoconsumo Colectivo (verde)"
+        if is_es
+        else "Solar Generation (amber), Collective Demand (cyan), and Self-Consumption (green)"
+    )
+    txt_eff_title = "Eficiencia Solar Fotovoltaica" if is_es else "Photovoltaic Solar Efficiency"
+    txt_eff_sub = (
+        "Índice de Eficiencia Solar (IES, 1-100) modelado con atenuación óptica nubosa, derating térmico y elevación solar estacional"
+        if is_es
+        else "Solar Efficiency Index (SEI, 1-100) modeled with cloud optical attenuation, thermal derating, and seasonal solar elevation"
+    )
     txt_matrix_title = (
         "Matriz de Coeficientes Mensuales" if is_es else "Monthly Coefficients Matrix"
     )
-    txt_sim_title = (
-        "Simulador Interactivo de Coeficientes" if is_es else "Interactive Share Simulator"
-    )
-    txt_sim_desc = (
-        "Simula el impacto de ajustar los coeficientes comunitarios. Verifica en tiempo real el cumplimiento del 100% y los límites estatutarios."
+    txt_matrix_sub = (
+        "Distribución porcentual fija (βi) mensual establecida para cada servicio común bajo RD 244/2019"
         if is_es
-        else "Simulate the impact of adjusting community shares. Verify in real time the 100% regulatory sum and bylaw limits."
-    )
-    txt_annex_title = (
-        "Anexo para el Acta de Junta General" if is_es else "HOA Board Resolution Annex"
+        else "Fixed monthly percentage distribution (βi) established for each common service under RD 244/2019"
     )
     txt_cups_col = "Suministro / CUPS" if is_es else "Supply Point / CUPS"
-    txt_use_col = "Uso Comunitario" if is_es else "Facility Use"
     txt_avg_col = "Media Anual" if is_es else "Annual Avg"
 
     # Build matrix table rows
@@ -236,7 +426,6 @@ def generate_interactive_html_report(
         for m in matrix.months:
             raw_val = matrix.matrix.get(cups, {}).get(m)
             formatted = matrix.format_cell(cups, m, precision=prec)
-            # Heatmap color class
             heat_class = "heat-dim"
             if raw_val is not None:
                 if raw_val > 0.50:
@@ -255,38 +444,9 @@ def generate_interactive_html_report(
 
     # Matrix table header months
     month_headers = "".join(
-        f"<th class='text-right'>{abbr_map.get(m, m)}</th>" for m in matrix.months
+        f"<th class='text-right th-month' data-month='{_parse_month_int(m):02d}'>{abbr_map.get(m, abbr_map.get(f'{_parse_month_int(m):02d}', m))}</th>"
+        for m in matrix.months
     )
-
-    # Build simulator sliders
-    simulator_rows: list[str] = []
-    for cups in matrix.cups_list:
-        use_val = matrix.cups_uses.get(cups, "") or "Servicio"
-        init_val = initial_shares.get(cups, 0.0)
-        slider_row = f"""
-        <div class="sim-item" data-cups="{cups}">
-            <div class="sim-label">
-                <span class="sim-use">{use_val}</span>
-                <span class="sim-cups">…{cups[-8:]}</span>
-            </div>
-            <div class="sim-slider-wrap">
-                <input type="range" min="0" max="100" step="0.5" value="{init_val}" id="sim_{cups}" class="sim-slider" oninput="updateSim()">
-            </div>
-            <div class="sim-value">
-                <span id="sim_val_{cups}">{init_val:.1f}%</span>
-            </div>
-        </div>
-        """
-        simulator_rows.append(slider_row)
-
-    # Resolution annex table rows
-    annex_rows: list[str] = []
-    for idx, cups in enumerate(matrix.cups_list, 1):
-        use_val = matrix.cups_uses.get(cups, "") or f"Servicio #{idx}"
-        ann_val = matrix.format_annual(cups, precision=prec)
-        annex_rows.append(
-            f"<tr><td>{idx}</td><td><strong>{use_val}</strong></td><td><code>{cups}</code></td><td class='text-right'><strong>{ann_val}</strong></td></tr>"
-        )
 
     # Template assembly
     html = f"""<!DOCTYPE html>
@@ -433,7 +593,40 @@ def generate_interactive_html_report(
 
         .controls-group {{
             display: flex;
+            align-items: center;
             gap: 0.75rem;
+        }}
+
+        /* Segmented Language Switcher */
+        .lang-switch {{
+            display: inline-flex;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 2px;
+            gap: 2px;
+        }}
+
+        .btn-lang {{
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            font-weight: 700;
+            padding: 0.35rem 0.75rem;
+            border-radius: calc(var(--radius-md) - 2px);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }}
+
+        .btn-lang:hover {{
+            color: var(--text-main);
+        }}
+
+        .btn-lang.active {{
+            background: var(--accent-sc);
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
         }}
 
         .btn {{
@@ -613,6 +806,70 @@ def generate_interactive_html_report(
             fill: rgba(255, 255, 255, 0.04);
         }}
 
+        /* Solar Efficiency Section Extras */
+        .eff-legend {{
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }}
+
+        .eff-legend-item {{
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+        }}
+
+        .legend-line {{
+            display: inline-block;
+            width: 20px;
+            height: 3px;
+            border-radius: 2px;
+        }}
+
+        .line-peak {{
+            background: var(--accent-solar);
+            border-top: 1px dashed var(--accent-solar);
+        }}
+
+        .line-avg {{
+            background: var(--accent-sc);
+        }}
+
+        .eff-cards-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }}
+
+        .eff-card {{
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 1rem 1.15rem;
+            transition: all 0.2s ease;
+        }}
+
+        .eff-card:hover {{
+            border-color: var(--text-dim);
+            transform: translateY(-2px);
+        }}
+
+        .eff-card h4 {{
+            font-size: 0.825rem;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 0.35rem;
+        }}
+
+        .eff-card p {{
+            font-size: 0.775rem;
+            color: var(--text-muted);
+            line-height: 1.45;
+        }}
+
         /* Tooltip */
         #tooltip {{
             position: fixed;
@@ -626,7 +883,7 @@ def generate_interactive_html_report(
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
             pointer-events: none;
             z-index: 1000;
-            min-width: 180px;
+            min-width: 190px;
         }}
 
         /* Matrix Table */
@@ -697,146 +954,6 @@ def generate_interactive_html_report(
         .heat-amber {{ color: var(--accent-solar); background: rgba(245, 158, 11, 0.12); border-radius: 4px; font-weight: 600; }}
         .heat-emerald {{ color: var(--accent-sc); background: rgba(16, 185, 129, 0.16); border-radius: 4px; font-weight: 700; }}
 
-        /* Simulator */
-        .sim-grid {{
-            display: grid;
-            gap: 0.85rem;
-            margin-bottom: 1.5rem;
-        }}
-
-        .sim-item {{
-            display: grid;
-            grid-template-columns: 200px 1fr 80px;
-            align-items: center;
-            gap: 1.25rem;
-            padding: 0.5rem 0.75rem;
-            background: var(--bg-surface);
-            border-radius: var(--radius-md);
-            border: 1px solid var(--border-subtle);
-        }}
-
-        .sim-label {{
-            display: flex;
-            flex-direction: column;
-        }}
-
-        .sim-use {{
-            font-weight: 600;
-            font-size: 0.85rem;
-        }}
-
-        .sim-cups {{
-            font-size: 0.725rem;
-            color: var(--text-dim);
-            font-family: var(--font-mono);
-        }}
-
-        .sim-slider-wrap input[type=range] {{
-            width: 100%;
-            accent-color: var(--accent-sc);
-            cursor: pointer;
-        }}
-
-        .sim-value {{
-            text-align: right;
-            font-family: var(--font-mono);
-            font-weight: 700;
-            font-size: 0.95rem;
-            color: var(--accent-sc);
-        }}
-
-        .sim-footer {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem 1.25rem;
-            background: var(--bg-surface);
-            border-radius: var(--radius-md);
-            border: 1px solid var(--border-subtle);
-            flex-wrap: wrap;
-            gap: 1rem;
-        }}
-
-        .sim-sum-badge {{
-            font-size: 1.1rem;
-            font-weight: 800;
-            font-family: var(--font-mono);
-        }}
-
-        .sum-valid {{ color: var(--accent-sc); }}
-        .sum-invalid {{ color: var(--accent-danger); }}
-
-        /* Resolution Annex */
-        .resolution-box {{
-            background: #ffffff;
-            color: #1e293b;
-            border-radius: var(--radius-lg);
-            padding: 2.5rem;
-            box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.4);
-            margin-top: 2rem;
-        }}
-
-        .resolution-header {{
-            text-align: center;
-            margin-bottom: 2rem;
-            border-bottom: 2px solid #e2e8f0;
-            padding-bottom: 1.25rem;
-        }}
-
-        .resolution-header h2 {{
-            font-size: 1.35rem;
-            font-weight: 800;
-            color: #0f172a;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }}
-
-        .resolution-header p {{
-            color: #64748b;
-            font-size: 0.875rem;
-            margin-top: 0.35rem;
-        }}
-
-        .resolution-body {{
-            font-size: 0.9rem;
-            line-height: 1.7;
-            color: #334155;
-            margin-bottom: 2rem;
-        }}
-
-        .resolution-table {{
-            margin: 1.5rem 0;
-            border: 1px solid #cbd5e1;
-            width: 100%;
-        }}
-
-        .resolution-table th {{
-            background: #f1f5f9;
-            color: #334155;
-            border-bottom: 1px solid #cbd5e1;
-        }}
-
-        .resolution-table td {{
-            color: #1e293b;
-            border-bottom: 1px solid #e2e8f0;
-        }}
-
-        .signatures-grid {{
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 3rem;
-            margin-top: 3.5rem;
-            padding-top: 1.5rem;
-        }}
-
-        .sig-block {{
-            border-top: 1px solid #94a3b8;
-            padding-top: 0.75rem;
-            text-align: center;
-            font-size: 0.85rem;
-            color: #475569;
-        }}
-
         /* Print styles */
         @media print {{
             body {{
@@ -844,29 +961,15 @@ def generate_interactive_html_report(
                 color: #000000 !important;
                 padding: 0;
             }}
-            .controls-group, .search-box, .sim-slider-wrap, #tooltip, header .btn {{
+            .controls-group, .search-box, #tooltip, header .btn {{
                 display: none !important;
             }}
-            .section-box, .resolution-box {{
+            .section-box {{
                 box-shadow: none !important;
                 border: 1px solid #e2e8f0 !important;
                 background: #ffffff !important;
                 color: #000000 !important;
                 page-break-inside: avoid;
-            }}
-            .resolution-box {{
-                page-break-before: always;
-            }}
-        }}
-
-        @media (max-width: 768px) {{
-            .sim-item {{
-                grid-template-columns: 1fr;
-                gap: 0.5rem;
-            }}
-            .signatures-grid {{
-                grid-template-columns: 1fr;
-                gap: 1.5rem;
             }}
         }}
     </style>
@@ -876,19 +979,23 @@ def generate_interactive_html_report(
         <!-- Header -->
         <header>
             <div class="title-group">
-                <h1>⚡ {txt_title}</h1>
-                <p>{txt_subtitle}</p>
+                <h1 data-i18n="title">⚡ {txt_title}</h1>
+                <p data-i18n="subtitle">{txt_subtitle}</p>
                 <div class="badges-wrap">
-                    <span class="badge badge-rd">✓ RD 244/2019</span>
-                    <span class="badge badge-strat">{opt_result.strategy.upper()}</span>
-                    <span class="badge">👥 {ingestion_summary.cups_count} CUPS</span>
-                    <span class="badge">📅 {ingestion_summary.start_time[:10]} ➔ {ingestion_summary.end_time[:10]}</span>
+                    <span class="badge badge-rd" id="badge-rd" data-i18n="badge_rd">✓ RD 244/2019</span>
+                    <span class="badge badge-strat" id="badge-strat" data-strat="{opt_result.strategy.lower()}">{opt_result.strategy.upper()}</span>
+                    <span class="badge" id="badge-cups">👥 {ingestion_summary.cups_count} {"Suministros (CUPS)" if is_es else "Supply Points (CUPS)"}</span>
+                    <span class="badge" id="badge-period">📅 {ingestion_summary.start_time[:10]} ➔ {ingestion_summary.end_time[:10]}</span>
                     {bylaw_badge}
                 </div>
             </div>
             <div class="controls-group">
-                <button class="btn" onclick="toggleTheme()">🌗 Modo</button>
-                <button class="btn" onclick="window.print()">🖨️ PDF / Imprimir</button>
+                <div class="lang-switch">
+                    <button type="button" class="btn-lang {"active" if is_es else ""}" id="btn-lang-es" onclick="setLang('es')">ES</button>
+                    <button type="button" class="btn-lang {"active" if not is_es else ""}" id="btn-lang-en" onclick="setLang('en')">EN</button>
+                </div>
+                <button class="btn" id="btn-theme" onclick="toggleTheme()" data-i18n="btn_theme">{"🌗 Modo" if is_es else "🌗 Theme"}</button>
+                <button class="btn" id="btn-print" onclick="window.print()" data-i18n="btn_print">{"🖨️ PDF / Imprimir" if is_es else "🖨️ Print / PDF"}</button>
             </div>
         </header>
 
@@ -896,42 +1003,42 @@ def generate_interactive_html_report(
         <div class="kpi-grid">
             <div class="kpi-card kpi-gen">
                 <div class="kpi-header">
-                    <span class="kpi-title">🌞 {txt_total_gen}</span>
+                    <span class="kpi-title" data-i18n="kpi_gen_title">🌞 {txt_total_gen}</span>
                 </div>
                 <div class="kpi-value">{format_kwh(tot.total_generation_kwh)}</div>
                 <div class="kpi-subtitle">
-                    <span>{txt_total_surplus}: {format_kwh(tot.total_surplus_kwh)}</span>
+                    <span><span data-i18n="kpi_gen_sub">{txt_total_surplus}</span>: {format_kwh(tot.total_surplus_kwh)}</span>
                 </div>
             </div>
 
             <div class="kpi-card kpi-dem">
                 <div class="kpi-header">
-                    <span class="kpi-title">⚡ {txt_total_dem}</span>
+                    <span class="kpi-title" data-i18n="kpi_dem_title">⚡ {txt_total_dem}</span>
                 </div>
                 <div class="kpi-value">{format_kwh(tot.total_consumption_kwh)}</div>
                 <div class="kpi-subtitle">
-                    <span>{txt_coverage}: <strong>{tot.solar_coverage_rate:.1f}%</strong></span>
+                    <span><span data-i18n="kpi_dem_sub">{txt_coverage}</span>: <strong>{tot.solar_coverage_rate:.1f}%</strong></span>
                 </div>
             </div>
 
             <div class="kpi-card kpi-sc">
                 <div class="kpi-header">
-                    <span class="kpi-title">🏆 {txt_total_sc}</span>
+                    <span class="kpi-title" data-i18n="kpi_sc_title">🏆 {txt_total_sc}</span>
                     {f'<span class="gain-badge">{base_gain_str}</span>' if base_gain_str else ""}
                 </div>
                 <div class="kpi-value">{format_kwh(tot.total_self_consumed_kwh)}</div>
                 <div class="kpi-subtitle">
-                    <span>{txt_eff}: <strong>{tot.self_consumption_rate:.1f}%</strong></span>
+                    <span><span data-i18n="kpi_sc_sub">{txt_eff}</span>: <strong>{tot.self_consumption_rate:.1f}%</strong></span>
                 </div>
             </div>
 
             <div class="kpi-card kpi-surplus">
                 <div class="kpi-header">
-                    <span class="kpi-title">🛡️ RD 244/2019 SUM</span>
+                    <span class="kpi-title" data-i18n="kpi_sum_title">🛡️ RD 244/2019 SUM</span>
                 </div>
                 <div class="kpi-value">100.0%</div>
                 <div class="kpi-subtitle">
-                    <span>Hare-Niemeyer Verified</span>
+                    <span data-i18n="kpi_sum_sub">{"Redondeo Exacto Hare-Niemeyer" if is_es else "Hare-Niemeyer Exact Rounding"}</span>
                 </div>
             </div>
         </div>
@@ -940,12 +1047,47 @@ def generate_interactive_html_report(
         <div class="section-box">
             <div class="section-header">
                 <div>
-                    <h2 class="section-title">📊 Trayectoria Anual de Energía (kWh)</h2>
-                    <p class="section-subtitle">Generación Solar (ámbar), Demanda Comunitaria (cian) y Autoconsumo Colectivo (verde)</p>
+                    <h2 class="section-title" data-i18n="chart_traj_title">📊 {txt_traj_title}</h2>
+                    <p class="section-subtitle" data-i18n="chart_traj_sub">{txt_traj_sub}</p>
                 </div>
             </div>
             <div class="chart-container">
-                {svg_chart}
+                {svg_monthly_chart}
+            </div>
+        </div>
+
+        <!-- Solar Efficiency Profile Section (New) -->
+        <div class="section-box">
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title" data-i18n="chart_eff_title">☀️ {txt_eff_title}</h2>
+                    <p class="section-subtitle" data-i18n="chart_eff_sub">{txt_eff_sub}</p>
+                </div>
+                <div class="eff-legend">
+                    <div class="eff-legend-item"><span class="legend-line line-peak"></span> <span data-i18n="tip_eff_peak">{"Eficiencia Cenit (13:00)" if is_es else "Solar Noon Peak (13:00)"}</span></div>
+                    <div class="eff-legend-item"><span class="legend-line line-avg"></span> <span data-i18n="tip_eff_avg">{"Media Diurna (08:00-18:00)" if is_es else "Daytime Avg (08:00-18:00)"}</span></div>
+                </div>
+            </div>
+            <div class="chart-container">
+                {svg_eff_chart}
+            </div>
+            <div class="eff-cards-grid">
+                <div class="eff-card">
+                    <h4 data-i18n="eff_card1_title">☁️ {"Atenuación Óptica Nubosa" if is_es else "Cloud Optical Attenuation"}</h4>
+                    <p data-i18n="eff_card1_desc">{"Transmisión no lineal con retención de ~25% de irradiancia difusa incluso bajo cobertura total." if is_es else "Non-linear optical transmission retaining ~25% diffuse solar irradiance even under 100% overcast."}</p>
+                </div>
+                <div class="eff-card">
+                    <h4 data-i18n="eff_card2_title">🌡️ {"Derating Térmico FV" if is_es else "PV Thermal Derating"}</h4>
+                    <p data-i18n="eff_card2_desc">{"Coeficiente de potencia de -0,4%/°C respecto a 20°C ambiente (estándar de silicio monocristalino)." if is_es else "Power temperature derating coefficient of -0.4%/°C relative to 20°C ambient reference."}</p>
+                </div>
+                <div class="eff-card">
+                    <h4 data-i18n="eff_card3_title">☀️ {"Elevación Estacional" if is_es else "Seasonal Declination"}</h4>
+                    <p data-i18n="eff_card3_desc">{"Masa de aire y declinación solar en latitudes ibéricas, con máximo estival y mínimo invernal." if is_es else "Annual air mass and solar elevation cycle across Iberian latitudes, peaking near summer solstice."}</p>
+                </div>
+                <div class="eff-card">
+                    <h4 data-i18n="eff_card4_title">⏱️ {"Cenit Solar Diario" if is_es else "Diurnal Solar Zenith"}</h4>
+                    <p data-i18n="eff_card4_desc">{"Trayectoria horaria óptima con pérdidas de reflexión mínimas hacia el mediodía solar (13:00-14:00 h)." if is_es else "Optimal diurnal solar arc with minimal reflection losses around solar noon (13:00-14:00)."}</p>
+                </div>
             </div>
         </div>
 
@@ -953,18 +1095,18 @@ def generate_interactive_html_report(
         <div class="section-box">
             <div class="section-header">
                 <div>
-                    <h2 class="section-title">🗓️ {txt_matrix_title}</h2>
-                    <p class="section-subtitle">Distribución porcentual ($\beta_i$) mensual fijada para cada servicio común</p>
+                    <h2 class="section-title" data-i18n="matrix_title">🗓️ {txt_matrix_title}</h2>
+                    <p class="section-subtitle" data-i18n="matrix_sub">{txt_matrix_sub}</p>
                 </div>
-                <input type="text" id="searchInput" class="search-box" placeholder="Buscar servicio o CUPS..." oninput="filterTable()">
+                <input type="text" id="searchInput" class="search-box" data-i18n-placeholder="search_placeholder" placeholder="{"Buscar servicio o CUPS..." if is_es else "Search service or CUPS..."}" oninput="filterTable()">
             </div>
             <div class="table-wrap">
                 <table id="matrixTable">
                     <thead>
                         <tr>
-                            <th>{txt_cups_col}</th>
+                            <th data-i18n="col_cups">{txt_cups_col}</th>
                             {month_headers}
-                            <th class="text-right col-avg">{txt_avg_col}</th>
+                            <th class="text-right col-avg" data-i18n="col_avg">{txt_avg_col}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -974,74 +1116,8 @@ def generate_interactive_html_report(
             </div>
         </div>
 
-        <!-- Interactive What-If Share Simulator -->
-        <div class="section-box">
-            <div class="section-header">
-                <div>
-                    <h2 class="section-title">🎛️ {txt_sim_title}</h2>
-                    <p class="section-subtitle">{txt_sim_desc}</p>
-                </div>
-                <button class="btn" onclick="resetSim()">↺ Restablecer Óptimo</button>
-            </div>
-            <div class="sim-grid">
-                {"".join(simulator_rows)}
-            </div>
-            <div class="sim-footer">
-                <div>
-                    <span>Suma Total Asignada:</span>
-                    <span id="simSumBadge" class="sim-sum-badge sum-valid">100.0%</span>
-                </div>
-                <div id="simBylawAlert" style="font-size: 0.85rem; color: var(--text-dim);">
-                    {f"Límites estatutarios activos: Min {bylaw_min_val * 100:.1f}% | Max {bylaw_max_val * 100:.1f}%" if has_bylaws else "Sin restricciones estatutarias adicionales"}
-                </div>
-            </div>
-        </div>
-
-        <!-- Statutory Homeowners Board Resolution Annex -->
-        <div class="resolution-box">
-            <div class="resolution-header">
-                <h2>{txt_annex_title}</h2>
-                <p>Propuesta de Acuerdo para la Junta General Extraordinaria de Propietarios</p>
-            </div>
-            <div class="resolution-body">
-                <p>
-                    En cumplimiento de lo estipulado en el <strong>Real Decreto 244/2019</strong>, de 5 de abril, por el que se regulan las condiciones administrativas, técnicas y económicas del autoconsumo de energía eléctrica, y de conformidad con el régimen de mayorías previsto en el artículo 17 de la <strong>Ley de Propiedad Horizontal</strong>:
-                </p>
-                <br>
-                <p>
-                    La <strong>Junta General de Propietarios</strong> acuerda por unanimidad / mayoría legalmente requerida aprobar la presente tabla de coeficientes de reparto fijos ($\beta_i$) para la instalación solar fotovoltaica colectiva de uso compartido, con destino a la alimentación de los servicios comunes del edificio:
-                </p>
-                <table class="resolution-table">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>{txt_use_col}</th>
-                            <th>CUPS</th>
-                            <th class="text-right">Coeficiente Asignado ($\beta_i$)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {"".join(annex_rows)}
-                    </tbody>
-                </table>
-                <p>
-                    Se faculta expresamente al <strong>Presidente</strong> y al <strong>Administrador-Secretario</strong> de la Comunidad para formalizar y firmar el acuerdo de reparto y remitirlo a la empresa distribuidora de electricidad correspondiente para su inmediata aplicación en la facturación horaria.
-                </p>
-            </div>
-            <div class="signatures-grid">
-                <div class="sig-block">
-                    <strong>Fdo.: El Presidente de la Comunidad</strong><br>
-                    <span>D./Dña. ___________________________</span>
-                </div>
-                <div class="sig-block">
-                    <strong>Fdo.: El Secretario-Administrador</strong><br>
-                    <span>Colegiado Nº ______________________</span>
-                </div>
-            </div>
-        </div>
-
         <footer style="margin-top: 3rem; text-align: center; color: var(--text-dim); font-size: 0.8rem;">
-            Generado por <strong>Electricity Share Distributor (esd) v{version}</strong> • Real Decreto 244/2019
+            <span data-i18n="footer_text">{"Generado por" if is_es else "Generated by"} <strong>Electricity Share Distributor (esd) v{version}</strong> • {"Real Decreto 244/2019" if is_es else "Spanish RD 244/2019"}</span>
         </footer>
     </div>
 
@@ -1049,26 +1125,243 @@ def generate_interactive_html_report(
     <div id="tooltip"></div>
 
     <script>
-        const initialShares = {json.dumps(initial_shares)};
-        const bylawMin = {bylaw_min_val * 100.0};
-        const bylawMax = {bylaw_max_val * 100.0};
-        const hasBylaws = {"true" if has_bylaws else "false"};
+        let currentLang = '{active_lang}';
+        const cupsCount = {ingestion_summary.cups_count};
+        const periodStart = "{ingestion_summary.start_time[:10]}";
+        const periodEnd = "{ingestion_summary.end_time[:10]}";
+        const appVersion = "{version}";
+
+        const I18N = {{
+            es: {{
+                doc_title: "Informe Ejecutivo de Autoconsumo Colectivo — Electricity Share Distributor",
+                title: "⚡ Informe Ejecutivo de Autoconsumo Colectivo",
+                subtitle: "Optimización de coeficientes de reparto según Real Decreto 244/2019",
+                badge_rd: "✓ RD 244/2019",
+                btn_theme: "🌗 Modo",
+                btn_print: "🖨️ PDF / Imprimir",
+                kpi_gen_title: "🌞 Producción Solar Total",
+                kpi_gen_sub: "Excedente a Red",
+                kpi_dem_title: "⚡ Demanda Comunitaria",
+                kpi_dem_sub: "Cobertura Solar",
+                kpi_sc_title: "🏆 Energía Autoconsumida",
+                kpi_sc_sub: "Aprovechamiento Solar",
+                kpi_sum_title: "🛡️ RD 244/2019 SUM",
+                kpi_sum_sub: "Redondeo Exacto Hare-Niemeyer",
+                chart_traj_title: "📊 Trayectoria Anual de Energía (kWh)",
+                chart_traj_sub: "Generación Solar (ámbar), Demanda Comunitaria (cian) y Autoconsumo Colectivo (verde)",
+                chart_eff_title: "☀️ Eficiencia Solar Fotovoltaica",
+                chart_eff_sub: "Índice de Eficiencia Solar (IES, 1-100) modelado con atenuación óptica nubosa, derating térmico y elevación solar estacional",
+                eff_card1_title: "☁️ Atenuación Óptica Nubosa",
+                eff_card1_desc: "Transmisión no lineal con retención de ~25% de irradiancia difusa incluso bajo cobertura total.",
+                eff_card2_title: "🌡️ Derating Térmico FV",
+                eff_card2_desc: "Coeficiente de potencia de -0,4%/°C respecto a 20°C ambiente (estándar de silicio monocristalino).",
+                eff_card3_title: "☀️ Elevación Estacional",
+                eff_card3_desc: "Masa de aire y declinación solar en latitudes ibéricas, con máximo estival y mínimo invernal.",
+                eff_card4_title: "⏱️ Cenit Solar Diario",
+                eff_card4_desc: "Trayectoria horaria óptima con pérdidas de reflexión mínimas hacia el mediodía solar (13:00-14:00 h).",
+                matrix_title: "🗓️ Matriz de Coeficientes Mensuales",
+                matrix_sub: "Distribución porcentual fija (βi) mensual establecida para cada servicio común bajo RD 244/2019",
+                search_placeholder: "Buscar servicio o CUPS...",
+                col_cups: "Suministro / CUPS",
+                col_avg: "Media Anual",
+                tip_gen: "Generación",
+                tip_dem: "Demanda",
+                tip_sc: "Autoconsumo",
+                tip_surplus: "Excedente",
+                tip_coverage: "Cobertura",
+                tip_efficiency: "Aprovechamiento",
+                tip_eff_avg: "Media Diurna (08:00-18:00)",
+                tip_eff_peak: "Eficiencia Cenit (13:00)",
+                tip_rating: "Calificación",
+                rating_excellent: "Excelente",
+                rating_good: "Favorable",
+                rating_moderate: "Moderada",
+                footer_text: `Generado por <strong>Electricity Share Distributor (esd) v${{appVersion}}</strong> • Real Decreto 244/2019`,
+                months: {{
+                    "01": "Ene", "02": "Feb", "03": "Mar", "04": "Abr",
+                    "05": "May", "06": "Jun", "07": "Jul", "08": "Ago",
+                    "09": "Sep", "10": "Oct", "11": "Nov", "12": "Dic"
+                }},
+                months_full: {{
+                    "01": "Enero", "02": "Febrero", "03": "Marzo", "04": "Abril",
+                    "05": "Mayo", "06": "Junio", "07": "Julio", "08": "Agosto",
+                    "09": "Septiembre", "10": "Octubre", "11": "Noviembre", "12": "Diciembre"
+                }}
+            }},
+            en: {{
+                doc_title: "Executive Collective Solar Distribution Report — Electricity Share Distributor",
+                title: "⚡ Executive Collective Solar Distribution Report",
+                subtitle: "Optimal share coefficient allocation under Spanish RD 244/2019",
+                badge_rd: "✓ RD 244/2019",
+                btn_theme: "🌗 Theme",
+                btn_print: "🖨️ Print / PDF",
+                kpi_gen_title: "🌞 Total Solar Generation",
+                kpi_gen_sub: "Solar Surplus",
+                kpi_dem_title: "⚡ Collective Demand",
+                kpi_dem_sub: "Solar Coverage",
+                kpi_sc_title: "🏆 Self-Consumed Energy",
+                kpi_sc_sub: "Solar Utilization",
+                kpi_sum_title: "🛡️ RD 244/2019 SUM",
+                kpi_sum_sub: "Hare-Niemeyer Exact Rounding",
+                chart_traj_title: "📊 Annual Energy Trajectory (kWh)",
+                chart_traj_sub: "Solar Generation (amber), Collective Demand (cyan), and Self-Consumption (green)",
+                chart_eff_title: "☀️ Photovoltaic Solar Efficiency",
+                chart_eff_sub: "Solar Efficiency Index (SEI, 1-100) modeled with cloud optical attenuation, thermal derating, and seasonal solar elevation",
+                eff_card1_title: "☁️ Cloud Optical Attenuation",
+                eff_card1_desc: "Non-linear optical transmission retaining ~25% diffuse solar irradiance even under 100% overcast.",
+                eff_card2_title: "🌡️ PV Thermal Derating",
+                eff_card2_desc: "Power temperature derating coefficient of -0.4%/°C relative to 20°C ambient reference.",
+                eff_card3_title: "☀️ Seasonal Declination",
+                eff_card3_desc: "Annual air mass and solar elevation cycle across Iberian latitudes, peaking near summer solstice.",
+                eff_card4_title: "⏱️ Diurnal Solar Zenith",
+                eff_card4_desc: "Optimal diurnal solar arc with minimal reflection losses around solar noon (13:00-14:00).",
+                matrix_title: "🗓️ Monthly Coefficients Matrix",
+                matrix_sub: "Fixed monthly percentage distribution (βi) established for each common service under RD 244/2019",
+                search_placeholder: "Search service or CUPS...",
+                col_cups: "Supply Point / CUPS",
+                col_avg: "Annual Avg",
+                tip_gen: "Generation",
+                tip_dem: "Demand",
+                tip_sc: "Self-Consumed",
+                tip_surplus: "Surplus",
+                tip_coverage: "Coverage",
+                tip_efficiency: "Utilization",
+                tip_eff_avg: "Daytime Avg (08:00-18:00)",
+                tip_eff_peak: "Solar Noon Peak (13:00)",
+                tip_rating: "Rating",
+                rating_excellent: "Excellent",
+                rating_good: "Good",
+                rating_moderate: "Moderate",
+                footer_text: `Generated by <strong>Electricity Share Distributor (esd) v${{appVersion}}</strong> • Spanish RD 244/2019`,
+                months: {{
+                    "01": "Jan", "02": "Feb", "03": "Mar", "04": "Apr",
+                    "05": "May", "06": "Jun", "07": "Jul", "08": "Aug",
+                    "09": "Sep", "10": "Oct", "11": "Nov", "12": "Dec"
+                }},
+                months_full: {{
+                    "01": "January", "02": "February", "03": "March", "04": "April",
+                    "05": "May", "06": "June", "07": "July", "08": "August",
+                    "09": "September", "10": "October", "11": "November", "12": "December"
+                }}
+            }}
+        }};
+
+        function setLang(lang) {{
+            if (!I18N[lang]) return;
+            currentLang = lang;
+            document.documentElement.lang = lang;
+
+            // Update language switcher buttons
+            const btnEs = document.getElementById('btn-lang-es');
+            const btnEn = document.getElementById('btn-lang-en');
+            if (btnEs) btnEs.className = lang === 'es' ? 'btn-lang active' : 'btn-lang';
+            if (btnEn) btnEn.className = lang === 'en' ? 'btn-lang active' : 'btn-lang';
+
+            // Update document title
+            document.title = I18N[lang].doc_title;
+
+            // Update data-i18n text elements
+            document.querySelectorAll('[data-i18n]').forEach(el => {{
+                const key = el.getAttribute('data-i18n');
+                if (I18N[lang][key] !== undefined) {{
+                    el.innerHTML = I18N[lang][key];
+                }}
+            }});
+
+            // Update placeholder attributes
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {{
+                const key = el.getAttribute('data-i18n-placeholder');
+                if (I18N[lang][key] !== undefined) {{
+                    el.placeholder = I18N[lang][key];
+                }}
+            }});
+
+            // Update month abbreviations in tables and charts
+            document.querySelectorAll('[data-month]').forEach(el => {{
+                const m = el.getAttribute('data-month');
+                if (I18N[lang].months[m]) {{
+                    el.textContent = I18N[lang].months[m];
+                }}
+            }});
+
+            // Update CUPS badge text
+            const cupsBadge = document.getElementById('badge-cups');
+            if (cupsBadge) {{
+                cupsBadge.textContent = lang === 'es'
+                    ? `👥 ${{cupsCount}} Suministros (CUPS)`
+                    : `👥 ${{cupsCount}} Supply Points (CUPS)`;
+            }}
+
+            // Update strategy badge if present
+            const stratBadge = document.getElementById('badge-strat');
+            if (stratBadge) {{
+                const stratKey = stratBadge.getAttribute('data-strat');
+                if (stratKey === 'optimal') stratBadge.textContent = lang === 'es' ? 'ÓPTIMO' : 'OPTIMAL';
+                else if (stratKey === 'equal') stratBadge.textContent = lang === 'es' ? 'EQUITATIVO' : 'EQUAL';
+                else if (stratKey === 'consumption') stratBadge.textContent = lang === 'es' ? 'CONSUMO' : 'CONSUMPTION';
+            }}
+
+            // Update bylaw badge if present
+            const bylawBadge = document.getElementById('badge-bylaw');
+            if (bylawBadge && bylawBadge.getAttribute('data-bylaw-active') === 'true') {{
+                const minVal = bylawBadge.getAttribute('data-min');
+                const maxVal = bylawBadge.getAttribute('data-max');
+                const parts = [];
+                if (minVal) parts.push(`Min: ${{minVal}}%`);
+                if (maxVal) parts.push(`Max: ${{maxVal}}%`);
+                const label = lang === 'es' ? 'Límites Estatutarios' : 'Bylaw Limits';
+                bylawBadge.textContent = `⚖️ ${{label}}: ${{parts.join(' | ')}}`;
+            }}
+        }}
 
         function showTooltip(evt, el) {{
             const raw = el.getAttribute('data-tooltip');
             if (!raw) return;
             const data = JSON.parse(raw);
             const tip = document.getElementById('tooltip');
+            const t = I18N[currentLang] || I18N.es;
+            const mName = t.months_full[data.month_num] || data.month;
             tip.innerHTML = `
                 <div style="font-weight:700; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px; margin-bottom:6px;">
-                    📅 ${{data.month}}
+                    📅 ${{mName}}
                 </div>
-                <div>🌞 Generación: <strong>${{data.gen}}</strong></div>
-                <div>⚡ Demanda: <strong>${{data.dem}}</strong></div>
-                <div>🏆 Autoconsumo: <strong style="color:var(--accent-sc);">${{data.sc}}</strong></div>
-                <div>🛡️ Excedente: <strong>${{data.surplus}}</strong></div>
+                <div>🌞 ${{t.tip_gen}}: <strong>${{data.gen}}</strong></div>
+                <div>⚡ ${{t.tip_dem}}: <strong>${{data.dem}}</strong></div>
+                <div>🏆 ${{t.tip_sc}}: <strong style="color:var(--accent-sc);">${{data.sc}}</strong></div>
+                <div>🛡️ ${{t.tip_surplus}}: <strong>${{data.surplus}}</strong></div>
                 <div style="margin-top:4px; font-size:0.75rem; color:var(--text-muted);">
-                    Cobertura: <strong>${{data.cov}}</strong> • Eficiencia: <strong>${{data.eff}}</strong>
+                    ${{t.tip_coverage}}: <strong>${{data.cov}}</strong> • ${{t.tip_efficiency}}: <strong>${{data.eff}}</strong>
+                </div>
+            `;
+            tip.style.display = 'block';
+            tip.style.left = (evt.clientX + 14) + 'px';
+            tip.style.top = (evt.clientY + 14) + 'px';
+        }}
+
+        function showEffTooltip(evt, el) {{
+            const raw = el.getAttribute('data-eff-tooltip');
+            if (!raw) return;
+            const data = JSON.parse(raw);
+            const tip = document.getElementById('tooltip');
+            const t = I18N[currentLang] || I18N.es;
+            const mName = t.months_full[data.month_num] || data.month;
+            let ratingStr = t.rating_excellent;
+            let ratingColor = "var(--accent-sc)";
+            if (data.avg < 65) {{
+                ratingStr = t.rating_moderate;
+                ratingColor = "var(--accent-solar)";
+            }} else if (data.avg < 80) {{
+                ratingStr = t.rating_good;
+                ratingColor = "var(--accent-demand)";
+            }}
+            tip.innerHTML = `
+                <div style="font-weight:700; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px; margin-bottom:6px;">
+                    ☀️ ${{mName}}
+                </div>
+                <div>${{t.tip_eff_avg}}: <strong style="color:${{ratingColor}}; font-size:1.1em;">${{data.avg}}%</strong></div>
+                <div>${{t.tip_eff_peak}}: <strong>${{data.peak}}%</strong></div>
+                <div style="margin-top:4px; font-size:0.75rem; color:var(--text-muted);">
+                    ${{t.tip_rating}}: <strong style="color:${{ratingColor}};">${{ratingStr}}</strong>
                 </div>
             `;
             tip.style.display = 'block';
@@ -1088,54 +1381,6 @@ def generate_interactive_html_report(
                 const search = (row.getAttribute('data-search') || '').toLowerCase();
                 row.style.display = search.includes(term) ? '' : 'none';
             }});
-        }}
-
-        function updateSim() {{
-            let sum = 0.0;
-            let violation = false;
-            for (const cups in initialShares) {{
-                const input = document.getElementById('sim_' + cups);
-                const valEl = document.getElementById('sim_val_' + cups);
-                if (input && valEl) {{
-                    const val = parseFloat(input.value);
-                    sum += val;
-                    valEl.textContent = val.toFixed(1) + '%';
-
-                    if (hasBylaws && (val < bylawMin - 0.01 || val > bylawMax + 0.01)) {{
-                        valEl.style.color = 'var(--accent-danger)';
-                        violation = true;
-                    }} else {{
-                        valEl.style.color = 'var(--accent-sc)';
-                    }}
-                }}
-            }}
-            const sumBadge = document.getElementById('simSumBadge');
-            const alertEl = document.getElementById('simBylawAlert');
-            if (sumBadge) {{
-                sumBadge.textContent = sum.toFixed(1) + '%';
-                if (Math.abs(sum - 100.0) <= 0.2) {{
-                    sumBadge.className = 'sim-sum-badge sum-valid';
-                }} else {{
-                    sumBadge.className = 'sim-sum-badge sum-invalid';
-                }}
-            }}
-            if (alertEl && hasBylaws) {{
-                if (violation) {{
-                    alertEl.innerHTML = '<span style="color:var(--accent-danger); font-weight:700;">⚠️ Alerta: Algunos coeficientes incumplen los límites estatutarios.</span>';
-                }} else {{
-                    alertEl.innerHTML = '<span style="color:var(--accent-sc);">✓ Todos los coeficientes cumplen los límites estatutarios.</span>';
-                }}
-            }}
-        }}
-
-        function resetSim() {{
-            for (const cups in initialShares) {{
-                const input = document.getElementById('sim_' + cups);
-                if (input) {{
-                    input.value = initialShares[cups];
-                }}
-            }}
-            updateSim();
         }}
 
         function toggleTheme() {{
