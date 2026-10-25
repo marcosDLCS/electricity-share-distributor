@@ -25,10 +25,8 @@ def _format_heatmap_cell(val: float | None, formatted: str) -> str:
     """Format table cell with visual heatmap styling based on share magnitude."""
     if val is None or formatted.strip() == "—":
         return "[dim]—[/dim]"
-    if val <= 0.0001:
-        return f"[dim white]{formatted}[/dim white]"
     if val <= 0.05:
-        return f"[white]{formatted}[/white]"
+        return f"[dim white]{formatted}[/dim white]"
     if val <= 0.20:
         return f"[bright_cyan]{formatted}[/bright_cyan]"
     if val <= 0.50:

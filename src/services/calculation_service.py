@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from src.curation.curator import DataCurator
+from src.i18n import t
 from src.ingestion.schema import IngestionSummary
 from src.optimization.engine import DistributionOptimizer
 from src.optimization.models import OptimizationResult, OptimizationStrategy
@@ -47,8 +49,14 @@ class CalculationService:
     """Orchestrates curation verification, LP optimization, and artifact exports."""
 
     @staticmethod
-    def execute(request: CalculationRequest) -> CalculationResult:
+    def execute(
+        request: CalculationRequest,
+        progress_callback: Callable[[int, str], None] | None = None,
+    ) -> CalculationResult:
         """Run complete calculation pipeline and return results and exported artifacts."""
+        if progress_callback:
+            progress_callback(1, t("status_step_1", lang=request.lang))
+
         curator = DataCurator(
             consumption_dir=request.consumption_dir,
             generation_dir=request.generation_dir,
@@ -70,11 +78,17 @@ class CalculationService:
         if needs_curation:
             curated_csv = curator.ensure_curated(force=True)
 
+        if progress_callback:
+            progress_callback(2, t("status_step_2", lang=request.lang))
+
         aligned = curator.load_aligned_dataset(
             curated_csv,
             year=request.year,
             month=request.month,
         )
+
+        if progress_callback:
+            progress_callback(3, t("status_step_3", lang=request.lang))
 
         opt_result = DistributionOptimizer.optimize_dataset(
             aligned,
@@ -83,6 +97,9 @@ class CalculationService:
             precision=request.precision,
             compute_hourly=request.compute_hourly,
         )
+
+        if progress_callback:
+            progress_callback(4, t("status_step_4", lang=request.lang))
 
         exported_paths: list[Path] = []
         fmt_clean = request.export_format.lower().strip()

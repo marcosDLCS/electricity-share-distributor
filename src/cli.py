@@ -590,15 +590,25 @@ def calculate_command(
             lang=active_lang,
         )
 
-        with console.status(f"[bold green]{t('status_optimizing', lang=active_lang)}[/bold green]"):
-            calc_result = CalculationService.execute(req)
+        with console.status(
+            f"[bold cyan][1/4][/bold cyan] [bold white]{t('status_step_1', lang=active_lang)}[/bold white]"
+        ) as status:
+
+            def _update_step(step_idx: int, message: str) -> None:
+                status.update(
+                    f"[bold cyan][{step_idx}/4][/bold cyan] [bold white]{message}[/bold white]"
+                )
+
+            calc_result = CalculationService.execute(req, progress_callback=_update_step)
 
         opt_result = calc_result.opt_result
         metadata = calc_result.metadata
 
         # Presentation Views
         if view_mode in ("summary", "all"):
-            render_community_summary(metadata, opt_result.total_summary, lang=active_lang)
+            render_community_summary(
+                metadata, opt_result.total_summary, lang=active_lang, opt_result=opt_result
+            )
             render_monthly_trajectory_table(opt_result, lang=active_lang)
             render_strategy_comparison_table(opt_result, lang=active_lang)
             render_coefficients_matrix_table(

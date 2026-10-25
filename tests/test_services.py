@@ -64,3 +64,26 @@ def test_calculation_service_execution(tmp_path: Path) -> None:
     assert res.metadata.cups_count > 0
     assert len(res.exported_paths) > 0
     assert all(p.exists() for p in res.exported_paths)
+
+
+def test_calculation_service_progress_callback(tmp_path: Path) -> None:
+    """Verify that CalculationService invokes progress callback across all 4 stages."""
+    steps_called: list[tuple[int, str]] = []
+
+    def callback(step: int, msg: str) -> None:
+        steps_called.append((step, msg))
+
+    req = CalculationRequest(
+        consumption_dir=Path(".input/consumption"),
+        generation_dir=Path(".input/generation"),
+        curated_dir=Path(".curated"),
+        output_dir=tmp_path,
+        cups_config_path=Path(".input/cups/cups.json"),
+        year=2026,
+        month=5,
+        strategy=OptimizationStrategy.OPTIMAL,
+        export_format="csv",
+    )
+    CalculationService.execute(req, progress_callback=callback)
+    assert [step for step, _ in steps_called] == [1, 2, 3, 4]
+    assert all(len(msg) > 0 for _, msg in steps_called)

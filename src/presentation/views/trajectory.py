@@ -16,17 +16,22 @@ if TYPE_CHECKING:
     from src.optimization.models import OptimizationResult
 
 
+SPARK_BLOCKS = (" ", "▂", "▃", "▄", "▅", "▆", "▇", "█")
+
+
 def _coverage_sparkline(rate: float) -> str:
     """Render a 5-step visual sparkline block based on solar coverage rate."""
     if rate <= 0.0:
         return "[dim]░░░░░[/dim]"
     filled = min(5, max(1, round((rate / 100.0) * 5)))
     empty = 5 - filled
+    block_idx = min(len(SPARK_BLOCKS) - 1, max(0, int((rate / 100.0) * len(SPARK_BLOCKS))))
+    char = SPARK_BLOCKS[block_idx]
     if rate >= 50.0:
-        return f"[bold bright_green]{'█' * filled}[/bold bright_green][dim]{'░' * empty}[/dim]"
+        return f"[bold bright_green]{char * filled}[/bold bright_green][dim]{'░' * empty}[/dim]"
     if rate >= 20.0:
-        return f"[bright_yellow]{'█' * filled}[/bright_yellow][dim]{'░' * empty}[/dim]"
-    return f"[cyan]{'█' * filled}[/cyan][dim]{'░' * empty}[/dim]"
+        return f"[bright_yellow]{char * filled}[/bright_yellow][dim]{'░' * empty}[/dim]"
+    return f"[cyan]{char * filled}[/cyan][dim]{'░' * empty}[/dim]"
 
 
 def render_monthly_trajectory_table(

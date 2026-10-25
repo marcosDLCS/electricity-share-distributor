@@ -14,13 +14,14 @@ from src.presentation.console import console, format_kwh
 
 if TYPE_CHECKING:
     from src.ingestion.schema import IngestionSummary
-    from src.optimization.models import CommunityMonthlyMetrics
+    from src.optimization.models import CommunityMonthlyMetrics, OptimizationResult
 
 
 def render_community_summary(
     summary: IngestionSummary,
     tot: CommunityMonthlyMetrics,
     lang: str | None = None,
+    opt_result: OptimizationResult | None = None,
 ) -> None:
     """Render executive dashboard with high-contrast KPI cards and community energy balance."""
     # 1. KPI Cards Row
@@ -44,8 +45,16 @@ def render_community_summary(
         padding=(0, 1),
     )
 
+    gain_str = ""
+    if opt_result and "equal" in opt_result.baselines:
+        eq_sc = opt_result.baselines["equal"].total_summary.total_self_consumed_kwh
+        if eq_sc > 0:
+            diff_pct = ((tot.total_self_consumed_kwh - eq_sc) / eq_sc) * 100.0
+            if diff_pct > 0.05:
+                gain_str = f" [bold bright_green](+{diff_pct:.1f}% vs base)[/bold bright_green]"
+
     sc_card = Panel(
-        f"[bold green]{format_kwh(tot.total_self_consumed_kwh)}[/bold green]\n"
+        f"[bold green]{format_kwh(tot.total_self_consumed_kwh)}[/bold green]{gain_str}\n"
         f"[dim]{t('col_sc_rate', lang=lang)}: {tot.self_consumption_rate:.1f}%[/dim]",
         title=f"🏆 {t('lbl_total_sc', lang=lang)}",
         title_align="left",
@@ -61,8 +70,9 @@ def render_community_summary(
     meta_grid.add_column(ratio=1)
     meta_grid.add_column(ratio=1)
 
+    strat_label = tot.strategy.upper()
     meta_grid.add_row(
-        f"[dim]{t('lbl_supply_points', lang=lang)}:[/dim] [bold green]{summary.cups_count} CUPS[/bold green]",
+        f"[dim]{t('lbl_supply_points', lang=lang)}:[/dim] [bold green]{summary.cups_count} CUPS[/bold green] [dim]• {t('col_strategy', lang=lang)}:[/dim] [white]{strat_label}[/white]",
         f"[dim]{t('lbl_date_range', lang=lang)}:[/dim] [white]{summary.start_time[:10]} ➔ {summary.end_time[:10]}[/white]",
     )
 
