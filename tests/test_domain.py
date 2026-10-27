@@ -48,6 +48,38 @@ def test_supply_point_invalid_cups() -> None:
         SupplyPoint(cups="")
 
 
+def test_supply_point_share_bounds_validation() -> None:
+    """Verify min_share and max_share range and consistency validation."""
+    # Valid bounds
+    sp = SupplyPoint(
+        cups="ES0021000000000001AA",
+        min_share=0.05,
+        max_share=0.75,
+    )
+    assert sp.min_share == 0.05
+    assert sp.max_share == 0.75
+
+    # Out of [0, 1] range
+    with pytest.raises(EsdError, match=r"min_share must be between 0\.0 and 1\.0"):
+        SupplyPoint(cups="ES0021000000000001AA", min_share=-0.1)
+
+    with pytest.raises(EsdError, match=r"max_share must be between 0\.0 and 1\.0"):
+        SupplyPoint(cups="ES0021000000000001AA", max_share=1.2)
+
+    # Inconsistent bounds (min > max)
+    with pytest.raises(EsdError, match="cannot exceed max_share"):
+        SupplyPoint(cups="ES0021000000000001AA", min_share=0.8, max_share=0.2)
+
+
+def test_supply_point_coordinate_validation() -> None:
+    """Verify latitude and longitude validation in SupplyPoint."""
+    with pytest.raises(EsdError, match=r"Latitude must be between -90\.0 and 90\.0"):
+        SupplyPoint(cups="ES0021000000000001AA", latitude=95.0)
+
+    with pytest.raises(EsdError, match=r"Longitude must be between -180\.0 and 180\.0"):
+        SupplyPoint(cups="ES0021000000000001AA", longitude=-200.0)
+
+
 def test_share_allocation_valid() -> None:
     """Verify ShareAllocation percentage calculations and formatting."""
     sa = ShareAllocation(cups="ES0021000000000001AA", share=0.5286, use="Aerotermia")

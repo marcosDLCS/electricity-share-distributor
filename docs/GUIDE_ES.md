@@ -177,9 +177,11 @@ esd doctor -C .input/cups/cups.json -w .input/weather --verbose
 Reconcilia los falsos ceros del contador principal y genera `.curated/curated.csv` y el archivo Excel estilizado `.curated/curated.xlsx`:
 ```bash
 esd curate
+# O filtrar a un mes específico y nombre de salida personalizado:
+esd curate --year 2026 --month 5 --name datos_comunitarios
 ```
 > [!TIP]
-> **Curado Automático:** ¡Ni siquiera es necesario ejecutar `esd curate` manualmente! Al ejecutar `esd calculate`, la herramienta detecta si `.curated/curated.csv` existe y, si no está presente, lanza el curado de forma automática.
+> **Curado Automático:** ¡Ni siquiera es necesario ejecutar `esd curate` manualmente! Al ejecutar `esd calculate`, la herramienta detecta si `.curated/curated.csv` existe y, si no está presente, lanza el curado de forma automática. También puede pasar `--force-curate` a `esd calculate` para forzar la re-ejecución del curado.
 
 ### Paso 3: Descarga de Datos Meteorológicos Horarios (`esd weather`)
 Descarga datos meteorológicos históricos horarios (temperatura, nubosidad, códigos meteorológicos OMM) de Open-Meteo en `.input/weather/{YYYY}_{lat}_{lon}_weather.csv`. El año es el único parámetro obligatorio: si no se proporcionan coordenadas en la CLI, `esd weather` inspecciona automáticamente `cups.json`, deduplica las ubicaciones repetidas entre servicios de un mismo edificio y descarga cada coordenada única una sola vez:

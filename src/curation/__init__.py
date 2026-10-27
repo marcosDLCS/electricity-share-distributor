@@ -12,6 +12,7 @@ from src.curation.models import (
     CuratedHourRecord,
     CuratedSummary,
     CurationError,
+    SupplyPoint,
 )
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "CuratedSummary",
     "CurationError",
     "DataCurator",
+    "SupplyPoint",
     "dataframe_to_aligned_dataset",
     "format_energy_value",
 ]

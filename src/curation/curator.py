@@ -16,13 +16,14 @@ from src.config import (
     load_config,
 )
 from src.curation.models import (
-    CupsConfig,
     CuratedCupsReading,
     CuratedDataset,
     CuratedHourRecord,
     CuratedSummary,
     CurationError,
 )
+from src.domain.exceptions import EsdError
+from src.domain.models import SupplyPoint
 from src.ingestion.aligner import TimeSeriesAligner
 from src.ingestion.consumption import DatadisConsumptionLoader
 from src.ingestion.generation import HuaweiGenerationLoader
@@ -233,11 +234,11 @@ class DataCurator:
         self.curated_dir = Path(curated_dir)
         self.weather_dir = Path(weather_dir)
 
-    def load_cups_config(self) -> dict[str, CupsConfig]:
+    def load_cups_config(self) -> dict[str, SupplyPoint]:
         """Discover and parse CUPS configuration file containing uses, primary flags, and coordinates.
 
         Returns:
-            Dictionary mapping CUPS string identifiers to CupsConfig instances.
+            Dictionary mapping CUPS string identifiers to SupplyPoint instances.
         """
         candidate_paths: list[Path] = []
         if self.cups_config_path:
@@ -273,7 +274,7 @@ class DataCurator:
                 f"Invalid format in CUPS config file '{found_path}': expected JSON array of objects."
             )
 
-        configs: dict[str, CupsConfig] = {}
+        configs: dict[str, SupplyPoint] = {}
         for item in data:
             if not isinstance(item, dict):
                 continue
@@ -312,35 +313,40 @@ class DataCurator:
                     f_min = float(str(raw_min).replace("%", "").strip())
                     if f_min > 1.0:
                         f_min /= 100.0
-                    if 0.0 <= f_min <= 1.0:
-                        min_val = f_min
-                except ValueError, TypeError:
-                    pass
+                    min_val = f_min
+                except (ValueError, TypeError) as err:
+                    raise CurationError(
+                        f"Invalid min_share '{raw_min}' for CUPS '{cups_id}': {err}"
+                    ) from err
             if raw_max is not None:
                 try:
                     f_max = float(str(raw_max).replace("%", "").strip())
                     if f_max > 1.0:
                         f_max /= 100.0
-                    if 0.0 <= f_max <= 1.0:
-                        max_val = f_max
-                except ValueError, TypeError:
-                    pass
+                    max_val = f_max
+                except (ValueError, TypeError) as err:
+                    raise CurationError(
+                        f"Invalid max_share '{raw_max}' for CUPS '{cups_id}': {err}"
+                    ) from err
 
-            configs[cups_id] = CupsConfig(
-                cups=cups_id,
-                use=use,
-                primary=primary,
-                latitude=lat_val,
-                longitude=lon_val,
-                min_share=min_val,
-                max_share=max_val,
-            )
+            try:
+                configs[cups_id] = SupplyPoint(
+                    cups=cups_id,
+                    use=use,
+                    primary=primary,
+                    latitude=lat_val,
+                    longitude=lon_val,
+                    min_share=min_val,
+                    max_share=max_val,
+                )
+            except EsdError as err:
+                raise CurationError(f"Invalid CUPS configuration for '{cups_id}': {err}") from err
 
         return configs
 
     def get_default_location(
         self,
-        cups_configs: dict[str, CupsConfig] | None = None,
+        cups_configs: dict[str, SupplyPoint] | None = None,
     ) -> tuple[float, float] | None:
         """Resolve the default geographical location (latitude, longitude) for the community.
 
@@ -577,7 +583,7 @@ class DataCurator:
             hour_cons_sum = 0.0
 
             for cups_id in aligned.cups_list:
-                cfg = cups_configs.get(cups_id, CupsConfig(cups=cups_id, use="", primary=False))
+                cfg = cups_configs.get(cups_id, SupplyPoint(cups=cups_id, use="", primary=False))
                 datadis_cons = float(aligned.data.loc[ts, cups_id])
 
                 is_reconciled = False

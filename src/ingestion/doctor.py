@@ -14,7 +14,7 @@ from src.ingestion.generation import HuaweiGenerationLoader
 from src.ingestion.weather import WeatherLoader
 
 if TYPE_CHECKING:
-    from src.curation.models import CupsConfig
+    from src.domain.models import SupplyPoint
 
 
 @dataclass
@@ -102,7 +102,7 @@ class DataDoctor:
         summary_messages: list[str] = []
 
         # 0. Load CUPS config (if available) to enrich supply point identification
-        cups_configs: dict[str, CupsConfig] = {}
+        cups_configs: dict[str, SupplyPoint] = {}
         try:
             from src.curation.curator import DataCurator
 

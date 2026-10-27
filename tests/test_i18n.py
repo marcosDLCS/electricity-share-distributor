@@ -73,3 +73,14 @@ def test_i18n_placeholder_parity() -> None:
         assert en_placeholders == es_placeholders, (
             f"Placeholder mismatch for '{key}': EN={en_placeholders}, ES={es_placeholders}"
         )
+
+
+def test_i18n_cli_option_keys() -> None:
+    """Verify newly added CLI option keys and html export format in i18n catalog."""
+    for lang in ("en", "es"):
+        assert "html" in t("opt_format", lang=lang)
+        assert len(t("opt_min_share", lang=lang)) > 0
+        assert len(t("opt_max_share", lang=lang)) > 0
+        assert len(t("opt_precision", lang=lang)) > 0
+        assert len(t("opt_strategy", lang=lang)) > 0
+        assert len(t("opt_verbose", lang=lang)) > 0

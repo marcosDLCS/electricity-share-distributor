@@ -15,27 +15,10 @@ from src.domain.exceptions import (
 from src.domain.exceptions import (
     EsdError as EsdError,
 )
+from src.domain.models import SupplyPoint
 
-
-@dataclass
-class CupsConfig:
-    """Configuration metadata for a CUPS supply point.
-
-    Attributes:
-        cups: Universal supply point identifier code.
-        use: Functional human-readable description of this supply point (e.g., 'piscina').
-        primary: Whether this CUPS is the primary point connected to the PV generation plant.
-        latitude: Optional geographical latitude coordinate.
-        longitude: Optional geographical longitude coordinate.
-    """
-
-    cups: str
-    use: str = ""
-    primary: bool = False
-    latitude: float | None = None
-    longitude: float | None = None
-    min_share: float | None = None
-    max_share: float | None = None
+# Canonical domain model alias for backward compatibility
+CupsConfig = SupplyPoint
 
 
 @dataclass

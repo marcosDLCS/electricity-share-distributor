@@ -136,6 +136,30 @@ def test_cups_config_invalid_json(tmp_path: Path) -> None:
         curator.load_cups_config()
 
 
+def test_cups_config_invalid_cups_format(tmp_path: Path) -> None:
+    """Verify CurationError raised when an entry has an invalid CUPS format."""
+    bad_cups_file = tmp_path / "bad_cups.json"
+    bad_cups_file.write_text(
+        json.dumps([{"cups": "INVALID_CUPS_123", "use": "ascensor"}]),
+        encoding="utf-8",
+    )
+    curator = DataCurator(cups_config_path=bad_cups_file)
+    with pytest.raises(CurationError, match="Invalid CUPS configuration"):
+        curator.load_cups_config()
+
+
+def test_cups_config_invalid_share_bounds(tmp_path: Path) -> None:
+    """Verify CurationError raised when an entry has conflicting min/max shares."""
+    bad_shares_file = tmp_path / "bad_shares.json"
+    bad_shares_file.write_text(
+        json.dumps([{"cups": "ES0021000000000001AA", "min_share": 0.8, "max_share": 0.2}]),
+        encoding="utf-8",
+    )
+    curator = DataCurator(cups_config_path=bad_shares_file)
+    with pytest.raises(CurationError, match="cannot exceed max_share"):
+        curator.load_cups_config()
+
+
 def test_curation_reconciliation_fake_zeros(tmp_path: Path) -> None:
     """Verify data reconciliation: primary CUPS fake zero readings are corrected from Huawei."""
     cons_dir = tmp_path / "consumption"

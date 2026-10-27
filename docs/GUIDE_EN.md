@@ -179,9 +179,11 @@ esd doctor -C .input/cups/cups.json -w .input/weather --verbose
 Reconciles the fake zeros from the primary meter and outputs `.curated/curated.csv` and styled `.curated/curated.xlsx`:
 ```bash
 esd curate
+# Or filter to a specific month and custom output name:
+esd curate --year 2026 --month 5 --name community_curated
 ```
 > [!TIP]
-> **Automatic Curation:** You do not even need to run `esd curate` manually! When you run `esd calculate`, the tool checks if `.curated/curated.csv` exists. If it's missing, it automatically curates the data first.
+> **Automatic Curation:** You do not even need to run `esd curate` manually! When you run `esd calculate`, the tool checks if `.curated/curated.csv` exists. If it's missing, it automatically curates the data first. You can also pass `--force-curate` to `esd calculate` to force re-curating existing files.
 
 ### Step 3: Fetch Hourly Weather Data (`esd weather`)
 Download historical hourly weather (temperature, cloud cover, WMO weather codes) from Open-Meteo into `.input/weather/{YYYY}_{lat}_{lon}_weather.csv`. Year is the only mandatory parameter: if coordinates are not provided on the CLI, `esd weather` automatically inspects `cups.json`, deduplicates repeated locations across facilities in the same building, and downloads each unique coordinate once:

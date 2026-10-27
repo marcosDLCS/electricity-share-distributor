@@ -33,6 +33,23 @@ class SupplyPoint:
         # frozen dataclass mutation via object.__setattr__
         object.__setattr__(self, "cups", clean_cups)
 
+        if self.min_share is not None and not (0.0 <= self.min_share <= 1.0):
+            raise EsdError(f"min_share must be between 0.0 and 1.0 (got {self.min_share}).")
+        if self.max_share is not None and not (0.0 <= self.max_share <= 1.0):
+            raise EsdError(f"max_share must be between 0.0 and 1.0 (got {self.max_share}).")
+        if (
+            self.min_share is not None
+            and self.max_share is not None
+            and self.min_share > self.max_share
+        ):
+            raise EsdError(
+                f"min_share ({self.min_share * 100:.1f}%) cannot exceed max_share ({self.max_share * 100:.1f}%)."
+            )
+        if self.latitude is not None and not (-90.0 <= self.latitude <= 90.0):
+            raise EsdError(f"Latitude must be between -90.0 and 90.0 (got {self.latitude}).")
+        if self.longitude is not None and not (-180.0 <= self.longitude <= 180.0):
+            raise EsdError(f"Longitude must be between -180.0 and 180.0 (got {self.longitude}).")
+
     @property
     def masked_cups(self) -> str:
         """Return masked CUPS for privacy-safe display (e.g. …000001AA)."""

@@ -22,8 +22,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | Task | Category | Priority |
 | :--- | :--- | :--- |
-| Unify `SupplyPoint` and `CupsConfig` Domain Models | `Cohesion` | `P2` |
-| Synchronize `README.md` and `i18n` Help with All CLI Commands & Flags | `Documentation` | `P2` |
 | Centralize `cups.json` Path Discovery and Coordinate Extraction | `Cohesion` | `P3` |
 | Harden `OpenMeteoWeatherDownloader` URL Scheme & Query Encoding | `Security` | `P3` |
 | Localize Hardcoded CLI Prompts and Validation Errors | `Documentation` | `P3` |
@@ -42,14 +40,7 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 ## 🔗 Cohesion
 
-### 1. [P2] Unify `SupplyPoint` and `CupsConfig` Domain Models
-- **Goal:** Eliminate duplication between `SupplyPoint` (`src/domain/models.py`) and `CupsConfig` (`src/curation/models.py`), which define the exact same 7 attributes (`cups`, `use`, `primary`, `latitude`, `longitude`, `min_share`, `max_share`).
-- **Target Files:** `src/domain/models.py`, `src/curation/models.py`, `src/curation/curator.py`, `tests/test_domain.py`, `tests/test_curation.py`.
-- **Acceptance Criteria:**
-  - Use `SupplyPoint` as the single canonical model for CUPS configuration and metadata across `domain`, `curation`, and `services` (aliasing `CupsConfig = SupplyPoint` in `src/curation/models.py` if needed for compatibility).
-  - Ensure CUPS format validation and share bound validation are consistently applied when loading `cups.json`.
-
-### 2. [P3] Centralize `cups.json` Path Discovery and Coordinate Extraction
+### 1. [P3] Centralize `cups.json` Path Discovery and Coordinate Extraction
 - **Goal:** Remove duplicated candidate path lists (`[.input/cups/cups.json, .input/cups.json, cups.json]`) and coordinate key parsing between `src/config.py`, `src/curation/curator.py`, and `src/ingestion/weather.py`.
 - **Target Files:** `src/config.py`, `src/curation/curator.py`, `src/ingestion/weather.py`, `tests/test_curation.py`.
 - **Acceptance Criteria:**
@@ -68,16 +59,12 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 ## 📚 Documentation
 
-### 1. [P2] Synchronize `README.md` and `i18n` Help with All CLI Commands & Flags
-- **Goal:** Bring `README.md` and CLI localization strings into 100% parity with `src/cli.py` by documenting `esd curate` and all missing `esd calculate` options (`--hourly` / `-H`, `--min-share`, `--max-share`, `--precision` / `-p`, `--force-curate`, `--curated-dir` / `-u`, `--cups-file` / `-C`, and `--format html`).
-- **Target Files:** `README.md`, `src/i18n.py`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `tests/test_i18n.py`.
-- **Acceptance Criteria:**
-  - Add `### esd curate` section and complete option tables in `README.md`.
-  - Update `opt_format` in `src/i18n.py` (both `en` and `es`) to include `'html'`.
-  - Verify `docs/GUIDE_EN.md` and `docs/GUIDE_ES.md` reflect all current flags.
-
-### 2. [P3] Localize Hardcoded CLI Prompts and Validation Errors
+### 1. [P3] Localize Hardcoded CLI Prompts and Validation Errors
 - **Goal:** Replace hardcoded English strings in `src/cli.py` (`init` interactive prompts, coordinate range errors, strategy/share validation errors) with localized `t(...)` lookups from `src/i18n.py`.
+- **Target Files:** `src/cli.py`, `src/i18n.py`, `tests/test_cli.py`, `tests/test_i18n.py`.
+- **Acceptance Criteria:**
+  - All interactive prompts and validation error messages in `src/cli.py` use `t(..., lang=active_lang)`.
+  - Every new key in `src/i18n.py` has matching `en` and `es` translations with identical format placeholders.
 - **Target Files:** `src/cli.py`, `src/i18n.py`, `tests/test_cli.py`, `tests/test_i18n.py`.
 - **Acceptance Criteria:**
   - All interactive prompts and validation error messages in `src/cli.py` use `t(..., lang=active_lang)`.
