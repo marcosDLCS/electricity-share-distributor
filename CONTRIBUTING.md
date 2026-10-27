@@ -13,6 +13,7 @@
   ```bash
   python -m src.version bump
   ```
+- **Project Backlog:** Check [`BACKLOG.md`](BACKLOG.md) for prioritized improvement tasks across `Features`, `Architecture`, `Cohesion`, `Security`, `Documentation`, and `Simplicity`. Completed tasks must be removed from the backlog upon resolution.
 
 ## 🔒 Data Privacy & Security (GDPR / LOPDGDD)
 

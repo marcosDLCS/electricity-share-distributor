@@ -3,7 +3,7 @@
 > Optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic self-consumption (*autoconsumo colectivo*) across shared community services in Spain under **Real Decreto 244/2019**.
 
 [![Python](https://img.shields.io/badge/Python-3.14+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.10.051-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.10.052-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-SciPy%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -18,6 +18,8 @@ It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/da
 📚 **Guides & Documentation:**
 - [🇬🇧 Technical & Operational Guide (English)](docs/GUIDE_EN.md)
 - [🇪🇸 Guía Técnica y de Funcionamiento (Español)](docs/GUIDE_ES.md)
+- [📋 Project Improvement Backlog](BACKLOG.md)
+- [🤖 Autonomous AI Agent Guide](AGENTS.md)
 
 ---
 
@@ -295,7 +297,7 @@ Under Spain's regulatory framework and European GDPR (Regulation EU 2016/679, al
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, development setup, and the Conventional Commits specification.
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, development setup, and the Conventional Commits specification, and check [BACKLOG.md](BACKLOG.md) for prioritized improvement tasks.
 
 ---
 
