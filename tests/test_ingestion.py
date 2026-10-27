@@ -288,3 +288,60 @@ def test_weather_downloader_security_host_and_payload_limits(tmp_path: Path) -> 
     with patch("urllib.request.urlopen", return_value=mock_resp):
         with pytest.raises(IngestionError, match="exceeded maximum allowable size"):
             downloader.download_year(year=2024, latitude=40.4168, longitude=-3.7038)
+
+
+def test_consumption_loader_spanish_date_formats(tmp_path: Path) -> None:
+    """Verify that Spanish DD/MM/YYYY and DD-MM-YYYY dates parse into identical timestamps as YYYY/MM/DD and YYYY-MM-DD."""
+    cups = "ES0021000000000001AA"
+    hours = ["01:00", "02:00", "12:00", "24:00"]
+    expected_ts = [
+        "2026-03-15 00:00:00",
+        "2026-03-15 01:00:00",
+        "2026-03-15 11:00:00",
+        "2026-03-15 23:00:00",
+    ]
+
+    formats = {
+        "slash_dmy": "15/03/2026",
+        "dash_dmy": "15-03-2026",
+        "slash_ymd": "2026/03/15",
+        "dash_ymd": "2026-03-15",
+    }
+
+    loader = DatadisConsumptionLoader(tmp_path)
+
+    for fmt_name, date_str in formats.items():
+        file_p = tmp_path / f"test_{fmt_name}.csv"
+        lines = ["cups;fecha;hora;consumo_kWh;metodoObtencion"]
+        for h in hours:
+            lines.append(f'"{cups}";"{date_str}";"{h}";"0,250";Real')
+        file_p.write_text("\n".join(lines), encoding="utf-8")
+
+        parsed_df = loader.parse_file(file_p)
+        assert len(parsed_df) == 4
+        assert parsed_df["timestamp"].tolist() == expected_ts
+        assert parsed_df["cups"].tolist() == [cups] * 4
+        assert parsed_df["consumption_kwh"].tolist() == [0.25] * 4
+
+
+def test_consumption_loader_single_digit_spanish_dates(tmp_path: Path) -> None:
+    """Verify that single-digit day and month in Spanish formats are normalized with leading zeros."""
+    cups = "ES0021000000000001AA"
+    loader = DatadisConsumptionLoader(tmp_path)
+
+    cases = [
+        ("5/4/2026", "2026-04-05 00:00:00"),
+        ("5-4-2026", "2026-04-05 00:00:00"),
+        ("2026-4-5", "2026-04-05 00:00:00"),
+        ("2026/4/5", "2026-04-05 00:00:00"),
+    ]
+
+    for i, (date_str, expected_ts) in enumerate(cases):
+        file_p = tmp_path / f"single_{i}.csv"
+        lines = [
+            "cups;fecha;hora;consumo_kWh;metodoObtencion",
+            f'"{cups}";"{date_str}";"01:00";"0,500";Real',
+        ]
+        file_p.write_text("\n".join(lines), encoding="utf-8")
+        parsed = loader.parse_file(file_p)
+        assert parsed["timestamp"].iloc[0] == expected_ts

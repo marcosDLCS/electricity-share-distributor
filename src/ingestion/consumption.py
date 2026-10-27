@@ -108,7 +108,17 @@ class DatadisConsumptionLoader:
         )
 
         # Convert fecha and hora to interval-start canonical timestamps YYYY-MM-DD HH:MM:SS
-        norm_date = clean_df["fecha"].str.replace("/", "-", regex=False).str.strip()
+        # Normalize date strings (YYYY-MM-DD, YYYY/MM/DD, DD/MM/YYYY, DD-MM-YYYY) to canonical YYYY-MM-DD
+        norm_date = (
+            clean_df["fecha"]
+            .str.strip()
+            .str.replace(r"^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$", r"\3-\2-\1", regex=True)
+            .str.replace("/", "-", regex=False)
+        )
+        # Pad single-digit month and day if present (e.g. 2026-5-1 -> 2026-05-01)
+        norm_date = norm_date.str.replace(r"^(\d{4})-(\d{1})-(\d{1,2})$", r"\1-0\2-\3", regex=True)
+        norm_date = norm_date.str.replace(r"^(\d{4})-(\d{2})-(\d{1})$", r"\1-\2-0\3", regex=True)
+        clean_df["fecha"] = norm_date
 
         # Parse hour integer from hora column (e.g. "01:00" -> 1)
         h_extracted = clean_df["hora"].str.split(":").str[0]

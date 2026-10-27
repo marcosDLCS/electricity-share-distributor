@@ -758,62 +758,72 @@ class DistributionOptimizer:
                     constraints=constraints,
                 )
 
-        temp_series = aligned_df["temperature"] if "temperature" in aligned_df.columns else None
-        cloud_series = aligned_df["cloud_cover"] if "cloud_cover" in aligned_df.columns else None
+        # Precompute solar efficiency index once per timestamp
+        efficiencies = np.zeros(t_steps, dtype=int)
+        temp_arr = (
+            aligned_df["temperature"].to_numpy() if "temperature" in aligned_df.columns else None
+        )
+        cloud_arr = (
+            aligned_df["cloud_cover"].to_numpy() if "cloud_cover" in aligned_df.columns else None
+        )
+        months = dt_index.month.to_numpy()
+        hours = dt_index.hour.to_numpy()
 
-        # Build simplified long-format hourly time series
-        ts_rows: list[dict[str, object]] = []
         for t in range(t_steps):
-            ts_str = timestamps[t]
-            h_int = int(dt_index[t].hour)
-            m_int = int(dt_index[t].month)
-            h_str = f"{h_int:02d}"
-            gen_val = round(float(g_arr[t]), 4)
-
-            # Solar efficiency index: integer (1-100) for hours with generation (> 1e-6), 0 for hours without generation
-            efficiency_val: int = 0
             if g_arr[t] > 1e-6:
                 t_temp = (
-                    float(temp_series.iloc[t])
-                    if temp_series is not None and pd.notna(temp_series.iloc[t])
-                    else None
+                    float(temp_arr[t]) if temp_arr is not None and pd.notna(temp_arr[t]) else None
                 )
                 t_cloud = (
-                    float(cloud_series.iloc[t])
-                    if cloud_series is not None and pd.notna(cloud_series.iloc[t])
+                    float(cloud_arr[t])
+                    if cloud_arr is not None and pd.notna(cloud_arr[t])
                     else None
                 )
-                efficiency_val = calculate_solar_efficiency(
-                    month=m_int,
-                    hour=h_int,
+                efficiencies[t] = calculate_solar_efficiency(
+                    month=int(months[t]),
+                    hour=int(hours[t]),
                     temperature=t_temp,
                     cloud_cover=t_cloud,
                 )
 
-            for i, cups in enumerate(cups_list):
-                cons_val = round(float(c_arr[t, i]), 4)
-                actual_share = f"{rounded_betas[t, i] * 100:.{precision}f}%"
-                est_share = profile_matrix.format_cell(cups, h_str, precision=precision)
-                if est_share == "—":
-                    est_share = actual_share
+        uses_list = [cups_uses.get(c, "") for c in cups_list]
 
-                use_val = cups_uses.get(cups, "")
+        # Vectorized actual shares
+        actual_shares = [f"{val:.{precision}f}%" for val in (rounded_betas * 100).flatten()]
 
-                ts_rows.append(
-                    {
-                        "timestamp": ts_str,
-                        "hour": h_int,
-                        "cups": cups,
-                        "use": use_val,
-                        "consumption_kwh": cons_val,
-                        "generation_kwh": gen_val,
-                        "share_pct": actual_share,
-                        "estimated_share_pct": est_share,
-                        "solar_efficiency": efficiency_val,
-                    }
-                )
+        # Precompute 24-hour profile matrix formatted cells per CUPS: shape (24, n_cups)
+        est_grid = np.array(
+            [
+                [
+                    profile_matrix.format_cell(cups, f"{h:02d}", precision=precision)
+                    for cups in cups_list
+                ]
+                for h in range(24)
+            ],
+            dtype=object,
+        )
+        est_matrix = est_grid[hours]  # shape (t_steps, n_cups)
+        est_flat = est_matrix.flatten()
+        est_shares = [
+            actual if est == "—" else est
+            for est, actual in zip(est_flat, actual_shares, strict=False)
+        ]
 
-        ts_df = pd.DataFrame(ts_rows)
+        # Build long-format hourly time series via vectorized arrays
+        ts_df = pd.DataFrame(
+            {
+                "timestamp": np.repeat(timestamps, n_cups),
+                "hour": np.repeat(hours, n_cups),
+                "cups": np.tile(cups_list, t_steps),
+                "use": np.tile(uses_list, t_steps),
+                "consumption_kwh": np.round(c_arr, 4).flatten(),
+                "generation_kwh": np.repeat(np.round(g_arr, 4), n_cups),
+                "share_pct": actual_shares,
+                "estimated_share_pct": est_shares,
+                "solar_efficiency": np.repeat(efficiencies, n_cups),
+            }
+        )
+
         if not ts_df.empty:
             sort_cols = [c for c in ["timestamp", "use", "cups"] if c in ts_df.columns]
             ts_df = ts_df.sort_values(

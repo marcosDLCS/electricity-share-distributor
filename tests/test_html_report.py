@@ -291,6 +291,56 @@ def test_prevision_with_hourly_simulation_three_way() -> None:
     assert prev["gain_total_kwh"] >= prev["gain_monthly_kwh"]
 
 
+def test_prevision_vectorized_numeric_and_fallback_shares() -> None:
+    """Verify vectorized _calculate_hourly_prevision handles numeric shares and fallback columns cleanly."""
+    import pandas as pd
+
+    from src.optimization.models import HourlyOptimizationResult, HourlyProfileMatrix
+    from src.presentation.html_report import _calculate_hourly_prevision
+
+    opt_result, _ = _create_mock_optimization_result()
+
+    # Time series where estimated_share_pct is empty string or None, falling back to share_pct (numeric 0.40)
+    df_rows = [
+        {
+            "timestamp": "2026-05-01 12:00:00",
+            "cups": "ES0021000000000001AA",
+            "consumption_kwh": 3.0,
+            "generation_kwh": 10.0,
+            "share_pct": 0.40,  # Numeric float fraction
+            "estimated_share_pct": "",  # Empty string fallback
+        },
+        {
+            "timestamp": "2026-05-01 12:00:00",
+            "cups": "ES0021000000000002BB",
+            "consumption_kwh": 5.0,
+            "generation_kwh": 10.0,
+            "share_pct": 60.0,  # Numeric > 1.0 (percentage scale)
+            "estimated_share_pct": None,  # None fallback
+        },
+    ]
+    df = pd.DataFrame(df_rows)
+    opt_result.hourly_result = HourlyOptimizationResult(
+        profile_matrix=HourlyProfileMatrix(
+            cups_list=opt_result.cups_list,
+            hours=[f"{h:02d}" for h in range(24)],
+            matrix={c: {} for c in opt_result.cups_list},
+            hourly_sums={},
+            average_shares={},
+            average_sum=1.0,
+        ),
+        time_series_df=df,
+    )
+
+    prev = _calculate_hourly_prevision(opt_result)
+    assert prev["is_simulated"] is True
+    # Primary: min(3.0, 0.40 * 10.0 = 4.0) = 3.0
+    # Secondary: min(5.0, 0.60 * 10.0 = 6.0) = 5.0
+    # Expected collective = 8.0 kWh (clamped within physical limits)
+    assert prev["single_sc_kwh"] == 3.0
+    assert prev["hourly_sc_kwh"] >= prev["monthly_sc_kwh"]
+
+
 def test_export_interactive_html_file(tmp_path: Path) -> None:
     """Verify that ReportExporter exports the HTML report to disk."""
     opt_result, summary = _create_mock_optimization_result()

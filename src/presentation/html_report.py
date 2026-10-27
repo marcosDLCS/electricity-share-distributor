@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+import pandas as pd
+
 from src.optimization.efficiency import calculate_solar_efficiency
 from src.presentation.console import format_kwh
 from src.presentation.views.common import MONTH_ABBR_EN, MONTH_ABBR_ES
@@ -287,23 +290,42 @@ def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any
     if has_hourly and opt_result.hourly_result is not None:
         df = opt_result.hourly_result.time_series_df
 
-        def _to_float_share(val: Any) -> float:
-            if val is None:
-                return 0.0
-            s = str(val).rstrip("%").strip()
-            try:
-                f = float(s)
-                return f / 100.0 if f > 1.0 else f
-            except ValueError:
-                return 0.0
+        if "estimated_share_pct" in df.columns and "share_pct" in df.columns:
+            est_s = df["estimated_share_pct"].replace("", np.nan)
+            raw_shares = pd.Series(
+                np.where(est_s.notna(), est_s, df["share_pct"]),
+                index=df.index,
+            )
+        elif "estimated_share_pct" in df.columns:
+            raw_shares = df["estimated_share_pct"]
+        elif "share_pct" in df.columns:
+            raw_shares = df["share_pct"]
+        else:
+            raw_shares = pd.Series(0.0, index=df.index)
 
-        total_hourly_sc = 0.0
-        for _, row in df.iterrows():
-            beta = _to_float_share(row.get("estimated_share_pct") or row.get("share_pct", 0.0))
-            c_val = float(row.get("consumption_kwh", 0.0))
-            g_val = float(row.get("generation_kwh", 0.0))
-            total_hourly_sc += min(c_val, beta * g_val)
+        if raw_shares.dtype == object:
+            clean_shares = raw_shares.astype(str).str.rstrip("%").str.strip()
+            numeric_shares = pd.to_numeric(clean_shares, errors="coerce").fillna(0.0).to_numpy()
+        else:
+            numeric_shares = pd.to_numeric(raw_shares, errors="coerce").fillna(0.0).to_numpy()
 
+        betas = np.where(
+            numeric_shares > 1.0,
+            numeric_shares / 100.0,
+            np.maximum(0.0, numeric_shares),
+        )
+        c_vals = (
+            pd.to_numeric(df["consumption_kwh"], errors="coerce").fillna(0.0).to_numpy()
+            if "consumption_kwh" in df.columns
+            else np.zeros(len(df))
+        )
+        g_vals = (
+            pd.to_numeric(df["generation_kwh"], errors="coerce").fillna(0.0).to_numpy()
+            if "generation_kwh" in df.columns
+            else np.zeros(len(df))
+        )
+
+        total_hourly_sc = float(np.sum(np.minimum(c_vals, betas * g_vals)))
         hourly_sc = round(total_hourly_sc, 1)
         is_simulated = True
     else:

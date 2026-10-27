@@ -693,3 +693,90 @@ def test_solar_hours_consumption_and_coverage() -> None:
     assert cm1.solar_hours_consumption_kwh == 10.0
     assert cm2.consumption_kwh == 70.0
     assert cm2.solar_hours_consumption_kwh == 30.0
+
+
+def test_compute_hourly_optimization_vectorized_assembly() -> None:
+    """Verify that compute_hourly_optimization vectorized assembly matches expected schema and values."""
+    from src.ingestion.schema import IngestionSummary
+    from src.optimization.efficiency import calculate_solar_efficiency
+
+    cups_list = ["ES0021000000000001AA", "ES0021000000000002BB"]
+    timestamps = [
+        "2026-06-15 03:00:00",  # Night hour (generation = 0)
+        "2026-06-15 11:00:00",  # Daytime sunny hour
+        "2026-06-15 14:00:00",  # Daytime solar peak
+    ]
+    df = pd.DataFrame(
+        {
+            cups_list[0]: [1.2, 4.0, 5.5],
+            cups_list[1]: [2.4, 6.0, 3.5],
+            "generation_kwh": [0.0, 12.0, 18.0],
+            "temperature": [16.0, 24.0, 28.0],
+            "cloud_cover": [0.0, 20.0, 10.0],
+        },
+        index=timestamps,
+    )
+    summary = IngestionSummary(
+        cups_count=2,
+        cups_list=cups_list,
+        consumption_files_loaded=2,
+        generation_files_loaded=1,
+        start_time=timestamps[0],
+        end_time=timestamps[-1],
+        total_hours=3,
+    )
+    dataset = AlignedDataset(
+        data=df,
+        cups_list=cups_list,
+        metadata=summary,
+        cups_uses={cups_list[0]: "Aerotermia", cups_list[1]: "Garaje"},
+        primary_cups=cups_list[0],
+    )
+
+    res = DistributionOptimizer.compute_hourly_optimization(
+        dataset, strategy=OptimizationStrategy.OPTIMAL, precision=2
+    )
+    ts_df = res.time_series_df
+
+    # 3 timestamps * 2 CUPS = 6 rows
+    assert len(ts_df) == 6
+    expected_cols = [
+        "timestamp",
+        "hour",
+        "cups",
+        "use",
+        "consumption_kwh",
+        "generation_kwh",
+        "share_pct",
+        "estimated_share_pct",
+        "solar_efficiency",
+    ]
+    assert list(ts_df.columns) == expected_cols
+
+    # Check night timestamp 03:00 has 0 solar_efficiency
+    night_rows = ts_df[ts_df["timestamp"] == timestamps[0]]
+    assert len(night_rows) == 2
+    for _, r in night_rows.iterrows():
+        assert r["solar_efficiency"] == 0
+
+    # Check daytime timestamps have expected calculated solar_efficiency
+    expected_eff_11 = calculate_solar_efficiency(
+        month=6, hour=11, temperature=24.0, cloud_cover=20.0
+    )
+    expected_eff_14 = calculate_solar_efficiency(
+        month=6, hour=14, temperature=28.0, cloud_cover=10.0
+    )
+
+    rows_11 = ts_df[ts_df["timestamp"] == timestamps[1]]
+    for _, r in rows_11.iterrows():
+        assert r["solar_efficiency"] == expected_eff_11
+
+    rows_14 = ts_df[ts_df["timestamp"] == timestamps[2]]
+    for _, r in rows_14.iterrows():
+        assert r["solar_efficiency"] == expected_eff_14
+
+    # Verify formatting precision of shares
+    for _, r in ts_df.iterrows():
+        assert r["share_pct"].endswith("%")
+        assert "." in r["share_pct"]
+        assert len(r["share_pct"].split(".")[1].rstrip("%")) == 2

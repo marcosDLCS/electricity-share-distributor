@@ -27,8 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | Priority | Category | Task | Target Components |
 | :--- | :--- | :--- | :--- |
-| **P1** | `Architecture` | Vectorize Hourly Time-Series Assembly and HTML Prevision Calculation | `src/presentation/html_report.py`, `src/optimization/engine.py` |
-| **P1** | `Architecture` | Normalize Spanish `DD/MM/YYYY` and `DD-MM-YYYY` Dates in `DatadisConsumptionLoader` | `src/ingestion/consumption.py`, `tests/test_ingestion.py` |
 | **P2** | `Cohesion` | Propagate `primary_cups` on `OptimizationResult` to Eliminate Redundant Disk I/O | `src/optimization/models.py`, `src/optimization/engine.py`, `src/presentation/html_report.py` |
 | **P2** | `Cohesion` | Unify CLI Domain Exception Handling Across All Subcommands | `src/cli.py`, `tests/test_cli.py` |
 | **P2** | `Design` | Align `--curated-dir` Short Flag (`-u`) Across `esd curate` and `esd calculate` | `src/cli.py`, `tests/test_cli.py` |
@@ -51,20 +49,7 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 ## 🏗️ Architecture
 
-### 1. [P1] Vectorize Hourly Time-Series Assembly and HTML Prevision Calculation
-- **Goal:** Eliminate slow row-by-row Python iteration in `src/presentation/html_report.py` (`_calculate_hourly_prevision` using `df.iterrows()`) and `src/optimization/engine.py` (`compute_hourly_optimization` nested timestamp/CUPS loop) using vectorized NumPy/Pandas operations.
-- **Target Files:** `src/presentation/html_report.py`, `src/optimization/engine.py`, `tests/test_export.py`, `tests/test_optimization.py`
-- **Acceptance Criteria:**
-  - `_calculate_hourly_prevision()` in `src/presentation/html_report.py` computes hourly self-consumption using vectorized Pandas/NumPy column arithmetic without `iterrows()`.
-  - `compute_hourly_optimization()` in `src/optimization/engine.py` pre-computes hourly `solar_efficiency` once per timestamp and builds `time_series_df` via vectorized array construction (`np.repeat` / `np.tile`) instead of nested `.iloc[t]` loops.
-  - Outputs remain numerically identical and all unit tests pass.
-
-### 2. [P1] Normalize Spanish `DD/MM/YYYY` and `DD-MM-YYYY` Dates in `DatadisConsumptionLoader`
-- **Goal:** Support Spanish DATADIS web portal CSV exports that format `fecha` as `DD/MM/YYYY` or `DD-MM-YYYY` in addition to `YYYY/MM/DD` and `YYYY-MM-DD`, preventing silent timestamp misalignment against solar generation series.
-- **Target Files:** `src/ingestion/consumption.py`, `tests/test_ingestion.py`
-- **Acceptance Criteria:**
-  - `DatadisConsumptionLoader.parse_file()` normalizes both `YYYY-MM-DD` / `YYYY/MM/DD` and `DD/MM/YYYY` / `DD-MM-YYYY` date strings into canonical `YYYY-MM-DD` using vectorized string/regex operations before appending the hour suffix.
-  - Unit tests in `tests/test_ingestion.py` verify that CSV files with `DD/MM/YYYY` and `DD-MM-YYYY` dates parse into identical canonical timestamps as `YYYY/MM/DD`.
+_No pending tasks._
 
 ## 🔗 Cohesion
 
