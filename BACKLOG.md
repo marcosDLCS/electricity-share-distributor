@@ -22,7 +22,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | Task | Category | Priority |
 | :--- | :--- | :--- |
-| Extend Privacy Scanner to Inspect `.xlsx` Workbooks & `cups.json` | `Security` | `P1` |
 | Extract `WeatherService` to Decouple CLI from Ingestion Layer | `Architecture` | `P2` |
 | Vectorize `DatadisConsumptionLoader` Timestamp Normalization | `Architecture` | `P2` |
 | Unify `SupplyPoint` and `CupsConfig` Domain Models | `Cohesion` | `P2` |
@@ -75,15 +74,7 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 ## 🛡️ Security
 
-### 1. [P1] Extend Privacy Scanner to Inspect `.xlsx` Workbooks & `cups.json`
-- **Goal:** Strengthen GDPR / LOPDGDD zero-leakage guarantees in `src/security.py` by extracting local private signatures from `.input/cups/cups.json` (in addition to `.input/consumption/*.csv`) and scanning tracked/staged `.xlsx` files for non-synthetic CUPS.
-- **Target Files:** `src/security.py`, `tests/test_security.py`.
-- **Acceptance Criteria:**
-  - `get_known_private_signatures()` reads `.input/cups/cups.json` (if present) to register real CUPS suffixes as prohibited signatures.
-  - `scan_directory()` and `scan_git_staged()` inspect cell values in tracked/staged `.xlsx` files (outside `.input/`, `.output/`, `.curated/`) using `openpyxl` read-only mode.
-  - Add unit tests in `tests/test_security.py` verifying detection of non-synthetic CUPS inside mock `.xlsx` files and `cups.json`.
-
-### 2. [P3] Harden `OpenMeteoWeatherDownloader` URL Scheme & Query Encoding
+### 1. [P3] Harden `OpenMeteoWeatherDownloader` URL Scheme & Query Encoding
 - **Goal:** Prevent URL injection and insecure transport in `OpenMeteoWeatherDownloader` by validating that `base_url` uses `https://` and encoding query parameters with `urllib.parse.urlencode`.
 - **Target Files:** `src/ingestion/weather.py`, `tests/test_weather.py`.
 - **Acceptance Criteria:**
@@ -123,11 +114,3 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 - **Acceptance Criteria:**
   - Single source of truth for `MONTH_ABBR_EN` and `MONTH_ABBR_ES` with keys `"01"`..`"12"`.
   - Migrate any remaining test/internal callers to `ReportExporter` methods and delete the module-level wrapper functions in `src/presentation/export.py`.
-
-### 2. [P3] Consolidate Month Abbreviations and Remove Redundant Export Wrappers
-- **Goal:** Deduplicate `MONTH_ABBR_EN` / `MONTH_ABBR_ES` across `src/presentation/export.py` and `src/presentation/views/common.py` (removing hardcoded `"2026-01"`..`"2026-12"` entries), and remove the 8 redundant standalone wrapper functions at the bottom of `src/presentation/export.py`.
-- **Target Files:** `src/presentation/export.py`, `src/presentation/views/common.py`, `src/presentation/__init__.py`, `tests/test_export.py`.
-- **Acceptance Criteria:**
-  - Single source of truth for `MONTH_ABBR_EN` and `MONTH_ABBR_ES` with keys `"01"`..`"12"`.
-  - Migrate any remaining test/internal callers to `ReportExporter` methods and delete the module-level wrapper functions in `src/presentation/export.py`.
-

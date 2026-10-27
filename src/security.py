@@ -6,10 +6,17 @@ identifiable energy data are committed or included in tracked repository files.
 
 from __future__ import annotations
 
+import io
+import json
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+try:
+    import openpyxl
+except ImportError:  # pragma: no cover
+    openpyxl = None
 
 # Standard Spanish CUPS regex pattern: 'ES' followed by 16 digits and 2 control letters
 # or up to 22 characters including measurement point suffix.
@@ -57,7 +64,6 @@ IGNORED_EXTENSIONS: set[str] = {
     ".pyo",
     ".pyd",
     ".so",
-    ".xlsx",
     ".xls",
     ".zip",
     ".png",
@@ -70,15 +76,23 @@ IGNORED_EXTENSIONS: set[str] = {
 _CACHED_PRIVATE_SIGNATURES: set[str] | None = None
 
 
-def get_known_private_signatures(repo_root: Path | str | None = None) -> set[str]:
-    """Discover real CUPS suffixes from local .input/consumption directory if present."""
+def clear_private_signatures_cache() -> None:
+    """Clear cached private signatures for testing or re-evaluation."""
     global _CACHED_PRIVATE_SIGNATURES
-    if _CACHED_PRIVATE_SIGNATURES is not None:
+    _CACHED_PRIVATE_SIGNATURES = None
+
+
+def get_known_private_signatures(repo_root: Path | str | None = None) -> set[str]:
+    """Discover real CUPS suffixes from local .input/consumption and .input/cups/cups.json if present."""
+    global _CACHED_PRIVATE_SIGNATURES
+    if repo_root is None and _CACHED_PRIVATE_SIGNATURES is not None:
         return _CACHED_PRIVATE_SIGNATURES
 
     base = Path(repo_root) if repo_root else Path.cwd()
-    input_dir = base / ".input" / "consumption"
     signatures: set[str] = set()
+
+    # 1. Discover from .input/consumption/*.csv
+    input_dir = base / ".input" / "consumption"
     if input_dir.exists():
         for f in input_dir.glob("*.csv"):
             cups_part = f.stem.split("_")[0].upper()
@@ -89,8 +103,58 @@ def get_known_private_signatures(repo_root: Path | str | None = None) -> set[str
                     if len(suffix) >= 6:
                         signatures.add(suffix)
 
-    _CACHED_PRIVATE_SIGNATURES = signatures
-    return _CACHED_PRIVATE_SIGNATURES
+    # 2. Discover from .input/cups/cups.json (and .input/cups.json)
+    cups_candidates = [
+        base / ".input" / "cups" / "cups.json",
+        base / ".input" / "cups.json",
+    ]
+    for cups_file in cups_candidates:
+        if cups_file.exists():
+            try:
+                content = cups_file.read_text(encoding="utf-8", errors="ignore")
+                # Parse JSON structure if valid
+                try:
+                    data = json.loads(content)
+                    if isinstance(data, list):
+                        for item in data:
+                            if isinstance(item, dict) and "cups" in item:
+                                c = str(item["cups"]).strip().upper()
+                                if c.startswith("ES") and len(c) >= 20 and not is_synthetic_cups(c):
+                                    signatures.add(c)
+                                    suffix = c[8:]
+                                    if len(suffix) >= 6:
+                                        signatures.add(suffix)
+                    elif isinstance(data, dict):
+                        for k, v in data.items():
+                            for val in (k, v if isinstance(v, str) else ""):
+                                if isinstance(val, str):
+                                    c = val.strip().upper()
+                                    if (
+                                        c.startswith("ES")
+                                        and len(c) >= 20
+                                        and not is_synthetic_cups(c)
+                                    ):
+                                        signatures.add(c)
+                                        suffix = c[8:]
+                                        if len(suffix) >= 6:
+                                            signatures.add(suffix)
+                except Exception:
+                    pass
+
+                # Also regex match any CUPS patterns in the file content
+                for match in CUPS_PATTERN.findall(content):
+                    c = match.strip().upper()
+                    if not is_synthetic_cups(c):
+                        signatures.add(c)
+                        suffix = c[8:]
+                        if len(suffix) >= 6:
+                            signatures.add(suffix)
+            except Exception:
+                pass
+
+    if repo_root is None:
+        _CACHED_PRIVATE_SIGNATURES = signatures
+    return signatures
 
 
 def is_synthetic_cups(cups: str) -> bool:
@@ -150,15 +214,70 @@ def find_path_leaks(text: str) -> list[str]:
     return list(dict.fromkeys(LOCAL_PATH_PATTERN.findall(text)))
 
 
-def scan_file(file_path: Path) -> list[tuple[int, str, str]]:
-    """Scan a single text file for prohibited real CUPS identifiers or local paths.
+def scan_xlsx_file(
+    file_source: Path | str | io.BytesIO,
+    private_signatures: set[str] | None = None,
+) -> list[tuple[int, str, str]]:
+    """Scan an Excel (.xlsx) file for prohibited real CUPS identifiers or local paths.
+
+    Args:
+        file_source: File path or BytesIO buffer of an Excel workbook.
+        private_signatures: Optional set of known private CUPS signatures to detect.
+
+    Returns:
+        List of tuples: (row_number, leak, preview_text).
+    """
+    if openpyxl is None:
+        return []
+
+    if isinstance(file_source, (str, Path)):
+        path = Path(file_source)
+        if not path.is_file():
+            return []
+
+    findings: list[tuple[int, str, str]] = []
+    wb = None
+    try:
+        wb = openpyxl.load_workbook(file_source, read_only=True, data_only=True)
+        for sheet_name in wb.sheetnames:
+            sheet = wb[sheet_name]
+            for row_idx, row in enumerate(sheet.iter_rows(values_only=True), start=1):
+                for cell_val in row:
+                    if cell_val is None:
+                        continue
+                    val_str = str(cell_val)
+                    leaks = find_cups_leaks(val_str, private_signatures=private_signatures)
+                    leaks += find_path_leaks(val_str)
+                    for leak in leaks:
+                        preview = f"[{sheet_name}] Row {row_idx}: {val_str.strip()}"
+                        findings.append((row_idx, leak, preview))
+    except Exception:
+        return findings
+    finally:
+        if wb is not None:
+            try:
+                wb.close()
+            except Exception:
+                pass
+
+    return list(dict.fromkeys(findings))
+
+
+def scan_file(
+    file_path: Path, private_signatures: set[str] | None = None
+) -> list[tuple[int, str, str]]:
+    """Scan a single file (text or .xlsx) for prohibited real CUPS identifiers or local paths.
 
     Args:
         file_path: Path to the file.
+        private_signatures: Optional set of known private CUPS signatures to detect.
 
     Returns:
         List of tuples (line_number, leak, line_preview).
     """
+    if file_path.suffix.lower() == ".xlsx":
+        return scan_xlsx_file(file_path, private_signatures=private_signatures)
+
     findings: list[tuple[int, str, str]] = []
     try:
         content = file_path.read_text(encoding="utf-8", errors="ignore")
@@ -167,7 +286,7 @@ def scan_file(file_path: Path) -> list[tuple[int, str, str]]:
 
     is_sec = file_path.name in ("security.py", "test_security.py")
     for line_num, line in enumerate(content.splitlines(), start=1):
-        leaks = find_cups_leaks(line)
+        leaks = find_cups_leaks(line, private_signatures=private_signatures)
         if not is_sec:
             leaks += find_path_leaks(line)
         for leak in leaks:
@@ -175,11 +294,14 @@ def scan_file(file_path: Path) -> list[tuple[int, str, str]]:
     return findings
 
 
-def scan_directory(root_dir: Path | str) -> dict[Path, list[tuple[int, str, str]]]:
+def scan_directory(
+    root_dir: Path | str, private_signatures: set[str] | None = None
+) -> dict[Path, list[tuple[int, str, str]]]:
     """Recursively scan a directory for prohibited real CUPS identifiers.
 
     Args:
         root_dir: Root directory path.
+        private_signatures: Optional set of known private CUPS signatures to detect.
 
     Returns:
         Dictionary mapping file paths to lists of findings.
@@ -198,7 +320,7 @@ def scan_directory(root_dir: Path | str) -> dict[Path, list[tuple[int, str, str]
         if path.suffix.lower() in IGNORED_EXTENSIONS:
             continue
 
-        findings = scan_file(path)
+        findings = scan_file(path, private_signatures=private_signatures)
         if findings:
             results[path] = findings
 
@@ -268,18 +390,59 @@ def scan_git_history(repo_root: Path | str | None = None) -> list[tuple[str, str
     return findings
 
 
-def scan_git_staged(repo_root: Path | str | None = None) -> dict[str, list[tuple[int, str, str]]]:
+def scan_git_staged(
+    repo_root: Path | str | None = None,
+    private_signatures: set[str] | None = None,
+) -> dict[str, list[tuple[int, str, str]]]:
     """Scan git staged changes (index) for prohibited real CUPS identifiers or local paths before commit.
 
     Args:
         repo_root: Optional repository root path. Defaults to current working directory.
+        private_signatures: Optional set of known private CUPS signatures to detect.
 
     Returns:
         Dictionary mapping staged file names to lists of findings (line_index, leak, preview).
     """
     root = Path(repo_root) if repo_root else Path.cwd()
     findings: dict[str, list[tuple[int, str, str]]] = {}
+    sigs = (
+        private_signatures if private_signatures is not None else get_known_private_signatures(root)
+    )
 
+    # 1. Discover all staged files (excluding deleted files)
+    try:
+        staged_files_res = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=d"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        staged_files = staged_files_res.stdout.splitlines()
+    except Exception:
+        staged_files = []
+
+    # 2. Inspect staged .xlsx workbooks using openpyxl
+    for staged_file in staged_files:
+        staged_path = Path(staged_file)
+        if any(part in IGNORED_DIRS for part in staged_path.parts):
+            continue
+        if staged_path.suffix.lower() == ".xlsx":
+            show_res = subprocess.run(
+                ["git", "show", f":{staged_file}"],
+                cwd=root,
+                capture_output=True,
+                check=False,
+            )
+            xlsx_findings: list[tuple[int, str, str]] = []
+            if show_res.returncode == 0 and show_res.stdout:
+                xlsx_findings = scan_xlsx_file(io.BytesIO(show_res.stdout), private_signatures=sigs)
+            elif (root / staged_path).is_file():
+                xlsx_findings = scan_xlsx_file(root / staged_path, private_signatures=sigs)
+            if xlsx_findings:
+                findings[staged_file] = xlsx_findings
+
+    # 3. Inspect staged text diff hunks
     try:
         res = subprocess.run(
             ["git", "diff", "--cached", "-U0"],
@@ -297,6 +460,10 @@ def scan_git_staged(repo_root: Path | str | None = None) -> dict[str, list[tuple
     for line in res.stdout.splitlines():
         if line.startswith("+++ b/"):
             current_file = line[6:]
+            if any(part in IGNORED_DIRS for part in Path(current_file).parts):
+                current_file = ""
+        elif not current_file:
+            continue
         elif line.startswith("@@ "):
             # Extract hunk header line number e.g. @@ -1,4 +10,4 @@
             match = re.search(r"\+(\d+)", line)
@@ -305,7 +472,7 @@ def scan_git_staged(repo_root: Path | str | None = None) -> dict[str, list[tuple
             is_sec = current_file.endswith("security.py") or current_file.endswith(
                 "test_security.py"
             )
-            leaks = find_cups_leaks(line[1:])
+            leaks = find_cups_leaks(line[1:], private_signatures=sigs)
             if not is_sec:
                 leaks += find_path_leaks(line[1:])
             for leak in leaks:
