@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
+from src.i18n import t
 from src.optimization.efficiency import calculate_solar_efficiency
 from src.presentation.console import format_kwh
 from src.presentation.views.common import MONTH_ABBR_EN, MONTH_ABBR_ES
@@ -641,6 +642,17 @@ def generate_interactive_html_report(
         matrix_rows.append(
             f"<tr class='matrix-row' data-search='{use_val} {cups}'>{''.join(cells)}</tr>"
         )
+
+    # Build matrix table footer (TOTAL row)
+    total_cells = [
+        f"<td><span class='total-label' data-i18n='lbl_total_rd244'>{t('lbl_total_rd244', lang=active_lang)}</span></td>"
+    ]
+    for m in matrix.months:
+        month_sum_fmt = matrix.format_month_sum(m, precision=prec)
+        total_cells.append(f"<td class='text-right font-bold total-val'>{month_sum_fmt}</td>")
+    annual_sum_fmt = matrix.format_annual_sum(precision=prec)
+    total_cells.append(f"<td class='text-right font-bold total-val col-avg'>{annual_sum_fmt}</td>")
+    matrix_footer = f"<tfoot><tr>{''.join(total_cells)}</tr></tfoot>"
 
     # Matrix table header months
     month_headers = "".join(
@@ -1346,6 +1358,33 @@ def generate_interactive_html_report(
             color: var(--accent-sc);
         }}
 
+        tfoot td {{
+            padding: 0.75rem 0.65rem;
+            font-weight: 700;
+            border-top: 2px solid var(--border-subtle);
+            border-bottom: none;
+            background: rgba(255, 255, 255, 0.02);
+        }}
+
+        [data-theme="light"] tfoot td {{
+            background: rgba(0, 0, 0, 0.02);
+        }}
+
+        .total-label {{
+            font-weight: 700;
+            color: #ffffff;
+            letter-spacing: 0.02em;
+        }}
+
+        [data-theme="light"] .total-label {{
+            color: #0f172a;
+        }}
+
+        .total-val {{
+            color: var(--accent-sc);
+            font-family: var(--font-mono);
+        }}
+
         /* Heatmap cell coloring */
         .heat-dim {{ color: var(--text-dim); }}
         .heat-cyan {{ color: var(--accent-demand); background: rgba(6, 182, 212, 0.08); border-radius: 4px; }}
@@ -1587,6 +1626,7 @@ def generate_interactive_html_report(
                     <tbody>
                         {"".join(matrix_rows)}
                     </tbody>
+                    {matrix_footer}
                 </table>
             </div>
         </div>
@@ -1656,6 +1696,7 @@ def generate_interactive_html_report(
                 search_placeholder: "Buscar servicio o CUPS...",
                 col_cups: "Suministro / CUPS",
                 col_avg: "Media Anual",
+                lbl_total_rd244: "TOTAL (RD 244/2019)",
                 tip_gen: "Generación",
                 tip_dem: "Demanda",
                 tip_solar_dem: "Demanda Horas Sol",
@@ -1728,6 +1769,7 @@ def generate_interactive_html_report(
                 search_placeholder: "Search service or CUPS...",
                 col_cups: "Supply Point / CUPS",
                 col_avg: "Annual Avg",
+                lbl_total_rd244: "TOTAL (RD 244/2019)",
                 tip_gen: "Generation",
                 tip_dem: "Demand",
                 tip_solar_dem: "Solar Hours Demand",

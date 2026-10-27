@@ -594,3 +594,56 @@ def test_cli_subcommands_unified_esd_error_handling(monkeypatch: pytest.MonkeyPa
     assert res_calc.exit_code == 1
     assert "Mock calculation failure" in res_calc.output
     assert "Traceback" not in res_calc.output
+
+
+def test_cli_curate_short_flag_u_and_o(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure esd curate accepts both -u and -o for --curated-dir."""
+    from unittest.mock import MagicMock
+
+    import src.cli as cli_mod
+    from src.services.curation_service import CurationRequest, CurationService
+
+    captured_requests: list[CurationRequest] = []
+
+    def mock_curation_execute(req: CurationRequest) -> MagicMock:
+        captured_requests.append(req)
+        mock_res = MagicMock()
+        mock_res.csv_path = req.curated_dir / "curated.csv"
+        mock_res.excel_path = req.curated_dir / "curated.xlsx"
+        return mock_res
+
+    monkeypatch.setattr(CurationService, "execute", mock_curation_execute)
+    monkeypatch.setattr(cli_mod, "render_curate_summary", lambda **kwargs: None)
+
+    custom_dir_u = tmp_path / "curated_u"
+    res_u = runner.invoke(app, ["curate", "-u", str(custom_dir_u)])
+    assert res_u.exit_code == 0
+    assert captured_requests[-1].curated_dir == custom_dir_u
+
+    custom_dir_o = tmp_path / "curated_o"
+    res_o = runner.invoke(app, ["curate", "-o", str(custom_dir_o)])
+    assert res_o.exit_code == 0
+    assert captured_requests[-1].curated_dir == custom_dir_o
+
+
+def test_cli_config_modify_curated_dir(tmp_path: Path) -> None:
+    """Ensure esd config accepts --curated-dir / -u and persists curated_dir."""
+    from src.config import load_config
+
+    custom_dir = tmp_path / "test_curated"
+    res = runner.invoke(app, ["config", "-u", str(custom_dir)])
+    assert res.exit_code == 0
+    assert "curated_dir" in res.output
+    assert load_config().curated_dir == str(custom_dir)
+
+    # Reset back to default .curated
+    res_reset = runner.invoke(app, ["config", "--curated-dir", ".curated"])
+    assert res_reset.exit_code == 0
+    assert load_config().curated_dir == ".curated"
+
+
+def test_cli_config_display_includes_curated_dir() -> None:
+    """Ensure render_config_view displays curated_dir."""
+    res = runner.invoke(app, ["config"])
+    assert res.exit_code == 0
+    assert "curated_dir" in res.output

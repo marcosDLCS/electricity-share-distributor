@@ -25,25 +25,13 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 ## 📊 Prioritized Task Overview
 
-| Priority | Category | Task | Target Components |
-| :--- | :--- | :--- | :--- |
-| **P2** | `Design` | Align `--curated-dir` Short Flag (`-u`) Across `esd curate` and `esd calculate` | `src/cli.py`, `tests/test_cli.py` |
-| **P2** | `Design` | Add `TOTAL (RD 244/2019)` Summary Footer Row to HTML Report Matrix Table | `src/presentation/html_report.py`, `tests/test_export.py` |
-| **P2** | `Documentation` | Synchronize `dso` / `html` Export Formats and 1% Minimum Floor in `README.md` and Guides | `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md` |
-| **P3** | `Documentation` | Restore Missing `f_hour` Formula Block in `docs/GUIDE_ES.md` Section 4.7 | `docs/GUIDE_ES.md` |
-| **P3** | `Features` | Expose `--curated-dir` (`-u`) in `esd config` and Configuration Table View | `src/cli.py`, `src/presentation/views/common.py`, `src/i18n.py` |
+_No pending tasks._
 
 ---
 
 ## 🚀 Features
 
-### 1. [P3] Expose `--curated-dir` (`-u`) in `esd config` and Configuration Table View
-- **Goal:** Allow viewing and persisting the existing `AppConfig.curated_dir` setting via `esd config --curated-dir / -u` and display it in `render_config_view()`.
-- **Target Files:** `src/cli.py`, `src/presentation/views/common.py`, `src/i18n.py`, `tests/test_cli.py`
-- **Acceptance Criteria:**
-  - `esd config` accepts `--curated-dir` / `-u` and persists `curated_dir` to `.esd_config.json`.
-  - `render_config_view()` displays the configured `curated_dir` path alongside `consumption_dir`, `generation_dir`, and `output_dir`.
-  - Unit tests in `tests/test_cli.py` verify setting and displaying `curated_dir`.
+_No pending tasks._
 
 ## 🏗️ Architecture
 
@@ -59,18 +47,7 @@ _No pending tasks._
 
 ## 📚 Documentation
 
-### 1. [P2] Synchronize `dso` / `html` Export Formats and 1% Minimum Floor in `README.md` and Guides
-- **Goal:** Update `README.md` to list all 5 supported export formats (`csv`, `json`, `md`, `html`, `dso`) and update Section 4.6 of `docs/GUIDE_EN.md` and `docs/GUIDE_ES.md` to accurately reflect the 1% minimum floor per participating CUPS during zero-generation night hours (e.g., 99% primary / 1% secondary instead of 100% / 0%).
-- **Target Files:** `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`
-- **Acceptance Criteria:**
-  - `README.md` features and CLI examples include `html` and `dso` formats.
-  - Section 4.6 in both `docs/GUIDE_EN.md` and `docs/GUIDE_ES.md` documents the 1% (`0.01`) minimum allocation floor during zero-generation hours.
-
-### 2. [P3] Restore Missing `f_hour` Formula Block in `docs/GUIDE_ES.md` Section 4.7
-- **Goal:** Add the missing `f_hour` mathematical equation block and blank line separator at the end of Section 4.7 in `docs/GUIDE_ES.md` so it matches `docs/GUIDE_EN.md`.
-- **Target Files:** `docs/GUIDE_ES.md`
-- **Acceptance Criteria:**
-  - Section 4.7 in `docs/GUIDE_ES.md` includes the `f_hour` display formula block and proper heading separation before `### 8. Restricciones Regulatorias`.
+_No pending tasks._
 
 ## 🧹 Simplicity
 
@@ -78,16 +55,4 @@ _No pending tasks._
 
 ## 🎨 Design
 
-### 1. [P2] Align `--curated-dir` Short Flag (`-u`) Across `esd curate` and `esd calculate`
-- **Goal:** Support the `-u` short flag for `--curated-dir` in `esd curate` (while retaining `-o` as a backward-compatible alias) so CLI flags match `esd calculate` and `README.md`.
-- **Target Files:** `src/cli.py`, `tests/test_cli.py`
-- **Acceptance Criteria:**
-  - `curate_command` in `src/cli.py` accepts both `-u` and `-o` for `--curated-dir`.
-  - CLI tests in `tests/test_cli.py` verify invoking `esd curate -u <path>`.
-
-### 2. [P2] Add `TOTAL (RD 244/2019)` Summary Footer Row to HTML Report Matrix Table
-- **Goal:** Render a `<tfoot>` summary row in the Interactive HTML Report's Monthly Coefficients Matrix table (`src/presentation/html_report.py`) displaying `matrix.format_month_sum(m)` and `matrix.format_annual_sum()`, matching the Terminal, Markdown, and CSV matrix views.
-- **Target Files:** `src/presentation/html_report.py`, `tests/test_export.py`
-- **Acceptance Criteria:**
-  - `_build_matrix_table()` in `src/presentation/html_report.py` outputs a styled `<tfoot>` row with monthly and annual `100.00%` totals.
-  - Unit tests in `tests/test_export.py` assert the presence of `<tfoot>` and `100.00%` in generated HTML reports.
+_No pending tasks._

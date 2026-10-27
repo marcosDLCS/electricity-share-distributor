@@ -128,7 +128,7 @@ Las distribuidoras eléctricas rechazan de plano las tablas de coeficientes si l
 En días de tormenta, la producción solar puede caer bruscamente. Si los motores del ascensor arrancan en un momento puntual de sol débil, calcular porcentajes instantáneos en ese día le asignaría un porcentaje desproporcionado (como el 95%) que no refleja su patrón habitual.
 - El perfil diario de 24 horas (`--hourly`) calcula el patrón típico consolidado en todos los días observados.
 - Ofrece tanto el porcentaje horario real (`share_pct`) como el porcentaje estimado regulatorio (`estimated_share_pct`) conforme a la Orden TED/1247/2021.
-- **Horas nocturnas con producción exactamente cero:** En las horas nocturnas sin ninguna producción solar, se asigna siempre el 100% del reparto al CUPS principal de la instalación (y 0% al resto de servicios). Esto evita repartir cuotas ficticias de energía inexistente entre circuitos menores de alumbrado o auxiliares, garantizando a la vez una suma reglamentaria exactamente del 100%.
+- **Horas nocturnas con producción exactamente cero:** En las horas nocturnas sin ninguna producción solar, cada CUPS participante recibe un suelo regulatorio activo del 1% (o su cuota mínima configurada), asignándose el porcentaje restante al suministro principal de la instalación (p. ej. 99% principal / 1% secundario en una comunidad de dos suministros). Esto garantiza que todos los puntos participantes mantengan un coeficiente activo en los registros horarios asegurando una suma reglamentaria exactamente del 100%.
 
 ### 7. Índice de Eficiencia Solar Fotovoltaica (SEI)
 En el cálculo horario (`--hourly`), cada fila incorpora una métrica dedicada de `solar_efficiency` como un número entero sin decimales. Para las horas con generación solar activa ($G_h > 0$), proporciona un índice de **1 a 100**. Para las horas sin generación (o intervalos nocturnos), se fija en **0**.
@@ -143,6 +143,8 @@ $$\text{SEI} = \begin{cases} \text{clip}\left(\text{round}\left(100.0 \times f_{
 - **Elevación Solar Estacional ($f_{\text{season}}$):** Modela la declinación solar anual y la masa de aire atmosférica en latitudes de la Península Ibérica (36°N–43°N), alcanzando su cénit en el solsticio de verano (junio/julio ~ 1,00) y su mínimo en el de invierno (diciembre/enero ~ 0,70):
   $$f_{\text{season}} = 0.85 + 0.15 \times \cos\left(\frac{2\pi \times (m - 6.5)}{12.0}\right)$$
 - **Ángulo Cénit Diurno ($f_{\text{hour}}$):** Refleja la curva diurna de elevación solar y el ángulo de incidencia sobre paneles de cubierta con inclinación fija, alcanzando el máximo en el mediodía solar (13:00–14:00 en España) con mínimas pérdidas por reflexión de Fresnel, y reduciéndose en horas rasantes:
+  $$f_{\text{hour}} = \begin{cases} 0.70 + 0.30 \times \sin\left(\pi \times \frac{h - 6.0}{15.0}\right) & \text{si } 6 \le h \le 21 \\ 0.65 & \text{en otro caso} \end{cases}$$
+
 ### 8. Restricciones Regulatorias y Límites Estatutarios (*Estatutos de la Comunidad*)
 Los acuerdos de junta y estatutos de comunidades de propietarios a menudo establecen cuotas mínimas y máximas de reparto entre los servicios comunes:
 - **Cuota Mínima Garantizada (`--min-share`):** Garantiza que los circuitos comunes menores (ventilación de garajes, alumbrado de escaleras, ascensores) perciban un porcentaje base de energía solar (p. ej. $\beta_i \ge 0.05$ o 5%), evitando que un único suministro acapare toda la generación.
@@ -219,6 +221,9 @@ esd calculate --precision 1
 
 # Exportar únicamente el informe interactivo HTML independiente
 esd calculate --format html
+
+# Exportar únicamente los archivos oficiales para la distribuidora (CSV y TXT) según Orden TED/1247/2021
+esd calculate --format dso
 ```
 
 ---

@@ -282,6 +282,7 @@ def curate_command(
     curated_dir: Path | None = typer.Option(
         None,
         "--curated-dir",
+        "-u",
         "-o",
         help="Path to directory where curated CSV files will be written. Defaults to configured path.",
     ),
@@ -724,6 +725,12 @@ def config_command(
         "-o",
         help="Update default output directory path.",
     ),
+    curated_dir: Path | None = typer.Option(
+        None,
+        "--curated-dir",
+        "-u",
+        help="Update default curated directory path.",
+    ),
 ) -> None:
     """View or update persistent application configuration."""
     try:
@@ -765,6 +772,9 @@ def config_command(
             modified = True
         if output_dir is not None:
             cfg.output_dir = str(output_dir)
+            modified = True
+        if curated_dir is not None:
+            cfg.curated_dir = str(curated_dir)
             modified = True
 
         if modified:

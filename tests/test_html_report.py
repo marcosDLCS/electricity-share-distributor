@@ -158,6 +158,14 @@ def test_generate_interactive_html_report_structure() -> None:
     assert "setLang" in html_en
     assert "showEffTooltip" in html_en
 
+    # Matrix table summary footer
+    assert "<tfoot>" in html_en
+    assert "</tfoot>" in html_en
+    assert "TOTAL (RD 244/2019)" in html_en
+    assert "100%" in html_en
+    assert "total-label" in html_en
+    assert "total-val" in html_en
+
     # English titles & efficiency graphic
     assert "Executive Collective Solar Distribution Report" in html_en
     assert "Photovoltaic Solar Efficiency" in html_en
@@ -424,3 +432,24 @@ def test_prevision_falls_back_to_curator_when_primary_cups_none(
     assert len(called) == 1
     assert prev["primary_cups"] == "ES0021000000000001AA"
     assert prev["primary_name"] == "Fallback Aerotermia"
+
+
+def test_matrix_table_total_footer_row() -> None:
+    """Verify that matrix table contains a styled <tfoot> row with TOTAL (RD 244/2019) and 100.00%."""
+    opt_result, summary = _create_mock_optimization_result()
+    html = generate_interactive_html_report(opt_result, summary, lang="en", precision=2)
+
+    assert "<tfoot>" in html
+    assert "</tfoot>" in html
+    assert (
+        "<span class='total-label' data-i18n='lbl_total_rd244'>TOTAL (RD 244/2019)</span>" in html
+    )
+    assert "100.00%" in html
+
+    html_es = generate_interactive_html_report(opt_result, summary, lang="es", precision=2)
+    assert "<tfoot>" in html_es
+    assert (
+        "<span class='total-label' data-i18n='lbl_total_rd244'>TOTAL (RD 244/2019)</span>"
+        in html_es
+    )
+    assert "100.00%" in html_es

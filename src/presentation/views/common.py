@@ -257,6 +257,7 @@ def render_config_view(cfg: AppConfig, lang: str | None = None) -> None:
     table.add_row("consumption_dir", str(cfg.consumption_dir))
     table.add_row("generation_dir", str(cfg.generation_dir))
     table.add_row("weather_dir", str(cfg.weather_dir))
+    table.add_row("curated_dir", str(cfg.curated_dir))
     table.add_row("output_dir", str(cfg.output_dir))
     coords_val = (
         f"{cfg.latitude}, {cfg.longitude}"

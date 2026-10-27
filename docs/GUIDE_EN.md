@@ -128,7 +128,7 @@ Electrical distribution companies (DSOs) reject regulatory share filings if the 
 On cloudy or stormy days, solar production can drop to near zero. If elevator motors kick in during a momentary solar lull, calculating an instantaneous percentage would assign the elevator an absurdly high share (like 95%) that doesn't reflect typical habits.
 - The 24-hour diurnal profile (`--hourly`) calculates consolidated hourly patterns across all observed days.
 - It provides both the actual share (`share_pct`) and a cloud-resilient estimated share (`estimated_share_pct`) formatted for filing under Orden TED/1247/2021.
-- **Night Hours with Exact Zero Generation:** In night hours where solar generation is exactly zero, 100% of the share is assigned to the primary installation CUPS (and 0% to other facilities). This avoids distributing meaningless fractions of zero energy across lighting or small circuits while maintaining an exact regulatory 100% sum.
+- **Night Hours with Exact Zero Generation:** In night hours where solar generation is exactly zero, every participating CUPS receives an active regulatory floor of 1% (or its configured minimum share), with the remaining share assigned to the primary installation CUPS (e.g. 99% primary / 1% secondary for a two-supply community). This ensures every participating point retains a continuous active coefficient in hourly filings while maintaining an exact regulatory 100% sum.
 
 ### 7. Photovoltaic Solar Efficiency Index (SEI)
 In the hourly calculation (`--hourly`), each record includes a dedicated `solar_efficiency` metric as a plain integer without decimals. For hours with active solar generation ($G_h > 0$), it yields an index from **1 to 100**. For hours without generation (or nighttime intervals), it is set to **0**.
@@ -221,6 +221,9 @@ esd calculate --precision 1
 
 # Export only the standalone interactive HTML report
 esd calculate --format html
+
+# Export only official regulatory DSO coefficient files (CSV & TXT) under Orden TED/1247/2021
+esd calculate --format dso
 ```
 
 ---

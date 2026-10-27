@@ -3,7 +3,7 @@
 > Optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic self-consumption (*autoconsumo colectivo*) across shared community services in Spain under **Real Decreto 244/2019**.
 
 [![Python](https://img.shields.io/badge/Python-3.14+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.10.065-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.10.066-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-SciPy%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -31,7 +31,7 @@ It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/da
 - **📋 Annual Prevision Distribution Matrix:** Formulates a 12-month calendar schedule (Jan–Dec) for an upcoming operating year, skipping incomplete months (`—`) and pooling multi-year observations with $1/K$ energy scaling.
 - **⚖️ Strategy Benchmarking:** Evaluates `optimal` LP against `consumption_share` and `equal` ($1/N$) baselines.
 - **📊 Rich 80-Column Terminal UI:** Tabular overviews, monthly trajectories, strategy comparisons, and visual share bars formatted for 80-column terminals.
-- **📝 Multi-Format Reporting:** Timestamped exports in CSV (DSO-ready), JSON, and Markdown in `.output/`.
+- **📝 Multi-Format Reporting:** Timestamped exports in CSV, JSON, Markdown, standalone interactive HTML (`html`), and regulatory DSO flat files (`dso`) in `.output/`.
 - **🌐 Localization & Versioning:** Bilingual English/Spanish (`en`/`es`) support and automated per-commit CalVer (`YYYY.MM.NNN`).
 
 ---
@@ -144,8 +144,14 @@ esd init --lang es
 # Calculate optimal coefficients for all available data
 esd calculate
 
-# Focus on a specific month and export all reports (CSV, JSON, Markdown)
+# Focus on a specific month and export all reports (CSV, JSON, Markdown, HTML, DSO)
 esd calculate -y 2026 -m 5 -f all
+
+# Generate standalone interactive HTML report for property owners
+esd calculate -f html
+
+# Export official regulatory DSO coefficient files (CSV & TXT) under Orden TED/1247/2021
+esd calculate -f dso
 
 # Inspect comparison between LP optimization and equal allocation
 esd calculate -v comparison
@@ -199,7 +205,7 @@ esd curate --name community_data --delimiter ";"
 | :--- | :--- | :--- | :--- |
 | `--consumption-dir` | `-c` | Folder containing DATADIS hourly consumption CSVs | `.input/consumption` |
 | `--generation-dir` | `-g` | Folder containing solar inverter generation Excel files | `.input/generation` |
-| `--curated-dir` | `-u` | Folder where curated CSV and Excel files will be written | `.curated` |
+| `--curated-dir` | `-u`, `-o` | Folder where curated CSV and Excel files will be written | `.curated` |
 | `--cups-file` | `-C` | Path to `cups.json` specifying CUPS uses and primary flags | `.input/cups/cups.json` |
 | `--weather-dir` | `-w` | Folder containing Open-Meteo hourly weather CSV files | `.input/weather` |
 | `--name` | `-n` | Base filename for curated output files (without extension) | `curated` |
@@ -271,7 +277,7 @@ esd config --lang es
 esd config --latitude 40.4168 --longitude -3.7038
 
 # Update default data directories
-esd config --consumption-dir /path/to/consumption --generation-dir /path/to/generation --weather-dir /path/to/weather
+esd config --consumption-dir /path/to/consumption --generation-dir /path/to/generation --weather-dir /path/to/weather --curated-dir /path/to/curated
 ```
 
 ### `esd cleanup`
