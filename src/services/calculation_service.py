@@ -139,6 +139,9 @@ class CalculationService:
                 formats=fmt_clean,
                 lang=request.lang,
                 precision=request.precision,
+                aligned_dataset=aligned,
+                consumption_dir=request.consumption_dir,
+                year=request.year,
             )
 
         return CalculationResult(

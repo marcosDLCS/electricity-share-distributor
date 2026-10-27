@@ -522,7 +522,7 @@ def calculate_command(
         "all",
         "--format",
         "-f",
-        help="Export format: 'all', 'table' (no file export), 'csv', 'json', 'markdown', or 'html'.",
+        help="Export format: 'all', 'table' (no file export), 'csv', 'json', 'markdown', 'html', or 'dso'.",
     ),
     precision: int | None = typer.Option(
         None,

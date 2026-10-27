@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.ingestion.schema import IngestionSummary
+from src.ingestion.schema import AlignedDataset, IngestionSummary
 from src.optimization.models import (
     CommunityMonthlyMetrics,
     CupsMonthlyMetrics,
@@ -21,6 +21,7 @@ from src.presentation.export import (
     export_all,
     export_coefficients_csv,
     export_coefficients_matrix_csv,
+    export_dso_regulatory_csv,
     export_hourly_profile_matrix_csv,
     export_hourly_shares_csv,
     export_results_json,
@@ -413,3 +414,188 @@ def test_report_exporter_class(tmp_path: Path) -> None:
         assert p.exists()
         assert p.parent == out_dir
         assert p.name.startswith("20261025_120000")
+
+
+def test_export_dso_regulatory_csv_standard_year(tmp_path: Path) -> None:
+    opt_result, _ = create_dummy_optimization_result()
+    csv_path = export_dso_regulatory_csv(
+        opt_result,
+        tmp_path,
+        year=2025,
+        timestamp="20251231_235959",
+    )
+    assert csv_path.exists()
+    assert csv_path.name == "20251231_235959_esd_dso_8760h.csv"
+
+    txt_path = tmp_path / "20251231_235959_esd_dso_8760h.txt"
+    assert txt_path.exists()
+
+    df = pd.read_csv(csv_path, sep=";", decimal=",")
+    # 8760 hours * 2 CUPS = 17520 rows
+    assert len(df) == 17520
+    assert list(df.columns) == ["CUPS", "Hora", "Coeficiente"]
+
+    # Verify hour numbering is strictly 1 to 8760
+    assert df["Hora"].min() == 1
+    assert df["Hora"].max() == 8760
+
+    # Verify per-hour coefficient sum is strictly 1,000000 across all hours
+    hourly_sums = df.groupby("Hora")["Coeficiente"].sum().round(6)
+    assert (hourly_sums == 1.0).all()
+
+    # Verify May (hours ~2881 to ~3624) preserves optimized betas (0.6 and 0.4)
+    # May 1st is day 121 -> hour (120 * 24 + 1) = 2881
+    may_sample = df[df["Hora"] == 2881]
+    c1_row = may_sample[may_sample["CUPS"] == "ES0021000000000001AA"]
+    c2_row = may_sample[may_sample["CUPS"] == "ES0021000000000002BB"]
+    assert float(c1_row["Coeficiente"].iloc[0]) == 0.600000
+    assert float(c2_row["Coeficiente"].iloc[0]) == 0.400000
+
+    # Verify string representation has 6 decimals with comma separator
+    raw_lines = csv_path.read_text(encoding="utf-8").strip().splitlines()
+    assert raw_lines[0] == "CUPS;Hora;Coeficiente"
+    # Check sample lines
+    assert "ES0021000000000001AA;1;0,600000" in raw_lines
+    assert "ES0021000000000002BB;1;0,400000" in raw_lines
+
+
+def test_export_dso_regulatory_csv_leap_year(tmp_path: Path) -> None:
+    opt_result, _ = create_dummy_optimization_result()
+    csv_path = export_dso_regulatory_csv(
+        opt_result,
+        tmp_path,
+        year=2024,
+        timestamp="20241231_235959",
+    )
+    assert csv_path.exists()
+    df = pd.read_csv(csv_path, sep=";", decimal=",")
+    # 2024 is a leap year: 366 days * 24 hours * 2 CUPS = 8784 * 2 = 17568 rows
+    assert len(df) == 17568
+    assert df["Hora"].min() == 1
+    assert df["Hora"].max() == 8784
+
+    hourly_sums = df.groupby("Hora")["Coeficiente"].sum().round(6)
+    assert (hourly_sums == 1.0).all()
+
+
+def test_export_dso_estimate_missing_generation_from_consumption(tmp_path: Path) -> None:
+    cups_list = ["ES0021000000000001AA", "ES0021000000000002BB"]
+
+    # Only Month 5 has solved generation data (0.60 vs 0.40)
+    c1 = CupsMonthlyMetrics(
+        cups="ES0021000000000001AA",
+        use="Aerotermia",
+        month="05",
+        beta=0.6,
+        consumption_kwh=500.0,
+        generation_allocated_kwh=600.0,
+        self_consumed_kwh=480.0,
+        surplus_kwh=120.0,
+        grid_demand_kwh=20.0,
+        self_consumption_rate=80.0,
+        solar_coverage_rate=96.0,
+    )
+    c2 = CupsMonthlyMetrics(
+        cups="ES0021000000000002BB",
+        use="Garaje",
+        month="05",
+        beta=0.4,
+        consumption_kwh=300.0,
+        generation_allocated_kwh=400.0,
+        self_consumed_kwh=270.0,
+        surplus_kwh=130.0,
+        grid_demand_kwh=30.0,
+        self_consumption_rate=67.5,
+        solar_coverage_rate=90.0,
+    )
+    m5 = CommunityMonthlyMetrics(
+        month="05",
+        strategy=OptimizationStrategy.OPTIMAL,
+        total_generation_kwh=1000.0,
+        total_consumption_kwh=800.0,
+        total_self_consumed_kwh=750.0,
+        total_surplus_kwh=250.0,
+        total_grid_demand_kwh=50.0,
+        self_consumption_rate=75.0,
+        solar_coverage_rate=93.75,
+        beta_sum=1.0,
+        cups_metrics=[c1, c2],
+        has_data=True,
+    )
+    opt_result = OptimizationResult(
+        strategy=OptimizationStrategy.OPTIMAL,
+        monthly_results=[m5],
+        total_summary=m5,
+        cups_list=cups_list,
+    )
+
+    # In month 6 (June), generation is missing, but consumption during daylight solar hours (12:00) exists:
+    # CUPS 1 consumes 1.0 kWh, CUPS 2 consumes 3.0 kWh (share: 25% vs 75%)
+    mock_df = pd.DataFrame(
+        {
+            "ES0021000000000001AA": [1.0, 1.0, 0.0],
+            "ES0021000000000002BB": [3.0, 3.0, 0.0],
+            "generation_kwh": [0.0, 0.0, 0.0],
+        },
+        index=["2026-06-15 12:00:00", "2026-06-15 13:00:00", "2026-06-15 02:00:00"],
+    )
+    aligned_ds = AlignedDataset(
+        data=mock_df,
+        cups_list=cups_list,
+        metadata=IngestionSummary(
+            cups_count=2,
+            cups_list=cups_list,
+            start_time="2026-05-01 00:00:00",
+            end_time="2026-06-30 23:00:00",
+            total_hours=3,
+            consumption_files_loaded=2,
+            generation_files_loaded=1,
+        ),
+    )
+
+    csv_path = export_dso_regulatory_csv(
+        opt_result,
+        tmp_path,
+        aligned_dataset=aligned_ds,
+        year=2026,
+        timestamp="20260630_120000",
+    )
+    df = pd.read_csv(csv_path, sep=";", decimal=",")
+    assert len(df) == 17520
+
+    # Month 5 (hours in May): should use solved 0.60 vs 0.40
+    may_hr = 120 * 24 + 1
+    may_sample = df[df["Hora"] == may_hr]
+    assert float(may_sample[may_sample["CUPS"] == cups_list[0]]["Coeficiente"].iloc[0]) == 0.600000
+    assert float(may_sample[may_sample["CUPS"] == cups_list[1]]["Coeficiente"].iloc[0]) == 0.400000
+
+    # Month 6 (June 15): day 151 + 15 = day 166 -> hour (165 * 24 + 12) = 3972
+    june_sample = df[df["Hora"] == 3972]
+    # In June daylight hours, CUPS 1 had 25% (0.250000) and CUPS 2 had 75% (0.750000)
+    assert (
+        float(june_sample[june_sample["CUPS"] == cups_list[0]]["Coeficiente"].iloc[0]) == 0.250000
+    )
+    assert (
+        float(june_sample[june_sample["CUPS"] == cups_list[1]]["Coeficiente"].iloc[0]) == 0.750000
+    )
+
+    # Every hour across the year sums strictly to 1.000000
+    hourly_sums = df.groupby("Hora")["Coeficiente"].sum().round(6)
+    assert (hourly_sums == 1.0).all()
+
+
+def test_export_all_formats_dso(tmp_path: Path) -> None:
+    opt_result, meta = create_dummy_optimization_result()
+    exported = export_all(
+        opt_result,
+        meta,
+        tmp_path,
+        formats="dso",
+        year=2025,
+    )
+    assert len(exported) == 2
+    exts = {p.suffix for p in exported}
+    assert exts == {".csv", ".txt"}
+    for p in exported:
+        assert p.exists()
+        assert "_esd_dso_8760h" in p.name

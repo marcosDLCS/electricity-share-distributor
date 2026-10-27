@@ -230,6 +230,8 @@ Running `esd calculate` generates ready-to-use artifacts in `.output/`:
 
 | File Name | Format | Practical Purpose |
 | :--- | :--- | :--- |
+| `*_esd_dso_8760h.csv` | CSV (`;` delimited) | Official annual 8,760-hour regulatory flat file (`CUPS;Hora;Coeficiente`) for Spanish distribution system operators (i-DE, e-distribución, UFD, E-REDES) under Orden TED/1247/2021, formatted to 6 decimal places (`0,000000`) and strictly summing to `1,000000` per hour. Missing generation gaps are automatically estimated from daytime solar consumption data. |
+| `*_esd_dso_8760h.txt` | TXT (`;` delimited) | Companion submission file formatted identically to the regulatory CSV for utility portals requiring `.txt` uploads. |
 | `*_esd_interactive_report.html` | HTML (Standalone) | Offline interactive executive dashboard with dynamic bilingual ES/EN switcher, 4 primary energy KPI cards, dynamic hourly coefficient prevision (Orden TED/1247/2021), energy trajectory multi-bars, Photovoltaic Solar Efficiency Index graphic, and monthly coefficient matrix heatmap. |
 | `*_esd_coefficients_matrix.csv` | CSV (`;` delimited) | Ready-to-import spreadsheet table formatted for official submission to the electrical utility distributor (DSO). |
 | `*_esd_optimization_summary.md` | Markdown | Executive summary report including the community agreement annex ready for community board review (generates both ES and EN documents when running with `--hourly`). |

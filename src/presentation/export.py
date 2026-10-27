@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import calendar
 import json
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
-from src.ingestion.schema import IngestionSummary
+from src.ingestion.schema import AlignedDataset, IngestionSummary
 from src.optimization.models import OptimizationResult
 from src.version import get_version
 
@@ -414,6 +415,122 @@ class ReportExporter:
         df.to_csv(file_path, index=False, sep=self.delimiter, decimal=self.decimal_char)
         return file_path
 
+    def export_dso_regulatory_csv(
+        self,
+        opt_result: OptimizationResult,
+        aligned_dataset: AlignedDataset | None = None,
+        consumption_dir: Path | str | None = None,
+        year: int | None = None,
+        hourly: bool | None = None,
+        timestamp: str | None = None,
+    ) -> Path:
+        """Export standardized annual 8,760-hour regulatory flat file (Orden TED/1247/2021).
+
+        Generates official dynamic coefficient filing for Spanish distribution system
+        operators (i-DE Iberdrola, e-distribución Endesa, UFD Naturgy, E-REDES, etc.)
+        formatted with 6 decimal places (0,000000) and summing strictly to 1,000000 per hour.
+        Creates both {timestamp}_esd_dso_8760h.csv and {timestamp}_esd_dso_8760h.txt companion.
+
+        Args:
+            opt_result: Solved OptimizationResult.
+            aligned_dataset: Optional AlignedDataset with metadata and timestamps.
+            consumption_dir: Optional path to DATADIS consumption directory for gap estimation.
+            year: Calendar year for the 8,760h or 8,784h leap year schedule.
+            hourly: Whether to use 24-hour diurnal profile if available.
+            timestamp: Optional export timestamp override.
+
+        Returns:
+            Path to generated .csv file.
+        """
+        import numpy as np
+
+        from src.optimization.engine import DistributionOptimizer
+
+        target_year = year
+        if (
+            target_year is None
+            and aligned_dataset is not None
+            and aligned_dataset.metadata.start_time
+        ):
+            try:
+                target_year = int(aligned_dataset.metadata.start_time[:4])
+            except Exception:
+                target_year = None
+        if target_year is None:
+            target_year = datetime.now().year
+
+        is_leap = calendar.isleap(target_year)
+        total_hours = 8784 if is_leap else 8760
+
+        cups_list = list(opt_result.cups_list)
+        if not cups_list and aligned_dataset:
+            cups_list = list(aligned_dataset.cups_list)
+        if not cups_list and opt_result.total_summary and opt_result.total_summary.cups_metrics:
+            cups_list = [c.cups for c in opt_result.total_summary.cups_metrics]
+        if not cups_list:
+            for m in opt_result.monthly_results:
+                if m.cups_metrics:
+                    cups_list = [c.cups for c in m.cups_metrics]
+                    break
+        cups_list = sorted(cups_list)
+
+        monthly_betas = DistributionOptimizer.resolve_full_year_monthly_betas(
+            opt_result,
+            aligned_dataset=aligned_dataset,
+            consumption_dir=consumption_dir,
+            target_year=target_year,
+            precision=4,
+        )
+
+        use_hourly = (
+            hourly
+            if hourly is not None
+            else (
+                opt_result.hourly_result is not None
+                and bool(opt_result.hourly_result.profile_matrix.matrix)
+            )
+        )
+        hourly_matrix_6dec: dict[str, dict[str, float]] = {}
+        if use_hourly and opt_result.hourly_result is not None:
+            pm = opt_result.hourly_result.profile_matrix
+            for h_str in pm.hours:
+                raw_h = np.array([pm.matrix[c].get(h_str) or 0.0 for c in cups_list], dtype=float)
+                if np.sum(raw_h) > 0:
+                    rounded_h = DistributionOptimizer._round_betas(
+                        raw_h,
+                        precision=4,
+                        cups_list=cups_list,
+                        constraints=opt_result.constraints,
+                    )
+                    hourly_matrix_6dec[h_str] = {
+                        c: float(rounded_h[i]) for i, c in enumerate(cups_list)
+                    }
+
+        lines: list[str] = ["CUPS;Hora;Coeficiente"]
+        start_dt = datetime(target_year, 1, 1, 0, 0)
+        for h_idx in range(1, total_hours + 1):
+            dt = start_dt + timedelta(hours=h_idx - 1)
+            m_str = f"{dt.month:02d}"
+            h_str = f"{dt.hour:02d}"
+
+            if use_hourly and h_str in hourly_matrix_6dec:
+                betas_map = hourly_matrix_6dec[h_str]
+            else:
+                betas_map = monthly_betas.get(m_str, {})
+
+            for c in cups_list:
+                val = betas_map.get(c, 0.0)
+                val_str = f"{val:.6f}".replace(".", ",")
+                lines.append(f"{c};{h_idx};{val_str}")
+
+        ts = timestamp or self.timestamp
+        csv_file = self.output_dir / f"{ts}_esd_dso_8760h.csv"
+        txt_file = self.output_dir / f"{ts}_esd_dso_8760h.txt"
+        content = "\n".join(lines) + "\n"
+        csv_file.write_text(content, encoding="utf-8")
+        txt_file.write_text(content, encoding="utf-8")
+        return csv_file
+
     def export_results_json(
         self,
         opt_result: OptimizationResult,
@@ -705,13 +822,16 @@ class ReportExporter:
         formats: str = "all",
         lang: str | None = None,
         precision: int | None = None,
+        aligned_dataset: AlignedDataset | None = None,
+        consumption_dir: Path | str | None = None,
+        year: int | None = None,
     ) -> list[Path]:
         """Execute exports according to the specified format flag.
 
-        Supported formats: 'all', 'table', 'csv', 'json', 'markdown'.
+        Supported formats: 'all', 'table', 'csv', 'json', 'markdown', 'html', 'dso'.
         """
         fmt = formats.lower().strip()
-        if fmt == "table":
+        if fmt in ("table", "none"):
             return []
 
         exported: list[Path] = []
@@ -768,6 +888,18 @@ class ReportExporter:
                     precision=precision,
                 )
             )
+
+        if fmt in ("all", "dso"):
+            dso_csv = self.export_dso_regulatory_csv(
+                opt_result,
+                aligned_dataset=aligned_dataset,
+                consumption_dir=consumption_dir,
+                year=year,
+            )
+            exported.append(dso_csv)
+            dso_txt = self.output_dir / f"{self.timestamp}_esd_dso_8760h.txt"
+            if dso_txt.exists() and dso_txt not in exported:
+                exported.append(dso_txt)
 
         return exported
 
@@ -874,6 +1006,27 @@ def export_summary_markdown(
     )
 
 
+def export_dso_regulatory_csv(
+    opt_result: OptimizationResult,
+    output_dir: Path | str,
+    aligned_dataset: AlignedDataset | None = None,
+    consumption_dir: Path | str | None = None,
+    year: int | None = None,
+    hourly: bool | None = None,
+    timestamp: str | None = None,
+) -> Path:
+    """Export standardized annual 8,760-hour regulatory flat file (Orden TED/1247/2021)."""
+    exporter = ReportExporter(output_dir=output_dir, timestamp=timestamp)
+    return exporter.export_dso_regulatory_csv(
+        opt_result,
+        aligned_dataset=aligned_dataset,
+        consumption_dir=consumption_dir,
+        year=year,
+        hourly=hourly,
+        timestamp=timestamp,
+    )
+
+
 def export_all(
     opt_result: OptimizationResult,
     ingestion_summary: IngestionSummary,
@@ -881,6 +1034,9 @@ def export_all(
     formats: str = "all",
     lang: str | None = None,
     precision: int | None = None,
+    aligned_dataset: AlignedDataset | None = None,
+    consumption_dir: Path | str | None = None,
+    year: int | None = None,
 ) -> list[Path]:
     """Execute exports according to the specified format flag."""
     exporter = ReportExporter(output_dir=output_dir)
@@ -890,6 +1046,9 @@ def export_all(
         formats=formats,
         lang=lang,
         precision=precision,
+        aligned_dataset=aligned_dataset,
+        consumption_dir=consumption_dir,
+        year=year,
     )
 
 

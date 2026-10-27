@@ -227,13 +227,14 @@ def test_cli_calculate_export_formats(tmp_path) -> None:
     csv_files = list(out_dir.glob("*.csv"))
     json_files = list(out_dir.glob("*.json"))
     md_files = list(out_dir.glob("*.md"))
-    # Two CSVs exported: detailed metrics and consolidated matrix
-    assert len(csv_files) == 2
+    # Three CSVs exported: detailed metrics, consolidated matrix, and regulatory DSO 8760h file
+    assert len(csv_files) == 3
     assert len(json_files) == 1
     assert len(md_files) == 1
     csv_names = [f.name for f in csv_files]
     assert any("_esd_coefficients.csv" in n for n in csv_names)
     assert any("_esd_coefficients_matrix.csv" in n for n in csv_names)
+    assert any("_esd_dso_8760h.csv" in n for n in csv_names)
 
 
 def test_cli_calculate_missing_directory(tmp_path) -> None:

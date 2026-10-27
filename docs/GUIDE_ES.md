@@ -228,6 +228,8 @@ Al ejecutar `esd calculate`, se generan automáticamente los archivos en `.outpu
 
 | Nombre de Archivo | Formato | Utilidad Práctica |
 | :--- | :--- | :--- |
+| `*_esd_dso_8760h.csv` | CSV (delimitado por `;`) | Archivo plano regulatorio anual de 8.760 horas (`CUPS;Hora;Coeficiente`) para distribuidoras eléctricas españolas (i-DE, e-distribución, UFD, E-REDES) bajo la Orden TED/1247/2021, formateado con 6 decimales (`0,000000`) y suma exacta de `1,000000` por hora. Los huecos sin generación se estiman automáticamente a partir del consumo diurno solar. |
+| `*_esd_dso_8760h.txt` | TXT (delimitado por `;`) | Archivo de envío homólogo con idéntico formato que el CSV regulatorio para portales de distribuidoras que exigen la extensión `.txt`. |
 | `*_esd_interactive_report.html` | HTML (Independiente) | Cuadro de mando ejecutivo interactivo offline con selector dinámico bilingüe ES/EN, 4 tarjetas KPI principales, previsión de coeficientes horarios dinámicos (Orden TED/1247/2021), trayectoria energética multibarrita, gráfica de eficiencia solar fotovoltaica y mapa de calor de coeficientes mensuales. |
 | `*_esd_coefficients_matrix.csv` | CSV (delimitado por `;`) | Tabla en formato hoja de cálculo lista para su presentación oficial ante la compañía distribuidora de electricidad (DSO). |
 | `*_esd_optimization_summary.md` | Markdown | Informe ejecutivo completo con el anexo del acuerdo de reparto comunitario listo para la firma de la junta de propietarios (genera documentos en ES y EN al ejecutar con `--hourly`). |

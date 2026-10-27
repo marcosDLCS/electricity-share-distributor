@@ -22,7 +22,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | Task | Category | Priority |
 | :--- | :--- | :--- |
-| Official CNMC / DSO 8760-Hour Regulatory Export (`Orden TED/1247/2021`) | `Features` | `P1` |
 | Extend Privacy Scanner to Inspect `.xlsx` Workbooks & `cups.json` | `Security` | `P1` |
 | Extract `WeatherService` to Decouple CLI from Ingestion Layer | `Architecture` | `P2` |
 | Vectorize `DatadisConsumptionLoader` Timestamp Normalization | `Architecture` | `P2` |
@@ -38,13 +37,7 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 ## 🚀 Features
 
-### 1. [P1] Official CNMC / DSO 8760-Hour Regulatory Export (`Orden TED/1247/2021`)
-- **Goal:** Generate the standardized annual 8,760-hour (or 8,784-hour leap-year) flat file (`CUPS;Hora;Coeficiente` with 6 decimal places, e.g. `0,150000`) required by Spanish distribution system operators (i-DE, e-distribución, UFD) when registering collective self-consumption coefficients under Orden TED/1247/2021.
-- **Target Files:** `src/presentation/export.py`, `src/cli.py`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `tests/test_export.py`.
-- **Acceptance Criteria:**
-  - Add `ReportExporter.export_dso_regulatory_csv()` producing `{timestamp}_esd_dso_8760h.csv` (or `.txt`) mapping monthly or diurnal shares to sequential hours `1..8760` (`1..8784` on leap years).
-  - Guarantee coefficients per hour format to 6 decimals and sum to `1,000000` in every hour.
-  - Update bilingual guides and add unit tests validating hour counts and per-hour 1.000000 sums.
+*No pending tasks.*
 
 ## 🏗️ Architecture
 
