@@ -25,34 +25,131 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 ## 📊 Prioritized Task Overview
 
-*No pending tasks.*
+| Priority | Category | Task | Target Components |
+| :--- | :--- | :--- | :--- |
+| **P1** | `Simplicity` | Remove Unused Legacy Schema Constants and Unused `CupsHourlyMetrics` Model | `src/config.py`, `src/optimization/models.py`, `src/optimization/engine.py` |
+| **P1** | `Simplicity` | Consolidate Duplicate Share-Fraction Parsing into a Single Domain Helper | `src/domain/models.py`, `src/cli.py`, `src/curation/curator.py` |
+| **P1** | `Security` | Harden `OpenMeteoWeatherDownloader` Against SSRF and Unbounded Payload DoS | `src/ingestion/weather.py`, `tests/test_ingestion.py` |
+| **P1** | `Security` | Neutralize Spreadsheet Formula Injection in Exported `use` Labels | `src/presentation/export.py`, `tests/test_export.py` |
+| **P1** | `Architecture` | Vectorize Hourly Time-Series Assembly and HTML Prevision Calculation | `src/presentation/html_report.py`, `src/optimization/engine.py` |
+| **P1** | `Architecture` | Normalize Spanish `DD/MM/YYYY` and `DD-MM-YYYY` Dates in `DatadisConsumptionLoader` | `src/ingestion/consumption.py`, `tests/test_ingestion.py` |
+| **P2** | `Cohesion` | Propagate `primary_cups` on `OptimizationResult` to Eliminate Redundant Disk I/O | `src/optimization/models.py`, `src/optimization/engine.py`, `src/presentation/html_report.py` |
+| **P2** | `Cohesion` | Unify CLI Domain Exception Handling Across All Subcommands | `src/cli.py`, `tests/test_cli.py` |
+| **P2** | `Design` | Align `--curated-dir` Short Flag (`-u`) Across `esd curate` and `esd calculate` | `src/cli.py`, `tests/test_cli.py` |
+| **P2** | `Design` | Add `TOTAL (RD 244/2019)` Summary Footer Row to HTML Report Matrix Table | `src/presentation/html_report.py`, `tests/test_export.py` |
+| **P2** | `Documentation` | Synchronize `dso` / `html` Export Formats and 1% Minimum Floor in `README.md` and Guides | `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md` |
+| **P3** | `Documentation` | Restore Missing `f_hour` Formula Block in `docs/GUIDE_ES.md` Section 4.7 | `docs/GUIDE_ES.md` |
+| **P3** | `Features` | Expose `--curated-dir` (`-u`) in `esd config` and Configuration Table View | `src/cli.py`, `src/presentation/views/common.py`, `src/i18n.py` |
 
 ---
 
 ## 🚀 Features
 
-*No pending tasks.*
+### 1. [P3] Expose `--curated-dir` (`-u`) in `esd config` and Configuration Table View
+- **Goal:** Allow viewing and persisting the existing `AppConfig.curated_dir` setting via `esd config --curated-dir / -u` and display it in `render_config_view()`.
+- **Target Files:** `src/cli.py`, `src/presentation/views/common.py`, `src/i18n.py`, `tests/test_cli.py`
+- **Acceptance Criteria:**
+  - `esd config` accepts `--curated-dir` / `-u` and persists `curated_dir` to `.esd_config.json`.
+  - `render_config_view()` displays the configured `curated_dir` path alongside `consumption_dir`, `generation_dir`, and `output_dir`.
+  - Unit tests in `tests/test_cli.py` verify setting and displaying `curated_dir`.
 
 ## 🏗️ Architecture
 
-*No pending tasks.*
+### 1. [P1] Vectorize Hourly Time-Series Assembly and HTML Prevision Calculation
+- **Goal:** Eliminate slow row-by-row Python iteration in `src/presentation/html_report.py` (`_calculate_hourly_prevision` using `df.iterrows()`) and `src/optimization/engine.py` (`compute_hourly_optimization` nested timestamp/CUPS loop) using vectorized NumPy/Pandas operations.
+- **Target Files:** `src/presentation/html_report.py`, `src/optimization/engine.py`, `tests/test_export.py`, `tests/test_optimization.py`
+- **Acceptance Criteria:**
+  - `_calculate_hourly_prevision()` in `src/presentation/html_report.py` computes hourly self-consumption using vectorized Pandas/NumPy column arithmetic without `iterrows()`.
+  - `compute_hourly_optimization()` in `src/optimization/engine.py` pre-computes hourly `solar_efficiency` once per timestamp and builds `time_series_df` via vectorized array construction (`np.repeat` / `np.tile`) instead of nested `.iloc[t]` loops.
+  - Outputs remain numerically identical and all unit tests pass.
+
+### 2. [P1] Normalize Spanish `DD/MM/YYYY` and `DD-MM-YYYY` Dates in `DatadisConsumptionLoader`
+- **Goal:** Support Spanish DATADIS web portal CSV exports that format `fecha` as `DD/MM/YYYY` or `DD-MM-YYYY` in addition to `YYYY/MM/DD` and `YYYY-MM-DD`, preventing silent timestamp misalignment against solar generation series.
+- **Target Files:** `src/ingestion/consumption.py`, `tests/test_ingestion.py`
+- **Acceptance Criteria:**
+  - `DatadisConsumptionLoader.parse_file()` normalizes both `YYYY-MM-DD` / `YYYY/MM/DD` and `DD/MM/YYYY` / `DD-MM-YYYY` date strings into canonical `YYYY-MM-DD` using vectorized string/regex operations before appending the hour suffix.
+  - Unit tests in `tests/test_ingestion.py` verify that CSV files with `DD/MM/YYYY` and `DD-MM-YYYY` dates parse into identical canonical timestamps as `YYYY/MM/DD`.
 
 ## 🔗 Cohesion
 
-*No pending tasks.*
+### 1. [P2] Propagate `primary_cups` on `OptimizationResult` to Eliminate Redundant Disk I/O
+- **Goal:** Store `primary_cups: str | None = None` directly on `OptimizationResult` during optimization so `src/presentation/html_report.py` and `src/optimization/engine.py` no longer re-instantiate `DataCurator` to read `cups.json` from disk during report generation.
+- **Target Files:** `src/optimization/models.py`, `src/optimization/engine.py`, `src/presentation/html_report.py`, `tests/test_export.py`
+- **Acceptance Criteria:**
+  - `OptimizationResult` in `src/optimization/models.py` includes `primary_cups: str | None = None`, populated from `aligned_dataset.primary_cups` in `DistributionOptimizer.optimize_dataset()`.
+  - `HtmlReportGenerator` reads `result.primary_cups` directly (falling back to `cups.json` only if `None`), removing redundant disk reads during standard calculation workflows.
+  - Existing optimization and HTML export tests pass.
+
+### 2. [P2] Unify CLI Domain Exception Handling Across All Subcommands
+- **Goal:** Standardize `EsdError` handling across `init`, `doctor`, `curate`, `weather`, `calculate`, and `config` in `src/cli.py` via a shared error-reporting helper so no subcommand leaks raw tracebacks on domain errors.
+- **Target Files:** `src/cli.py`, `tests/test_cli.py`
+- **Acceptance Criteria:**
+  - `doctor_command` and all other CLI commands in `src/cli.py` catch `EsdError` consistently and format errors through a unified helper before raising `typer.Exit(code=1)`.
+  - Unit tests in `tests/test_cli.py` verify clean CLI exit (`exit_code == 1`) when `DoctorService` raises `EsdError`.
 
 ## 🛡️ Security
 
-*No pending tasks.*
+### 1. [P1] Harden `OpenMeteoWeatherDownloader` Against SSRF and Unbounded Payload DoS
+- **Goal:** Restrict `OpenMeteoWeatherDownloader` HTTP requests in `src/ingestion/weather.py` to an explicit HTTPS hostname allowlist (`archive-api.open-meteo.com`) and enforce a strict maximum response size limit (10 MB) when reading payload bytes.
+- **Target Files:** `src/ingestion/weather.py`, `tests/test_ingestion.py`
+- **Acceptance Criteria:**
+  - URL validation parses the URL with `urllib.parse.urlparse`, enforces `scheme == "https"`, and verifies `hostname` against an allowed host constant (`archive-api.open-meteo.com`), raising `IngestionError` otherwise.
+  - `response.read(MAX_RESPONSE_BYTES + 1)` enforces a 10 MB ceiling and raises `IngestionError` if exceeded.
+  - Unit tests cover untrusted host rejection and oversized payload protection.
+
+### 2. [P1] Neutralize Spreadsheet Formula Injection in Exported `use` Labels
+- **Goal:** Prevent spreadsheet formula execution (`=`, `+`, `-`, `@`, `\t`, `\r`) when user-supplied CUPS `use` descriptions from `cups.json` are exported to CSV or Excel reports.
+- **Target Files:** `src/presentation/export.py`, `tests/test_export.py`
+- **Acceptance Criteria:**
+  - A sanitization helper in `src/presentation/export.py` prefixes string cells starting with `=`, `+`, `-`, `@`, `\t`, or `\r` with a single quote (`'`) before writing CSV and Excel (`xlsx`) rows.
+  - Legitimate alphanumeric `use` descriptions remain unchanged.
+  - Unit tests in `tests/test_export.py` verify that formula-prefixed `use` strings are safely escaped in exported CSV and Excel files.
 
 ## 📚 Documentation
 
-*No pending tasks.*
+### 1. [P2] Synchronize `dso` / `html` Export Formats and 1% Minimum Floor in `README.md` and Guides
+- **Goal:** Update `README.md` to list all 5 supported export formats (`csv`, `json`, `md`, `html`, `dso`) and update Section 4.6 of `docs/GUIDE_EN.md` and `docs/GUIDE_ES.md` to accurately reflect the 1% minimum floor per participating CUPS during zero-generation night hours (e.g., 99% primary / 1% secondary instead of 100% / 0%).
+- **Target Files:** `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`
+- **Acceptance Criteria:**
+  - `README.md` features and CLI examples include `html` and `dso` formats.
+  - Section 4.6 in both `docs/GUIDE_EN.md` and `docs/GUIDE_ES.md` documents the 1% (`0.01`) minimum allocation floor during zero-generation hours.
+
+### 2. [P3] Restore Missing `f_hour` Formula Block in `docs/GUIDE_ES.md` Section 4.7
+- **Goal:** Add the missing `f_hour` mathematical equation block and blank line separator at the end of Section 4.7 in `docs/GUIDE_ES.md` so it matches `docs/GUIDE_EN.md`.
+- **Target Files:** `docs/GUIDE_ES.md`
+- **Acceptance Criteria:**
+  - Section 4.7 in `docs/GUIDE_ES.md` includes the `f_hour` display formula block and proper heading separation before `### 8. Restricciones Regulatorias`.
 
 ## 🧹 Simplicity
 
-*No pending tasks.*
+### 1. [P1] Remove Unused Legacy Schema Constants and Unused `CupsHourlyMetrics` Model
+- **Goal:** Eliminate dead schema constants in `src/config.py` (`COL_CUPS`, `COL_TIMESTAMP`, `COL_DATE`, `COL_TIME`, `COL_YEAR`, `COL_MONTH`, `COL_CONSUMPTION_KWH`, `COL_GENERATION_KWH`, `DATE_FORMATS`) and the unpopulated `CupsHourlyMetrics` dataclass and `HourlyOptimizationResult.metrics` field in `src/optimization/models.py` to keep the domain surface lean.
+- **Target Files:** `src/config.py`, `src/optimization/models.py`, `src/optimization/engine.py`
+- **Acceptance Criteria:**
+  - Unused column/date constants are removed from `src/config.py`.
+  - `CupsHourlyMetrics` and `HourlyOptimizationResult.metrics` are removed from `src/optimization/models.py` and `src/optimization/engine.py`.
+  - All existing unit and integration tests pass (`pytest`).
+
+### 2. [P1] Consolidate Duplicate Share-Fraction Parsing into a Single Domain Helper
+- **Goal:** Replace duplicate ad-hoc percentage/fraction share parsing logic in `src/cli.py` (`_parse_share`) and `src/curation/curator.py` (`load_cups_metadata`) with a single pure helper function in `src/domain/models.py`.
+- **Target Files:** `src/domain/models.py`, `src/cli.py`, `src/curation/curator.py`, `tests/test_curation.py`
+- **Acceptance Criteria:**
+  - A pure helper `parse_share_fraction(value: float | int | str | None) -> float | None` is defined in `src/domain/models.py` normalizing percentages (`> 1.0` divided by `100.0`) and validating `[0.0, 1.0]`.
+  - Both `src/cli.py` and `src/curation/curator.py` delegate share parsing to `parse_share_fraction`.
+  - Unit tests verify fraction (`0.25`), percentage (`25.0`, `"25%"`), `None`, and out-of-range inputs.
 
 ## 🎨 Design
 
-*No pending tasks.*
+### 1. [P2] Align `--curated-dir` Short Flag (`-u`) Across `esd curate` and `esd calculate`
+- **Goal:** Support the `-u` short flag for `--curated-dir` in `esd curate` (while retaining `-o` as a backward-compatible alias) so CLI flags match `esd calculate` and `README.md`.
+- **Target Files:** `src/cli.py`, `tests/test_cli.py`
+- **Acceptance Criteria:**
+  - `curate_command` in `src/cli.py` accepts both `-u` and `-o` for `--curated-dir`.
+  - CLI tests in `tests/test_cli.py` verify invoking `esd curate -u <path>`.
+
+### 2. [P2] Add `TOTAL (RD 244/2019)` Summary Footer Row to HTML Report Matrix Table
+- **Goal:** Render a `<tfoot>` summary row in the Interactive HTML Report's Monthly Coefficients Matrix table (`src/presentation/html_report.py`) displaying `matrix.format_month_sum(m)` and `matrix.format_annual_sum()`, matching the Terminal, Markdown, and CSV matrix views.
+- **Target Files:** `src/presentation/html_report.py`, `tests/test_export.py`
+- **Acceptance Criteria:**
+  - `_build_matrix_table()` in `src/presentation/html_report.py` outputs a styled `<tfoot>` row with monthly and annual `100.00%` totals.
+  - Unit tests in `tests/test_export.py` assert the presence of `<tfoot>` and `100.00%` in generated HTML reports.
