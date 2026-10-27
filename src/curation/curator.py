@@ -80,7 +80,10 @@ def dataframe_to_aligned_dataset(
         "exported_energy",
         "imported_energy",
     ):
-        if num_col in df_clean.columns and df_clean[num_col].dtype == object:
+        if num_col in df_clean.columns and (
+            pd.api.types.is_string_dtype(df_clean[num_col].dtype)
+            or df_clean[num_col].dtype == object
+        ):
             df_clean[num_col] = (
                 df_clean[num_col].astype(str).str.replace(",", ".", regex=False).str.strip()
             )

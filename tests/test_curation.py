@@ -464,6 +464,45 @@ def test_dataframe_to_aligned_dataset_validation() -> None:
         dataframe_to_aligned_dataset(bad_df)
 
 
+def test_dataframe_to_aligned_dataset_string_dtype_comma_decimals() -> None:
+    """Verify that dataframe_to_aligned_dataset converts StringDtype comma decimals properly."""
+    import pandas as pd
+
+    c1 = "ES0021000000000001AA"
+    c2 = "ES0021000000000002BB"
+    df = pd.DataFrame(
+        [
+            {
+                "timestamp": "2026-05-01 12:00:00",
+                "generation": "12,50",
+                "cups_id": c1,
+                "consumption": "3,75",
+                "use": "Aerotermia",
+                "community_demand": "8,25",
+                "self_consumption": "3,00",
+            },
+            {
+                "timestamp": "2026-05-01 12:00:00",
+                "generation": "12,50",
+                "cups_id": c2,
+                "consumption": "4,50",
+                "use": "Piscina",
+                "community_demand": "8,25",
+                "self_consumption": "0,00",
+            },
+        ]
+    )
+    for col in ("generation", "consumption", "community_demand", "self_consumption"):
+        df[col] = df[col].astype("string")
+
+    aligned = dataframe_to_aligned_dataset(df)
+    assert float(aligned.data.loc["2026-05-01 12:00:00", "generation_kwh"]) == 12.50
+    assert float(aligned.data.loc["2026-05-01 12:00:00", c1]) == 3.75
+    assert float(aligned.data.loc["2026-05-01 12:00:00", c2]) == 4.50
+    assert float(aligned.data.loc["2026-05-01 12:00:00", "community_demand"]) == 8.25
+    assert float(aligned.data.loc["2026-05-01 12:00:00", "self_consumption"]) == 3.00
+
+
 def test_data_curator_load_aligned_dataset_semicolon(tmp_path: Path) -> None:
     """Verify that load_aligned_dataset automatically detects semicolon delimiter."""
     c1 = "ES0021000000000001AA"

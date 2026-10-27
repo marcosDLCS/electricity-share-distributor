@@ -894,3 +894,130 @@ def test_resolve_full_year_monthly_betas_uses_aligned_dataset_without_disk_reloa
     assert len(resolved) == 12
     assert np.isclose(resolved["06"][cups_list[0]], 0.75)
     assert np.isclose(resolved["06"][cups_list[1]], 0.25)
+
+
+def test_hourly_vs_monthly_share_self_consumption_advantage() -> None:
+    """Regression test proving Hourly Share self-consumption is strictly greater than Monthly Share."""
+    from src.presentation.html_report import _calculate_hourly_prevision
+
+    c1 = "ES0021000000000001AA"
+    c2 = "ES0021000000000002BB"
+    cups_list = [c1, c2]
+
+    # Two hours: C1 consumes in hour 12, C2 consumes in hour 13
+    timestamps = ["2026-06-10 12:00:00", "2026-06-10 13:00:00"]
+    df = pd.DataFrame(
+        {
+            c1: [10.0, 0.0],
+            c2: [0.0, 10.0],
+            "generation_kwh": [10.0, 10.0],
+        },
+        index=timestamps,
+    )
+    dataset = AlignedDataset(
+        data=df,
+        cups_list=cups_list,
+        metadata=IngestionSummary(
+            cups_count=2,
+            cups_list=cups_list,
+            consumption_files_loaded=2,
+            generation_files_loaded=1,
+            start_time=timestamps[0],
+            end_time=timestamps[-1],
+            total_hours=2,
+        ),
+        monthly_groups={"2026-06": df},
+        cups_uses={c1: "Aerotermia", c2: "Piscina"},
+    )
+
+    opt_result = DistributionOptimizer.optimize_dataset(
+        dataset,
+        strategy=OptimizationStrategy.OPTIMAL,
+        compute_hourly=True,
+        require_full_month=False,
+    )
+
+    # Under monthly share: total consumption is 10 for C1, 10 for C2, so solver assigns 50% / 50%
+    # Hour 12: C1 gets 5 (consumed 5), C2 gets 5 (consumed 0) -> SC = 5
+    # Hour 13: C1 gets 5 (consumed 0), C2 gets 5 (consumed 5) -> SC = 5
+    # Total monthly SC = 10.0 kWh (50% of 20 kWh generation)
+    monthly_sc = opt_result.total_summary.total_self_consumed_kwh
+    assert np.isclose(monthly_sc, 10.0)
+
+    # Under dynamic hourly share:
+    # Hour 12 gives ~99% to C1, ~1% to C2 -> SC = 9.9
+    # Hour 13 gives ~1% to C1, ~99% to C2 -> SC = 9.9
+    # Total hourly SC = 19.8 kWh!
+    prev = _calculate_hourly_prevision(opt_result)
+    hourly_sc = prev["hourly_sc_kwh"]
+
+    assert hourly_sc > monthly_sc
+    assert np.isclose(hourly_sc, 19.8, atol=0.1)
+
+
+def test_optimize_dataset_partial_month_evaluated_by_default_and_solar_kpis() -> None:
+    """Verify that partial months are evaluated by default and solar-hour generation KPIs are tracked."""
+    c1 = "ES0021000000000001AA"
+    c2 = "ES0021000000000002BB"
+    cups_list = [c1, c2]
+
+    # Partial May (3 hours) and partial June (3 hours)
+    may_df = pd.DataFrame(
+        {
+            c1: [2.0, 3.0, 1.0],
+            c2: [1.0, 2.0, 0.0],
+            "generation_kwh": [0.0, 5.0, 10.0],  # 2 solar hours, 1 night hour
+        },
+        index=["2026-05-10 02:00:00", "2026-05-10 12:00:00", "2026-05-10 13:00:00"],
+    )
+    june_df = pd.DataFrame(
+        {
+            c1: [4.0, 5.0, 2.0],
+            c2: [3.0, 1.0, 0.0],
+            "generation_kwh": [0.0, 8.0, 12.0],  # 2 solar hours, 1 night hour
+        },
+        index=["2026-06-15 03:00:00", "2026-06-15 14:00:00", "2026-06-15 15:00:00"],
+    )
+    full_df = pd.concat([may_df, june_df])
+
+    dataset = AlignedDataset(
+        data=full_df,
+        cups_list=cups_list,
+        metadata=IngestionSummary(
+            cups_count=2,
+            cups_list=cups_list,
+            consumption_files_loaded=2,
+            generation_files_loaded=1,
+            start_time="2026-05-10 02:00:00",
+            end_time="2026-06-15 15:00:00",
+            total_hours=6,
+        ),
+        monthly_groups={"2026-05": may_df, "2026-06": june_df},
+    )
+
+    # Default call (require_full_month=False)
+    opt_result = DistributionOptimizer.optimize_dataset(dataset)
+
+    # May is month 05 (index 4) and June is month 06 (index 5)
+    may_res = opt_result.monthly_results[4]
+    june_res = opt_result.monthly_results[5]
+    assert may_res.has_data is True
+    assert june_res.has_data is True
+
+    # Solar-hour metrics for May
+    assert may_res.solar_hours_count == 2
+    assert np.isclose(may_res.solar_hours_generation_kwh, 15.0)  # 5 + 10
+    assert np.isclose(may_res.solar_hours_consumption_kwh, 6.0)  # (3+2) + (1+0)
+
+    # Solar-hour metrics for June
+    assert june_res.solar_hours_count == 2
+    assert np.isclose(june_res.solar_hours_generation_kwh, 20.0)  # 8 + 12
+    assert np.isclose(june_res.solar_hours_consumption_kwh, 8.0)  # (5+1) + (2+0)
+
+    # Total summary checks: exact 1:1 match with dataset sums!
+    tot = opt_result.total_summary
+    assert np.isclose(tot.total_generation_kwh, full_df["generation_kwh"].sum())  # 35.0
+    assert np.isclose(tot.total_consumption_kwh, full_df[cups_list].sum().sum())  # 18.0
+    assert tot.solar_hours_count == 4
+    assert np.isclose(tot.solar_hours_generation_kwh, 35.0)
+    assert np.isclose(tot.solar_hours_consumption_kwh, 14.0)

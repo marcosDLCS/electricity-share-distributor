@@ -356,6 +356,8 @@ class DistributionOptimizer:
 
         # Demand specifically during sunlit hours (generation > 1e-4 kWh)
         sun_mask = generation > 1e-4
+        comm_solar_hours_count = int(np.sum(sun_mask))
+        comm_solar_gen = float(np.sum(generation[sun_mask])) if np.any(sun_mask) else 0.0
         if np.any(sun_mask):
             solar_c_cups = np.sum(consumption[sun_mask], axis=0)
         else:
@@ -369,6 +371,7 @@ class DistributionOptimizer:
             surplus_kwh = float(total_surplus_cups[i])
             grid_kwh = float(total_grid_cups[i])
             solar_c_kwh = float(solar_c_cups[i])
+            solar_gen_kwh = float(comm_solar_gen * betas[i])
 
             sc_rate = (sc_kwh / alloc_kwh * 100.0) if alloc_kwh > 0 else 0.0
             cov_rate = (sc_kwh / c_kwh * 100.0) if c_kwh > 0 else 0.0
@@ -388,6 +391,7 @@ class DistributionOptimizer:
                     solar_coverage_rate=cov_rate,
                     solar_hours_consumption_kwh=solar_c_kwh,
                     solar_hours_coverage_rate=solar_cov_rate,
+                    solar_hours_generation_kwh=solar_gen_kwh,
                     use=cups_uses.get(cups, "") if cups_uses else "",
                 )
             )
@@ -418,6 +422,8 @@ class DistributionOptimizer:
             cups_metrics=cups_metrics,
             solar_hours_consumption_kwh=comm_solar_cons,
             solar_hours_coverage_rate=comm_solar_cov_rate,
+            solar_hours_generation_kwh=comm_solar_gen,
+            solar_hours_count=comm_solar_hours_count,
         )
 
     @staticmethod
@@ -455,7 +461,7 @@ class DistributionOptimizer:
         cups_list: list[str],
         strategy: OptimizationStrategy,
         precision: int,
-        require_full_month: bool = True,
+        require_full_month: bool = False,
         cups_uses: dict[str, str] | None = None,
         constraints: BylawConstraints | None = None,
     ) -> list[CommunityMonthlyMetrics]:
@@ -493,6 +499,10 @@ class DistributionOptimizer:
                         beta_sum=0.0,
                         cups_metrics=[],
                         has_data=False,
+                        solar_hours_consumption_kwh=0.0,
+                        solar_hours_coverage_rate=0.0,
+                        solar_hours_generation_kwh=0.0,
+                        solar_hours_count=0,
                     )
                 )
             elif len(complete_dfs) == 1:
@@ -528,6 +538,8 @@ class DistributionOptimizer:
                 res.total_surplus_kwh /= k
                 res.total_grid_demand_kwh /= k
                 res.solar_hours_consumption_kwh /= k
+                res.solar_hours_generation_kwh /= k
+                res.solar_hours_count = round(res.solar_hours_count / k)
                 scaled_cups: list[CupsMonthlyMetrics] = []
                 for cm in res.cups_metrics:
                     scaled_cups.append(
@@ -544,6 +556,7 @@ class DistributionOptimizer:
                             solar_coverage_rate=cm.solar_coverage_rate,
                             solar_hours_consumption_kwh=cm.solar_hours_consumption_kwh / k,
                             solar_hours_coverage_rate=cm.solar_hours_coverage_rate,
+                            solar_hours_generation_kwh=cm.solar_hours_generation_kwh / k,
                             use=cm.use,
                         )
                     )
@@ -844,7 +857,7 @@ class DistributionOptimizer:
         strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL,
         include_baselines: bool = True,
         precision: int | None = None,
-        require_full_month: bool = True,
+        require_full_month: bool = False,
         compute_hourly: bool = False,
         primary_cups: str | None = None,
         constraints: BylawConstraints | None = None,
@@ -856,7 +869,7 @@ class DistributionOptimizer:
             strategy: Primary optimization strategy.
             include_baselines: If True, also computes results for baseline strategies.
             precision: Share percentage precision (0, 1, or 2 decimals). If None, uses configured setting.
-            require_full_month: If True, skips months that do not have at least one complete month of data.
+            require_full_month: If True, skips months that do not have at least one complete month of data. Defaults to False.
             compute_hourly: If True, computes 24-hour diurnal profile and full hourly time-series balance.
             primary_cups: Optional identifier of primary CUPS.
             constraints: Optional regulatory or community bylaw constraints.
@@ -988,11 +1001,18 @@ class DistributionOptimizer:
                         grid_demand_kwh=0.0,
                         self_consumption_rate=0.0,
                         solar_coverage_rate=0.0,
+                        solar_hours_consumption_kwh=0.0,
+                        solar_hours_coverage_rate=0.0,
+                        solar_hours_generation_kwh=0.0,
                         use=cups_uses.get(c, "") if cups_uses else "",
                     )
                     for c in cups_list
                 ],
                 has_data=False,
+                solar_hours_consumption_kwh=0.0,
+                solar_hours_coverage_rate=0.0,
+                solar_hours_generation_kwh=0.0,
+                solar_hours_count=0,
             )
 
         tot_cons = sum(m.total_consumption_kwh for m in active_months)
@@ -1001,6 +1021,8 @@ class DistributionOptimizer:
         tot_surplus = sum(m.total_surplus_kwh for m in active_months)
         tot_grid = sum(m.total_grid_demand_kwh for m in active_months)
         tot_solar_cons = sum(m.solar_hours_consumption_kwh for m in active_months)
+        tot_solar_gen = sum(m.solar_hours_generation_kwh for m in active_months)
+        tot_solar_hours = sum(m.solar_hours_count for m in active_months)
 
         sc_rate = (tot_sc / tot_gen * 100.0) if tot_gen > 0 else 0.0
         cov_rate = (tot_sc / tot_cons * 100.0) if tot_cons > 0 else 0.0
@@ -1016,6 +1038,7 @@ class DistributionOptimizer:
                 "grid": 0.0,
                 "weighted_beta": 0.0,
                 "solar_cons": 0.0,
+                "solar_gen": 0.0,
             }
             for c in cups_list
         }
@@ -1031,6 +1054,7 @@ class DistributionOptimizer:
                 entry["grid"] += cm.grid_demand_kwh
                 entry["weighted_beta"] += cm.beta * m_gen
                 entry["solar_cons"] += cm.solar_hours_consumption_kwh
+                entry["solar_gen"] += cm.solar_hours_generation_kwh
 
         cups_summary_metrics: list[CupsMonthlyMetrics] = []
         for cups in cups_list:
@@ -1041,6 +1065,7 @@ class DistributionOptimizer:
             c_surplus = c_data["surplus"]
             c_grid = c_data["grid"]
             c_solar_cons = c_data["solar_cons"]
+            c_solar_gen = c_data["solar_gen"]
             avg_beta = (
                 (c_data["weighted_beta"] / tot_gen) if tot_gen > 0 else (1.0 / len(cups_list))
             )
@@ -1063,6 +1088,7 @@ class DistributionOptimizer:
                     solar_coverage_rate=c_cov_rate,
                     solar_hours_consumption_kwh=c_solar_cons,
                     solar_hours_coverage_rate=c_solar_cov_rate,
+                    solar_hours_generation_kwh=c_solar_gen,
                     use=cups_uses.get(cups, "") if cups_uses else "",
                 )
             )
@@ -1082,6 +1108,8 @@ class DistributionOptimizer:
             has_data=True,
             solar_hours_consumption_kwh=tot_solar_cons,
             solar_hours_coverage_rate=solar_cov_rate,
+            solar_hours_generation_kwh=tot_solar_gen,
+            solar_hours_count=tot_solar_hours,
         )
 
     @classmethod

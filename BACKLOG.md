@@ -27,8 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | Priority | Category | Task Title | Target Files |
 | :--- | :--- | :--- | :--- |
-| **`P1`** | `Architecture` | Fix Hourly vs. Monthly Share Calculation & Pandas 3.0 `StringDtype` Parsing Bugs | `src/optimization/engine.py`, `src/presentation/html_report.py`, `src/curation/curator.py` |
-| **`P1`** | `Architecture` | Align Evaluated Horizon With Curated Dataset Totals & Track Solar-Hour Generation KPI | `src/optimization/engine.py`, `src/optimization/models.py` |
 | **`P1`** | `Cohesion` | Unify 3-Way Self-Consumption Comparison (Current, Monthly Share, Hourly Share) in Domain Model | `src/optimization/models.py`, `src/optimization/engine.py`, `src/services/calculation_service.py` |
 | **`P2`** | `Features` | Expose Full Solar-Hours Energy Balance & 3-Way Self-Consumption KPIs in Console & HTML Reports | `src/presentation/views/summary.py`, `src/presentation/views/trajectory.py`, `src/presentation/html_report.py`, `src/i18n.py` |
 | **`P2`** | `Design` | Redesign Console & HTML Executive KPI Cards for Clear Solar-Hour & Share Modality Comparison | `src/presentation/views/summary.py`, `src/presentation/html_report.py`, `src/presentation/export.py` |
@@ -57,22 +55,7 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 ## 🏗️ Architecture
 
-### 1. `[P1]` Fix Hourly vs. Monthly Share Calculation & Pandas 3.0 `StringDtype` Parsing Bugs
-- **Goal:** Fix the mathematical and data-type bugs causing recent reports to show zero difference between Monthly Share and Hourly Share (`+0.0%`).
-- **Target Components:** `src/optimization/engine.py`, `src/presentation/html_report.py`, `src/curation/curator.py`, `tests/test_optimization.py`, `tests/test_html_report.py`.
-- **Acceptance Criteria:**
-  - Fix Pandas 3.0+ string type handling where `series.dtype == object` evaluates to `False` on `StringDtype` (`dtype == "str"`) in `src/presentation/html_report.py` (`_calculate_hourly_prevision`) and `src/curation/curator.py` (`dataframe_to_aligned_dataset`), which previously coerced `"XX%"` strings into `NaN -> 0.0` and caused `hourly_sc` to clamp to `monthly_sc`.
-  - Fix the percentage threshold bug in `_calculate_hourly_prevision` where `numeric_shares > 1.0` treated a `"1%"` floor (`1.0` after stripping `"%"`) as `beta = 1.0` ($100\%$ allocation) instead of `0.01` ($1\%$).
-  - Compute Hourly Share self-consumption directly from dynamic hourly optimal allocations ($\beta_{i,h}$ per timestamp $h$, where $\sum_i \min(C_{i,h}, \beta_{i,h} \cdot G_h) \ge \sum_i \min(C_{i,h}, \beta_{i,m} \cdot G_h)$ across every hour $h$) rather than prioritizing the static 24-hour annual profile (`estimated_share_pct`).
-  - Add regression unit tests proving that Hourly Share self-consumption is strictly greater than or equal to Monthly Share self-consumption on multi-CUPS datasets with varying hourly load profiles.
-
-### 2. `[P1]` Align Evaluated Horizon With Curated Dataset Totals & Track Solar-Hour Generation KPI
-- **Goal:** Ensure that `DistributionOptimizer` evaluates the exact timestamp horizon present in `.curated/curated.csv` so report totals match `curated.csv` without silent partial-month truncation, and track `solar_hours_generation_kwh` explicitly in the domain metrics.
-- **Target Components:** `src/optimization/engine.py`, `src/optimization/models.py`, `tests/test_optimization.py`.
-- **Acceptance Criteria:**
-  - Update `DistributionOptimizer._evaluate_calendar_months()` (`src/optimization/engine.py`) so all months present in the curated dataset contribute to `OptimizationResult.total_summary` and `monthly_results` (instead of dropping partial months via `require_full_month=True`), ensuring `total_generation_kwh` and `total_consumption_kwh` in calculated reports match the exact sums in `.curated/curated.csv`.
-  - Add `solar_hours_generation_kwh: float` (total PV generation during hours with active solar production $G_h > 0$) to `CommunityMonthlyMetrics` (`src/optimization/models.py`) alongside `solar_hours_consumption_kwh` and `solar_hours_count`.
-  - Verify with unit tests that aggregating a curated dataset into `OptimizationResult.total_summary` preserves exact total generation, total consumption, solar-hour generation, and solar-hour consumption.
+_No pending tasks._
 
 ## 🔗 Cohesion
 

@@ -35,6 +35,10 @@ class CupsMonthlyMetrics:
         grid_demand_kwh: Residual energy imported from the grid.
         self_consumption_rate: Percentage of allocated solar self-consumed.
         solar_coverage_rate: Percentage of demand satisfied by solar self-consumption.
+        solar_hours_consumption_kwh: Demand during non-zero solar PV generation hours.
+        solar_hours_coverage_rate: Coverage during non-zero solar generation hours.
+        solar_hours_generation_kwh: Share of solar PV generation allocated during solar hours.
+        use: Functional use description of the CUPS.
     """
 
     cups: str
@@ -49,6 +53,7 @@ class CupsMonthlyMetrics:
     solar_coverage_rate: float
     solar_hours_consumption_kwh: float = 0.0
     solar_hours_coverage_rate: float = 0.0
+    solar_hours_generation_kwh: float = 0.0
     use: str = ""
 
 
@@ -71,6 +76,8 @@ class CommunityMonthlyMetrics:
         has_data: True if the month contains complete data; False if skipped/no-data.
         solar_hours_consumption_kwh: Total demand during non-zero solar PV generation hours.
         solar_hours_coverage_rate: Percentage of demand during solar generation hours covered by solar.
+        solar_hours_generation_kwh: Total PV generation generated during non-zero solar hours.
+        solar_hours_count: Count of hours with active solar generation (G_h > 0).
     """
 
     month: str
@@ -87,6 +94,8 @@ class CommunityMonthlyMetrics:
     has_data: bool = True
     solar_hours_consumption_kwh: float = 0.0
     solar_hours_coverage_rate: float = 0.0
+    solar_hours_generation_kwh: float = 0.0
+    solar_hours_count: int = 0
 
 
 @dataclass

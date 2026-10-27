@@ -270,7 +270,23 @@ def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any
         )
         if target_cups is not None:
             pri_rows = df[df["cups"] == target_cups]
-            single_sc_val = float(pri_rows[["consumption_kwh", "generation_kwh"]].min(axis=1).sum())
+            pri_c = (
+                pri_rows["consumption_kwh"]
+                if "consumption_kwh" in pri_rows.columns
+                else pd.Series(0.0, index=pri_rows.index)
+            )
+            pri_g = (
+                pri_rows["generation_kwh"]
+                if "generation_kwh" in pri_rows.columns
+                else pd.Series(0.0, index=pri_rows.index)
+            )
+            if pd.api.types.is_string_dtype(pri_c.dtype) or pri_c.dtype == object:
+                pri_c = pri_c.astype(str).str.replace(",", ".", regex=False).str.strip()
+            if pd.api.types.is_string_dtype(pri_g.dtype) or pri_g.dtype == object:
+                pri_g = pri_g.astype(str).str.replace(",", ".", regex=False).str.strip()
+            pri_c_vals = pd.to_numeric(pri_c, errors="coerce").fillna(0.0).to_numpy()
+            pri_g_vals = pd.to_numeric(pri_g, errors="coerce").fillna(0.0).to_numpy()
+            single_sc_val = float(np.sum(np.minimum(pri_c_vals, pri_g_vals)))
         else:
             single_sc_val = 0.0
     else:
@@ -287,40 +303,52 @@ def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any
     if has_hourly and opt_result.hourly_result is not None:
         df = opt_result.hourly_result.time_series_df
 
-        if "estimated_share_pct" in df.columns and "share_pct" in df.columns:
-            est_s = df["estimated_share_pct"].replace("", np.nan)
+        if "share_pct" in df.columns and "estimated_share_pct" in df.columns:
+            act_s = df["share_pct"].replace("", np.nan)
             raw_shares = pd.Series(
-                np.where(est_s.notna(), est_s, df["share_pct"]),
+                np.where(act_s.notna(), act_s, df["estimated_share_pct"]),
                 index=df.index,
             )
-        elif "estimated_share_pct" in df.columns:
-            raw_shares = df["estimated_share_pct"]
         elif "share_pct" in df.columns:
             raw_shares = df["share_pct"]
+        elif "estimated_share_pct" in df.columns:
+            raw_shares = df["estimated_share_pct"]
         else:
             raw_shares = pd.Series(0.0, index=df.index)
 
         if pd.api.types.is_string_dtype(raw_shares.dtype) or raw_shares.dtype == object:
-            clean_shares = raw_shares.astype(str).str.rstrip("%").str.strip()
+            str_s = raw_shares.astype(str)
+            had_pct = str_s.str.contains("%")
+            clean_shares = str_s.str.rstrip("%").str.strip()
             numeric_shares = pd.to_numeric(clean_shares, errors="coerce").fillna(0.0).to_numpy()
+            betas = np.where(
+                had_pct.to_numpy() | (numeric_shares > 1.0),
+                numeric_shares / 100.0,
+                np.maximum(0.0, numeric_shares),
+            )
         else:
             numeric_shares = pd.to_numeric(raw_shares, errors="coerce").fillna(0.0).to_numpy()
+            betas = np.where(
+                numeric_shares > 1.0,
+                numeric_shares / 100.0,
+                np.maximum(0.0, numeric_shares),
+            )
 
-        betas = np.where(
-            numeric_shares > 1.0,
-            numeric_shares / 100.0,
-            np.maximum(0.0, numeric_shares),
-        )
-        c_vals = (
-            pd.to_numeric(df["consumption_kwh"], errors="coerce").fillna(0.0).to_numpy()
-            if "consumption_kwh" in df.columns
-            else np.zeros(len(df))
-        )
-        g_vals = (
-            pd.to_numeric(df["generation_kwh"], errors="coerce").fillna(0.0).to_numpy()
-            if "generation_kwh" in df.columns
-            else np.zeros(len(df))
-        )
+        if "consumption_kwh" in df.columns:
+            c_series = df["consumption_kwh"]
+            if pd.api.types.is_string_dtype(c_series.dtype) or c_series.dtype == object:
+                c_series = c_series.astype(str).str.replace(",", ".", regex=False).str.strip()
+            c_vals = pd.to_numeric(c_series, errors="coerce").fillna(0.0).to_numpy()
+        else:
+            c_vals = np.zeros(len(df))
+
+        if "generation_kwh" in df.columns:
+            g_series = df["generation_kwh"]
+            if pd.api.types.is_string_dtype(g_series.dtype) or g_series.dtype == object:
+                g_series = g_series.astype(str).str.replace(",", ".", regex=False).str.strip()
+            g_vals = pd.to_numeric(g_series, errors="coerce").fillna(0.0).to_numpy()
+        else:
+            g_vals = np.zeros(len(df))
 
         total_hourly_sc = float(np.sum(np.minimum(c_vals, betas * g_vals)))
         hourly_sc = round(max(0.0, min(tot_gen, min(tot_dem, total_hourly_sc))), 1)
