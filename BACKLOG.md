@@ -27,8 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | Priority | Category | Task | Target Components |
 | :--- | :--- | :--- | :--- |
-| **P1** | `Security` | Harden `OpenMeteoWeatherDownloader` Against SSRF and Unbounded Payload DoS | `src/ingestion/weather.py`, `tests/test_ingestion.py` |
-| **P1** | `Security` | Neutralize Spreadsheet Formula Injection in Exported `use` Labels | `src/presentation/export.py`, `tests/test_export.py` |
 | **P1** | `Architecture` | Vectorize Hourly Time-Series Assembly and HTML Prevision Calculation | `src/presentation/html_report.py`, `src/optimization/engine.py` |
 | **P1** | `Architecture` | Normalize Spanish `DD/MM/YYYY` and `DD-MM-YYYY` Dates in `DatadisConsumptionLoader` | `src/ingestion/consumption.py`, `tests/test_ingestion.py` |
 | **P2** | `Cohesion` | Propagate `primary_cups` on `OptimizationResult` to Eliminate Redundant Disk I/O | `src/optimization/models.py`, `src/optimization/engine.py`, `src/presentation/html_report.py` |
@@ -87,21 +85,7 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 ## 🛡️ Security
 
-### 1. [P1] Harden `OpenMeteoWeatherDownloader` Against SSRF and Unbounded Payload DoS
-- **Goal:** Restrict `OpenMeteoWeatherDownloader` HTTP requests in `src/ingestion/weather.py` to an explicit HTTPS hostname allowlist (`archive-api.open-meteo.com`) and enforce a strict maximum response size limit (10 MB) when reading payload bytes.
-- **Target Files:** `src/ingestion/weather.py`, `tests/test_ingestion.py`
-- **Acceptance Criteria:**
-  - URL validation parses the URL with `urllib.parse.urlparse`, enforces `scheme == "https"`, and verifies `hostname` against an allowed host constant (`archive-api.open-meteo.com`), raising `IngestionError` otherwise.
-  - `response.read(MAX_RESPONSE_BYTES + 1)` enforces a 10 MB ceiling and raises `IngestionError` if exceeded.
-  - Unit tests cover untrusted host rejection and oversized payload protection.
-
-### 2. [P1] Neutralize Spreadsheet Formula Injection in Exported `use` Labels
-- **Goal:** Prevent spreadsheet formula execution (`=`, `+`, `-`, `@`, `\t`, `\r`) when user-supplied CUPS `use` descriptions from `cups.json` are exported to CSV or Excel reports.
-- **Target Files:** `src/presentation/export.py`, `tests/test_export.py`
-- **Acceptance Criteria:**
-  - A sanitization helper in `src/presentation/export.py` prefixes string cells starting with `=`, `+`, `-`, `@`, `\t`, or `\r` with a single quote (`'`) before writing CSV and Excel (`xlsx`) rows.
-  - Legitimate alphanumeric `use` descriptions remain unchanged.
-  - Unit tests in `tests/test_export.py` verify that formula-prefixed `use` strings are safely escaped in exported CSV and Excel files.
+_No pending tasks._
 
 ## 📚 Documentation
 

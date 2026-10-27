@@ -17,6 +17,8 @@ from src.cli import app
 from src.config import AppConfig, load_config, save_config
 from src.ingestion.schema import IngestionError
 from src.ingestion.weather import (
+    ALLOWED_WEATHER_HOST,
+    MAX_RESPONSE_BYTES,
     WMO_WEATHER_CODES,
     OpenMeteoWeatherDownloader,
     WeatherLoader,
@@ -569,3 +571,47 @@ def test_downloader_query_encoding(tmp_path: Path) -> None:
     assert "timezone=America%2FArgentina%2FBuenos_Aires" in captured_url
     assert "latitude=40.4168" in captured_url
     assert "longitude=-3.7038" in captured_url
+
+
+def test_downloader_untrusted_host_rejection(tmp_path: Path) -> None:
+    """Initializing downloader with untrusted hostnames raises IngestionError."""
+    with pytest.raises(IngestionError, match=r"Untrusted host 'evil\.com'"):
+        OpenMeteoWeatherDownloader(weather_dir=tmp_path, base_url="https://evil.com/v1/archive")
+
+    with pytest.raises(IngestionError, match=r"Untrusted host 'localhost'"):
+        OpenMeteoWeatherDownloader(
+            weather_dir=tmp_path, base_url="https://localhost:8080/v1/archive"
+        )
+
+    with pytest.raises(IngestionError, match=r"Untrusted host '169\.254\.169\.254'"):
+        OpenMeteoWeatherDownloader(
+            weather_dir=tmp_path, base_url="https://169.254.169.254/latest/meta-data/"
+        )
+
+    # Static / class method validation
+    with pytest.raises(IngestionError, match=r"Untrusted host 'untrusted\.org'"):
+        OpenMeteoWeatherDownloader.validate_url("https://untrusted.org/v1/archive")
+
+    with pytest.raises(IngestionError, match="Only HTTPS is permitted"):
+        OpenMeteoWeatherDownloader.validate_url("http://archive-api.open-meteo.com/v1/archive")
+
+    # Valid official endpoint must pass without error
+    OpenMeteoWeatherDownloader.validate_url("https://archive-api.open-meteo.com/v1/archive")
+    assert OpenMeteoWeatherDownloader.ALLOWED_HOST == ALLOWED_WEATHER_HOST
+
+
+def test_downloader_oversized_payload_protection(tmp_path: Path) -> None:
+    """Downloader raises IngestionError when API response exceeds MAX_RESPONSE_BYTES (10 MB)."""
+    downloader = OpenMeteoWeatherDownloader(weather_dir=tmp_path)
+    mock_resp = MagicMock()
+    # Return 1 byte more than the 10 MB ceiling
+    mock_resp.read.return_value = b"x" * (MAX_RESPONSE_BYTES + 1)
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.__exit__.return_value = None
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        with pytest.raises(
+            IngestionError,
+            match=r"response exceeded maximum allowable size of 10485760 bytes \(10 MB\)",
+        ):
+            downloader.download_year(year=2024, latitude=40.4168, longitude=-3.7038)

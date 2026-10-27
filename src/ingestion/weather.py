@@ -191,10 +191,16 @@ class WeatherDownloadResult:
     overwritten: bool
 
 
+ALLOWED_WEATHER_HOST: Final[str] = "archive-api.open-meteo.com"
+MAX_RESPONSE_BYTES: Final[int] = 10 * 1024 * 1024  # 10 MB payload ceiling
+
+
 class OpenMeteoWeatherDownloader:
     """Downloads hourly historical weather data from the Open-Meteo Archive API."""
 
     DEFAULT_BASE_URL: Final[str] = "https://archive-api.open-meteo.com/v1/archive"
+    ALLOWED_HOST: Final[str] = ALLOWED_WEATHER_HOST
+    MAX_RESPONSE_BYTES: Final[int] = MAX_RESPONSE_BYTES
 
     def __init__(
         self,
@@ -203,9 +209,25 @@ class OpenMeteoWeatherDownloader:
     ) -> None:
         self.weather_dir = Path(weather_dir)
         self.base_url = base_url or self.DEFAULT_BASE_URL
-        if not self.base_url.startswith("https://"):
+        self.validate_url(self.base_url)
+
+    @classmethod
+    def validate_url(cls, url: str) -> None:
+        """Validate URL scheme and hostname against allowed HTTPS Open-Meteo endpoint.
+
+        Raises:
+            IngestionError: If the scheme is not HTTPS or the hostname is not permitted.
+        """
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme.lower() != "https":
             raise IngestionError(
-                f"Insecure or invalid URL scheme for base_url '{self.base_url}'. Only HTTPS is permitted."
+                f"Insecure or invalid URL scheme '{parsed.scheme}' for URL '{url}'. Only HTTPS is permitted."
+            )
+        hostname = (parsed.hostname or "").lower()
+        if hostname != cls.ALLOWED_HOST:
+            raise IngestionError(
+                f"Untrusted host '{hostname}' in URL '{url}'. "
+                f"Only '{cls.ALLOWED_HOST}' is permitted."
             )
 
     @staticmethod
@@ -286,6 +308,7 @@ class OpenMeteoWeatherDownloader:
             "timezone": timezone,
         }
         url = f"{self.base_url}?{urllib.parse.urlencode(query_params)}"
+        self.validate_url(url)
 
         req = urllib.request.Request(
             url,
@@ -294,12 +317,19 @@ class OpenMeteoWeatherDownloader:
 
         try:
             with urllib.request.urlopen(req, timeout=timeout_seconds) as response:
-                raw_bytes = response.read()
+                raw_bytes = response.read(self.MAX_RESPONSE_BYTES + 1)
+                if len(raw_bytes) > self.MAX_RESPONSE_BYTES:
+                    raise IngestionError(
+                        f"Open-Meteo API response exceeded maximum allowable size of "
+                        f"{self.MAX_RESPONSE_BYTES} bytes (10 MB)."
+                    )
                 data = json.loads(raw_bytes.decode("utf-8"))
+        except IngestionError:
+            raise
         except urllib.error.HTTPError as err:
             error_body = ""
             try:
-                error_body = err.read().decode("utf-8")
+                error_body = err.read(self.MAX_RESPONSE_BYTES + 1).decode("utf-8")
                 parsed_err = json.loads(error_body)
                 reason = parsed_err.get("reason", error_body)
             except Exception:

@@ -7,7 +7,7 @@ import json
 from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import pandas as pd
 
@@ -18,6 +18,26 @@ from src.version import get_version
 
 if TYPE_CHECKING:
     from src.curation.models import CuratedDataset
+
+FORMULA_INJECTION_PREFIXES: Final[tuple[str, ...]] = ("=", "+", "-", "@", "\t", "\r")
+
+
+def sanitize_formula_injection(value: Any) -> Any:
+    """Neutralize spreadsheet formula injection by prefixing risky strings with a single quote.
+
+    Prefixes string values starting with '=', '+', '-', '@', '\\t', or '\\r'
+    with a single quote ('), preventing formula execution when opened in Excel/Calc.
+    Non-string values or safe strings are returned unaltered.
+
+    Args:
+        value: Any cell value (string, float, int, None, etc.).
+
+    Returns:
+        Sanitized value safe for spreadsheet export.
+    """
+    if isinstance(value, str) and value.startswith(FORMULA_INJECTION_PREFIXES):
+        return f"'{value}"
+    return value
 
 
 def get_export_timestamp() -> str:
@@ -58,6 +78,8 @@ class ReportExporter:
         target_dir.mkdir(parents=True, exist_ok=True)
         csv_file = target_dir / f"{base_name}.csv"
         df = dataset.to_dataframe()
+        if "use" in df.columns:
+            df["use"] = df["use"].apply(sanitize_formula_injection)
         df.to_csv(
             csv_file,
             index=False,
@@ -91,6 +113,8 @@ class ReportExporter:
         excel_file = target_dir / f"{base_name}.xlsx"
 
         df = dataset.to_dataframe()
+        if "use" in df.columns:
+            df["use"] = df["use"].apply(sanitize_formula_injection)
 
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -200,6 +224,8 @@ class ReportExporter:
                     val = "✅" if bool(val) else "❌"
                 elif pd.isna(val):
                     val = None
+                elif h == "use":
+                    val = sanitize_formula_injection(val)
                 row_vals.append(val)
 
             ws.append(row_vals)
@@ -242,7 +268,7 @@ class ReportExporter:
                     {
                         "month": c.month,
                         "cups": c.cups,
-                        "use": c.use,
+                        "use": sanitize_formula_injection(c.use),
                         "beta": f"{c.beta:.4f}".replace(".", self.decimal_char),
                         "share_pct": f"{c.beta * 100:.{prec}f}".replace(".", self.decimal_char),
                         "consumption_kwh": round(c.consumption_kwh, 2),
@@ -279,7 +305,10 @@ class ReportExporter:
 
         for cups in matrix.cups_list:
             use_val = matrix.cups_uses.get(cups, "") if hasattr(matrix, "cups_uses") else ""
-            row_dict: dict[str, object] = {"cups": cups, "use": use_val}
+            row_dict: dict[str, object] = {
+                "cups": cups,
+                "use": sanitize_formula_injection(use_val),
+            }
             for m in matrix.months:
                 row_dict[m] = matrix.format_cell(cups, m, precision=prec).replace(
                     ".", self.decimal_char
@@ -318,6 +347,8 @@ class ReportExporter:
 
         df = opt_result.hourly_result.time_series_df.copy()
         if not df.empty:
+            if "use" in df.columns:
+                df["use"] = df["use"].apply(sanitize_formula_injection)
             sort_cols = [c for c in ["timestamp", "use", "cups"] if c in df.columns]
             df = df.sort_values(
                 by=sort_cols,
@@ -353,7 +384,10 @@ class ReportExporter:
 
         for cups in matrix.cups_list:
             use_val = matrix.cups_uses.get(cups, "") if hasattr(matrix, "cups_uses") else ""
-            row_dict: dict[str, object] = {"cups": cups, "use": use_val}
+            row_dict: dict[str, object] = {
+                "cups": cups,
+                "use": sanitize_formula_injection(use_val),
+            }
             for h_str in matrix.hours:
                 row_dict[h_str] = matrix.format_cell(cups, h_str, precision=prec).replace(
                     ".", self.decimal_char

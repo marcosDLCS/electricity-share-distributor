@@ -16,7 +16,11 @@ from src.optimization.models import (
     OptimizationResult,
     OptimizationStrategy,
 )
-from src.presentation.export import ReportExporter
+from src.presentation.export import (
+    FORMULA_INJECTION_PREFIXES,
+    ReportExporter,
+    sanitize_formula_injection,
+)
 from src.presentation.views.common import MONTH_ABBR_EN, MONTH_ABBR_ES, format_month_abbr
 
 
@@ -644,3 +648,252 @@ def test_month_abbr_consolidation_and_formatter() -> None:
         assert format_month_abbr(i, lang="es") == expected_es[i - 1]
         assert format_month_abbr(f"2026-{k}", lang="en") == expected_en[i - 1]
         assert format_month_abbr(f"2026-{k}", lang="es") == expected_es[i - 1]
+
+
+def test_sanitize_formula_injection_helper() -> None:
+    """sanitize_formula_injection escapes dangerous spreadsheet prefixes while preserving safe values."""
+    # Formula prefixes: =, +, -, @, \t, \r
+    assert sanitize_formula_injection("=SUM(1,2)") == "'=SUM(1,2)"
+    assert sanitize_formula_injection("+cmd|' /C calc'!A0") == "'+cmd|' /C calc'!A0"
+    assert sanitize_formula_injection("-MinusUse") == "'-MinusUse"
+    assert sanitize_formula_injection("@SUM(A1:A10)") == "'@SUM(A1:A10)"
+    assert sanitize_formula_injection("\tTabbed") == "'\tTabbed"
+    assert sanitize_formula_injection("\rCarriage") == "'\rCarriage"
+
+    # Legitimate alphanumeric descriptions remain unaltered
+    assert sanitize_formula_injection("Aerotermia") == "Aerotermia"
+    assert sanitize_formula_injection("Garaje") == "Garaje"
+    assert sanitize_formula_injection("Community Lighting") == "Community Lighting"
+    assert sanitize_formula_injection("Ascensor 1") == "Ascensor 1"
+    assert sanitize_formula_injection("") == ""
+
+    # Non-string types are returned unchanged
+    assert sanitize_formula_injection(None) is None
+    assert sanitize_formula_injection(123) == 123
+    assert sanitize_formula_injection(45.67) == 45.67
+    assert sanitize_formula_injection(True) is True
+
+    # Verify prefix constant tuple completeness
+    assert set(FORMULA_INJECTION_PREFIXES) == {"=", "+", "-", "@", "\t", "\r"}
+
+
+def test_formula_injection_neutralized_in_coefficients_and_matrix_csv(tmp_path: Path) -> None:
+    """Coefficients and matrix CSV exports prefix formula-starting use labels with single quote."""
+    c1 = CupsMonthlyMetrics(
+        cups="ES0021000000000001AA",
+        use="=2+2",
+        month="2026-05",
+        beta=0.6,
+        consumption_kwh=500.0,
+        generation_allocated_kwh=600.0,
+        self_consumed_kwh=480.0,
+        surplus_kwh=120.0,
+        grid_demand_kwh=20.0,
+        self_consumption_rate=80.0,
+        solar_coverage_rate=96.0,
+    )
+    c2 = CupsMonthlyMetrics(
+        cups="ES0021000000000002BB",
+        use="@SUM(B1:B10)",
+        month="2026-05",
+        beta=0.4,
+        consumption_kwh=300.0,
+        generation_allocated_kwh=400.0,
+        self_consumed_kwh=270.0,
+        surplus_kwh=130.0,
+        grid_demand_kwh=30.0,
+        self_consumption_rate=67.5,
+        solar_coverage_rate=90.0,
+    )
+    m1 = CommunityMonthlyMetrics(
+        month="2026-05",
+        strategy=OptimizationStrategy.OPTIMAL,
+        total_generation_kwh=1000.0,
+        total_consumption_kwh=800.0,
+        total_self_consumed_kwh=750.0,
+        total_surplus_kwh=250.0,
+        total_grid_demand_kwh=50.0,
+        self_consumption_rate=75.0,
+        solar_coverage_rate=93.75,
+        beta_sum=1.0,
+        cups_metrics=[c1, c2],
+    )
+
+    result = OptimizationResult(
+        strategy=OptimizationStrategy.OPTIMAL,
+        monthly_results=[m1],
+        total_summary=m1,
+        baselines={},
+        cups_uses={"ES0021000000000001AA": "=2+2", "ES0021000000000002BB": "@SUM(B1:B10)"},
+    )
+
+    exporter = ReportExporter(output_dir=tmp_path, timestamp="20260531_test")
+
+    # 1. Test export_coefficients_csv
+    coef_csv = exporter.export_coefficients_csv(result)
+    raw_text = coef_csv.read_text(encoding="utf-8")
+    assert "'=2+2" in raw_text
+    assert "'@SUM(B1:B10)" in raw_text
+
+    df_coef = pd.read_csv(coef_csv, sep=";", decimal=",")
+    assert df_coef["use"].tolist() == ["'=2+2", "'@SUM(B1:B10)"]
+
+    # 2. Test export_coefficients_matrix_csv
+    matrix_csv = exporter.export_coefficients_matrix_csv(result)
+    raw_matrix_text = matrix_csv.read_text(encoding="utf-8")
+    assert "'=2+2" in raw_matrix_text
+    assert "'@SUM(B1:B10)" in raw_matrix_text
+    assert ";TOTAL;TOTAL;" in raw_matrix_text or ";TOTAL;" in raw_matrix_text
+
+    df_matrix = pd.read_csv(matrix_csv, sep=";", decimal=",")
+    assert df_matrix[df_matrix["cups"] == "ES0021000000000001AA"]["use"].iloc[0] == "'=2+2"
+    assert df_matrix[df_matrix["cups"] == "ES0021000000000002BB"]["use"].iloc[0] == "'@SUM(B1:B10)"
+    assert df_matrix[df_matrix["cups"] == "TOTAL"]["use"].iloc[0] == "TOTAL"
+
+
+def test_formula_injection_neutralized_in_hourly_shares_and_profile_csv(tmp_path: Path) -> None:
+    """Hourly shares and diurnal profile CSV exports escape formula-prefixed use values."""
+    time_series_df = pd.DataFrame(
+        [
+            {
+                "timestamp": "2026-05-01 12:00:00",
+                "cups": "ES0021000000000001AA",
+                "use": "+cmd|' /C calc'!A0",
+                "share_pct": "60.00",
+                "estimated_share_pct": "60.00",
+            },
+            {
+                "timestamp": "2026-05-01 12:00:00",
+                "cups": "ES0021000000000002BB",
+                "use": "Normal Use",
+                "share_pct": "40.00",
+                "estimated_share_pct": "40.00",
+            },
+        ]
+    )
+
+    profile_matrix = HourlyProfileMatrix(
+        hours=[f"{h:02d}" for h in range(24)],
+        cups_list=["ES0021000000000001AA", "ES0021000000000002BB"],
+        matrix={"ES0021000000000001AA": {"12": 0.6}, "ES0021000000000002BB": {"12": 0.4}},
+        hourly_sums={"12": 1.0},
+        average_shares={"ES0021000000000001AA": 0.6, "ES0021000000000002BB": 0.4},
+        average_sum=1.0,
+        cups_uses={"ES0021000000000001AA": "-MinusFormula", "ES0021000000000002BB": "Normal Use"},
+    )
+
+    hourly_result = HourlyOptimizationResult(
+        time_series_df=time_series_df,
+        profile_matrix=profile_matrix,
+    )
+
+    result = OptimizationResult(
+        strategy=OptimizationStrategy.OPTIMAL,
+        monthly_results=[],
+        total_summary=None,
+        baselines={},
+        hourly_result=hourly_result,
+        cups_uses=profile_matrix.cups_uses,
+    )
+
+    exporter = ReportExporter(output_dir=tmp_path, timestamp="20260531_hourly")
+
+    # 1. Hourly shares CSV
+    shares_csv = exporter.export_hourly_shares_csv(result)
+    df_shares = pd.read_csv(shares_csv, sep=";")
+    assert (
+        df_shares[df_shares["cups"] == "ES0021000000000001AA"]["use"].iloc[0]
+        == "'+cmd|' /C calc'!A0"
+    )
+    assert df_shares[df_shares["cups"] == "ES0021000000000002BB"]["use"].iloc[0] == "Normal Use"
+
+    # 2. Hourly profile matrix CSV
+    profile_csv = exporter.export_hourly_profile_matrix_csv(result)
+    df_profile = pd.read_csv(profile_csv, sep=";")
+    assert (
+        df_profile[df_profile["cups"] == "ES0021000000000001AA"]["use"].iloc[0] == "'-MinusFormula"
+    )
+    assert df_profile[df_profile["cups"] == "ES0021000000000002BB"]["use"].iloc[0] == "Normal Use"
+    assert df_profile[df_profile["cups"] == "TOTAL"]["use"].iloc[0] == "TOTAL"
+
+
+def test_formula_injection_neutralized_in_curated_csv_and_excel(tmp_path: Path) -> None:
+    """Curated CSV and Excel exports escape formula injection in the use column."""
+    import openpyxl
+
+    from src.curation.models import (
+        CuratedCupsReading,
+        CuratedDataset,
+        CuratedHourRecord,
+        CuratedSummary,
+    )
+
+    rec = CuratedHourRecord(
+        timestamp="2026-05-01 12:00:00",
+        date="2026-05-01",
+        hour="12:00",
+        generation=15.0,
+        self_consumption=10.0,
+        hourly_self_consumption=10.0,
+        exported_energy=5.0,
+        imported_energy=0.0,
+        cups=[
+            CuratedCupsReading(
+                id="ES0021000000000001AA",
+                use="=1+1",
+                consumption=6.0,
+            ),
+            CuratedCupsReading(
+                id="ES0021000000000002BB",
+                use="Aerotermia",
+                consumption=4.0,
+            ),
+        ],
+    )
+
+    dataset = CuratedDataset(
+        records=[rec],
+        summary=CuratedSummary(
+            total_hours=1,
+            reconciled_hours_count=0,
+            recovered_kwh=0.0,
+            total_generation_kwh=15.0,
+            total_consumption_kwh=10.0,
+            start_time="2026-05-01 12:00:00",
+            end_time="2026-05-01 12:00:00",
+            cups_count=2,
+            primary_cups="ES0021000000000001AA",
+        ),
+        cups_configs={},
+    )
+
+    exporter = ReportExporter(output_dir=tmp_path, timestamp="20260531_curated")
+
+    # 1. Curated CSV export
+    csv_file = exporter.export_curated_dataset(dataset)
+    raw_csv = csv_file.read_text(encoding="utf-8")
+    assert "'=1+1" in raw_csv
+    assert "Aerotermia" in raw_csv
+
+    df_csv = pd.read_csv(csv_file, sep=";", decimal=",")
+    assert df_csv[df_csv["cups_id"] == "ES0021000000000001AA"]["use"].iloc[0] == "'=1+1"
+    assert df_csv[df_csv["cups_id"] == "ES0021000000000002BB"]["use"].iloc[0] == "Aerotermia"
+
+    # 2. Curated Excel export
+    excel_file = exporter.export_curated_excel(dataset)
+    assert excel_file.exists()
+
+    wb = openpyxl.load_workbook(excel_file)
+    ws = wb.active
+    assert ws is not None
+
+    headers = [cell.value for cell in ws[1]]
+    use_col_idx = headers.index("use") + 1
+
+    # Row 2 (first CUPS reading) has '=1+1 escaped with single quote
+    val_row2 = ws.cell(row=2, column=use_col_idx).value
+    assert val_row2 == "'=1+1"
+
+    # Row 3 (second CUPS reading) has Aerotermia unescaped
+    val_row3 = ws.cell(row=3, column=use_col_idx).value
+    assert val_row3 == "Aerotermia"

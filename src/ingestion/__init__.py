@@ -14,6 +14,8 @@ from src.ingestion.schema import (
     ValidationError,
 )
 from src.ingestion.weather import (
+    ALLOWED_WEATHER_HOST,
+    MAX_RESPONSE_BYTES,
     WMO_WEATHER_CODES,
     OpenMeteoWeatherDownloader,
     WeatherDownloadResult,
@@ -25,6 +27,8 @@ from src.ingestion.weather import (
 )
 
 __all__ = [
+    "ALLOWED_WEATHER_HOST",
+    "MAX_RESPONSE_BYTES",
     "WMO_WEATHER_CODES",
     "AlignedDataset",
     "AlignmentError",

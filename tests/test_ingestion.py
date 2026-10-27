@@ -10,6 +10,11 @@ import pytest
 from src.ingestion.consumption import DatadisConsumptionLoader
 from src.ingestion.generation import HuaweiGenerationLoader
 from src.ingestion.schema import IngestionError, ValidationError
+from src.ingestion.weather import (
+    ALLOWED_WEATHER_HOST,
+    MAX_RESPONSE_BYTES,
+    OpenMeteoWeatherDownloader,
+)
 
 
 def create_mock_datadis_csv(
@@ -254,3 +259,32 @@ def test_generation_loader_with_autoconsumo(tmp_path: Path) -> None:
     assert df["self_consumption_kwh"].iloc[0] == 7.5
     assert df["exported_energy_kwh"].iloc[0] == 3.0
     assert df["imported_energy_kwh"].iloc[0] == 0.5
+
+
+def test_weather_downloader_security_host_and_payload_limits(tmp_path: Path) -> None:
+    """OpenMeteoWeatherDownloader enforces HTTPS, trusted hostname, and 10 MB payload limits."""
+    from unittest.mock import MagicMock, patch
+
+    # Insecure scheme rejected
+    with pytest.raises(IngestionError, match="Only HTTPS is permitted"):
+        OpenMeteoWeatherDownloader.validate_url("http://archive-api.open-meteo.com/v1/archive")
+
+    # SSRF untrusted host rejected
+    with pytest.raises(IngestionError, match=r"Untrusted host 'attacker\.com'"):
+        OpenMeteoWeatherDownloader(weather_dir=tmp_path, base_url="https://attacker.com/v1/archive")
+
+    # Official endpoint accepted
+    OpenMeteoWeatherDownloader.validate_url(
+        f"https://{ALLOWED_WEATHER_HOST}/v1/archive?latitude=40.4&longitude=-3.7"
+    )
+
+    # Oversized payload rejected (> 10 MB)
+    downloader = OpenMeteoWeatherDownloader(weather_dir=tmp_path)
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = b"A" * (MAX_RESPONSE_BYTES + 1)
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.__exit__.return_value = None
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        with pytest.raises(IngestionError, match="exceeded maximum allowable size"):
+            downloader.download_year(year=2024, latitude=40.4168, longitude=-3.7038)
