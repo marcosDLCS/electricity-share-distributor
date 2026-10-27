@@ -11,7 +11,7 @@ from src.optimization.models import (
     OptimizationResult,
     OptimizationStrategy,
 )
-from src.presentation.export import ReportExporter, export_interactive_html
+from src.presentation.export import ReportExporter
 from src.presentation.html_report import generate_interactive_html_report
 
 
@@ -312,8 +312,8 @@ def test_export_interactive_html_file(tmp_path: Path) -> None:
     exported_all = exporter.export_all(opt_result, summary, formats="all")
     assert any(p.suffix == ".html" for p in exported_all)
 
-    # 4. Standalone export function
-    p_standalone = export_interactive_html(
-        opt_result, summary, output_dir=tmp_path, timestamp="20261025_150001"
-    )
-    assert p_standalone.exists()
+    # 4. Custom timestamp exporter
+    p_custom = ReportExporter(
+        output_dir=tmp_path, timestamp="20261025_150001"
+    ).export_interactive_html(opt_result, summary)
+    assert p_custom.exists()

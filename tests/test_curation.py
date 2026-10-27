@@ -266,7 +266,6 @@ def test_curation_exports_csv(tmp_path: Path) -> None:
     assert csv_path.name == "reconciliation.csv"
     assert not (curated_dir / "reconciliation.json").exists()
     assert (curated_dir / "reconciliation.xlsx").exists()
-    assert (curated_dir / "reconciliation.xslx").exists()
 
     # Validate compatible CSV header and contents
     csv_lines = csv_path.read_text(encoding="utf-8").strip().splitlines()
@@ -1189,7 +1188,6 @@ def test_curation_exports_styled_excel(tmp_path: Path) -> None:
 
     assert excel_path.exists()
     assert excel_path.name == "test_curated.xlsx"
-    assert (curated_dir / "test_curated.xslx").exists()
 
     wb = openpyxl.load_workbook(excel_path)
     ws = wb.active

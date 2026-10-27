@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import date
@@ -25,6 +26,35 @@ def format_weather_filename(year: int, latitude: float, longitude: float) -> str
     lat_str = f"{latitude:.4f}".rstrip("0").rstrip(".") or "0"
     lon_str = f"{longitude:.4f}".rstrip("0").rstrip(".") or "0"
     return f"{year}_{lat_str}_{lon_str}_weather.csv"
+
+
+def parse_coordinate_pair(item: dict[str, Any]) -> tuple[float, float] | None:
+    """Extract and validate a (latitude, longitude) pair from a dictionary.
+
+    Supports alternate keys for latitude ('lat', 'latitude', 'latitud') and
+    longitude ('long', 'lon', 'lng', 'longitude', 'longitud').
+    Returns (latitude, longitude) if valid, or None if missing or outside standard bounds (-90..90, -180..180).
+    """
+    raw_lat = item.get("lat") or item.get("latitude") or item.get("latitud")
+    raw_lon = (
+        item.get("long")
+        or item.get("lon")
+        or item.get("lng")
+        or item.get("longitude")
+        or item.get("longitud")
+    )
+    if raw_lat is None or raw_lon is None:
+        return None
+    try:
+        lat_val = float(raw_lat)
+        lon_val = float(raw_lon)
+    except ValueError, TypeError:
+        return None
+
+    if not (-90.0 <= lat_val <= 90.0) or not (-180.0 <= lon_val <= 180.0):
+        return None
+
+    return (lat_val, lon_val)
 
 
 def extract_coordinates_from_cups_data(
@@ -58,27 +88,11 @@ def extract_coordinates_from_cups_data(
         if not isinstance(item, dict):
             continue
 
-        raw_lat = item.get("lat") or item.get("latitude") or item.get("latitud")
-        raw_lon = (
-            item.get("long")
-            or item.get("lon")
-            or item.get("lng")
-            or item.get("longitude")
-            or item.get("longitud")
-        )
-
-        if raw_lat is None or raw_lon is None:
+        coords = parse_coordinate_pair(item)
+        if coords is None:
             continue
 
-        try:
-            lat_val = float(raw_lat)
-            lon_val = float(raw_lon)
-        except ValueError, TypeError:
-            continue
-
-        if not (-90.0 <= lat_val <= 90.0) or not (-180.0 <= lon_val <= 180.0):
-            continue
-
+        lat_val, lon_val = coords
         rounded_coord = (round(lat_val, precision), round(lon_val, precision))
         if rounded_coord not in seen:
             seen.add(rounded_coord)
@@ -189,6 +203,10 @@ class OpenMeteoWeatherDownloader:
     ) -> None:
         self.weather_dir = Path(weather_dir)
         self.base_url = base_url or self.DEFAULT_BASE_URL
+        if not self.base_url.startswith("https://"):
+            raise IngestionError(
+                f"Insecure or invalid URL scheme for base_url '{self.base_url}'. Only HTTPS is permitted."
+            )
 
     @staticmethod
     def validate_coordinates(latitude: float, longitude: float) -> None:
@@ -259,13 +277,15 @@ class OpenMeteoWeatherDownloader:
         self.validate_coordinates(latitude, longitude)
         start_date, end_date = self.validate_year(year)
 
-        url = (
-            f"{self.base_url}"
-            f"?latitude={latitude}&longitude={longitude}"
-            f"&start_date={start_date}&end_date={end_date}"
-            f"&hourly=temperature_2m,cloud_cover,weather_code"
-            f"&timezone={timezone}"
-        )
+        query_params = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "start_date": start_date,
+            "end_date": end_date,
+            "hourly": "temperature_2m,cloud_cover,weather_code",
+            "timezone": timezone,
+        }
+        url = f"{self.base_url}?{urllib.parse.urlencode(query_params)}"
 
         req = urllib.request.Request(
             url,

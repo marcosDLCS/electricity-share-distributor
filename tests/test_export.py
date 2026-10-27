@@ -16,17 +16,8 @@ from src.optimization.models import (
     OptimizationResult,
     OptimizationStrategy,
 )
-from src.presentation.export import (
-    ReportExporter,
-    export_all,
-    export_coefficients_csv,
-    export_coefficients_matrix_csv,
-    export_dso_regulatory_csv,
-    export_hourly_profile_matrix_csv,
-    export_hourly_shares_csv,
-    export_results_json,
-    export_summary_markdown,
-)
+from src.presentation.export import ReportExporter
+from src.presentation.views.common import MONTH_ABBR_EN, MONTH_ABBR_ES, format_month_abbr
 
 
 def create_dummy_optimization_result() -> tuple[OptimizationResult, IngestionSummary]:
@@ -94,7 +85,9 @@ def create_dummy_optimization_result() -> tuple[OptimizationResult, IngestionSum
 
 def test_export_csv(tmp_path: Path) -> None:
     opt_result, _ = create_dummy_optimization_result()
-    csv_path = export_coefficients_csv(opt_result, tmp_path, timestamp="20260531_120000")
+    csv_path = ReportExporter(
+        output_dir=tmp_path, timestamp="20260531_120000"
+    ).export_coefficients_csv(opt_result)
     assert csv_path.exists()
 
     df = pd.read_csv(csv_path, sep=";", decimal=",")
@@ -110,9 +103,9 @@ def test_export_csv(tmp_path: Path) -> None:
 
 def test_export_coefficients_matrix_csv(tmp_path: Path) -> None:
     opt_result, _ = create_dummy_optimization_result()
-    csv_path = export_coefficients_matrix_csv(
-        opt_result, tmp_path, precision=1, timestamp="20260531_120000"
-    )
+    csv_path = ReportExporter(
+        output_dir=tmp_path, timestamp="20260531_120000"
+    ).export_coefficients_matrix_csv(opt_result, precision=1)
     assert csv_path.exists()
     assert csv_path.name == "20260531_120000_esd_coefficients_matrix.csv"
 
@@ -141,7 +134,9 @@ def test_export_coefficients_matrix_csv(tmp_path: Path) -> None:
 
 def test_export_json(tmp_path: Path) -> None:
     opt_result, meta = create_dummy_optimization_result()
-    json_path = export_results_json(opt_result, meta, tmp_path, timestamp="20260531_120000")
+    json_path = ReportExporter(
+        output_dir=tmp_path, timestamp="20260531_120000"
+    ).export_results_json(opt_result, meta)
     assert json_path.exists()
 
     with open(json_path) as f:
@@ -155,9 +150,9 @@ def test_export_json(tmp_path: Path) -> None:
 
 def test_export_markdown_english(tmp_path: Path) -> None:
     opt_result, meta = create_dummy_optimization_result()
-    md_path = export_summary_markdown(
-        opt_result, meta, tmp_path, lang="en", precision=1, timestamp="20260531_120000"
-    )
+    md_path = ReportExporter(
+        output_dir=tmp_path, timestamp="20260531_120000"
+    ).export_summary_markdown(opt_result, meta, lang="en", precision=1)
     assert md_path.exists()
 
     content = md_path.read_text(encoding="utf-8")
@@ -176,9 +171,9 @@ def test_export_markdown_english(tmp_path: Path) -> None:
 
 def test_export_markdown_spanish(tmp_path: Path) -> None:
     opt_result, meta = create_dummy_optimization_result()
-    md_path = export_summary_markdown(
-        opt_result, meta, tmp_path, lang="es", precision=1, timestamp="20260531_120000"
-    )
+    md_path = ReportExporter(
+        output_dir=tmp_path, timestamp="20260531_120000"
+    ).export_summary_markdown(opt_result, meta, lang="es", precision=1)
     assert md_path.exists()
 
     content = md_path.read_text(encoding="utf-8")
@@ -199,7 +194,7 @@ def test_export_all_filtering(tmp_path: Path) -> None:
     opt_result, meta = create_dummy_optimization_result()
 
     # CSV exports both detailed metrics and consolidated matrix CSV
-    paths_csv = export_all(opt_result, meta, tmp_path, formats="csv")
+    paths_csv = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="csv")
     assert len(paths_csv) == 2
     assert all(p.suffix == ".csv" for p in paths_csv)
     file_names = [p.name for p in paths_csv]
@@ -207,7 +202,7 @@ def test_export_all_filtering(tmp_path: Path) -> None:
     assert any("_esd_coefficients_matrix.csv" in n for n in file_names)
 
     # None
-    paths_none = export_all(opt_result, meta, tmp_path, formats="table")
+    paths_none = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="table")
     assert len(paths_none) == 0
 
 
@@ -262,7 +257,9 @@ def test_export_hourly_files(tmp_path: Path) -> None:
     )
 
     # Export hourly CSV files directly
-    shares_path = export_hourly_shares_csv(opt_result, tmp_path, timestamp="20260531_120000")
+    shares_path = ReportExporter(
+        output_dir=tmp_path, timestamp="20260531_120000"
+    ).export_hourly_shares_csv(opt_result)
     assert shares_path.exists()
     shares_content = shares_path.read_text(encoding="utf-8")
     assert (
@@ -278,23 +275,23 @@ def test_export_hourly_files(tmp_path: Path) -> None:
     assert "Aerotermia" in lines[1]
     assert "Portal 1" in lines[2]
 
-    matrix_path = export_hourly_profile_matrix_csv(
-        opt_result, tmp_path, precision=0, timestamp="20260531_120000"
-    )
+    matrix_path = ReportExporter(
+        output_dir=tmp_path, timestamp="20260531_120000"
+    ).export_hourly_profile_matrix_csv(opt_result, precision=0)
     assert matrix_path.exists()
     matrix_content = matrix_path.read_text(encoding="utf-8")
     assert "cups;use;00;01;02" in matrix_content
     assert "TOTAL;TOTAL;100%;100%" in matrix_content
 
     # export_all with formats='csv' should export 4 CSVs
-    exported = export_all(opt_result, meta, tmp_path, formats="csv")
+    exported = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="csv")
     assert len(exported) == 4
     file_names = [p.name for p in exported]
     assert any("_esd_hourly_shares.csv" in n for n in file_names)
     assert any("_esd_hourly_profile_matrix.csv" in n for n in file_names)
 
     # export_all with json should serialize hourly profile
-    json_paths = export_all(opt_result, meta, tmp_path, formats="json")
+    json_paths = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="json")
     assert len(json_paths) == 1
     with open(json_paths[0], encoding="utf-8") as f:
         data = json.load(f)
@@ -302,7 +299,7 @@ def test_export_hourly_files(tmp_path: Path) -> None:
     assert data["hourly_profile"]["hours"] == hours
 
     # export_all with markdown should render hourly section in both ES and EN
-    md_paths = export_all(opt_result, meta, tmp_path, formats="markdown")
+    md_paths = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="markdown")
     assert len(md_paths) == 2
     es_path = next(p for p in md_paths if "_es.md" in p.name)
     en_path = next(p for p in md_paths if "_en.md" in p.name)
@@ -349,7 +346,9 @@ def test_export_csvs_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
         time_series_df=pd.DataFrame(ts_rows),
     )
 
-    csv_paths = export_all(opt_result, meta, tmp_path, formats="csv", precision=2)
+    csv_paths = ReportExporter(output_dir=tmp_path).export_all(
+        opt_result, meta, formats="csv", precision=2
+    )
     assert len(csv_paths) == 4
 
     for p in csv_paths:
@@ -418,11 +417,11 @@ def test_report_exporter_class(tmp_path: Path) -> None:
 
 def test_export_dso_regulatory_csv_standard_year(tmp_path: Path) -> None:
     opt_result, _ = create_dummy_optimization_result()
-    csv_path = export_dso_regulatory_csv(
+    csv_path = ReportExporter(
+        output_dir=tmp_path, timestamp="20251231_235959"
+    ).export_dso_regulatory_csv(
         opt_result,
-        tmp_path,
         year=2025,
-        timestamp="20251231_235959",
     )
     assert csv_path.exists()
     assert csv_path.name == "20251231_235959_esd_dso_8760h.csv"
@@ -461,11 +460,11 @@ def test_export_dso_regulatory_csv_standard_year(tmp_path: Path) -> None:
 
 def test_export_dso_regulatory_csv_leap_year(tmp_path: Path) -> None:
     opt_result, _ = create_dummy_optimization_result()
-    csv_path = export_dso_regulatory_csv(
+    csv_path = ReportExporter(
+        output_dir=tmp_path, timestamp="20241231_235959"
+    ).export_dso_regulatory_csv(
         opt_result,
-        tmp_path,
         year=2024,
-        timestamp="20241231_235959",
     )
     assert csv_path.exists()
     df = pd.read_csv(csv_path, sep=";", decimal=",")
@@ -553,12 +552,12 @@ def test_export_dso_estimate_missing_generation_from_consumption(tmp_path: Path)
         ),
     )
 
-    csv_path = export_dso_regulatory_csv(
+    csv_path = ReportExporter(
+        output_dir=tmp_path, timestamp="20260630_120000"
+    ).export_dso_regulatory_csv(
         opt_result,
-        tmp_path,
         aligned_dataset=aligned_ds,
         year=2026,
-        timestamp="20260630_120000",
     )
     df = pd.read_csv(csv_path, sep=";", decimal=",")
     assert len(df) == 17520
@@ -586,10 +585,9 @@ def test_export_dso_estimate_missing_generation_from_consumption(tmp_path: Path)
 
 def test_export_all_formats_dso(tmp_path: Path) -> None:
     opt_result, meta = create_dummy_optimization_result()
-    exported = export_all(
+    exported = ReportExporter(output_dir=tmp_path).export_all(
         opt_result,
         meta,
-        tmp_path,
         formats="dso",
         year=2025,
     )
@@ -599,3 +597,50 @@ def test_export_all_formats_dso(tmp_path: Path) -> None:
     for p in exported:
         assert p.exists()
         assert "_esd_dso_8760h" in p.name
+
+
+def test_month_abbr_consolidation_and_formatter() -> None:
+    """Ensure MONTH_ABBR_EN/ES contain 12 months ('01'..'12') and format_month_abbr resolves cleanly."""
+    expected_en = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+    ]
+    expected_es = [
+        "Ene",
+        "Feb",
+        "Mar",
+        "Abr",
+        "May",
+        "Jun",
+        "Jul",
+        "Ago",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dic",
+    ]
+
+    assert len(MONTH_ABBR_EN) == 12
+    assert len(MONTH_ABBR_ES) == 12
+
+    for i in range(1, 13):
+        k = f"{i:02d}"
+        assert MONTH_ABBR_EN[k] == expected_en[i - 1]
+        assert MONTH_ABBR_ES[k] == expected_es[i - 1]
+        # format_month_abbr should resolve 2-digit strings, ints, and ISO year-month strings
+        assert format_month_abbr(k, lang="en") == expected_en[i - 1]
+        assert format_month_abbr(k, lang="es") == expected_es[i - 1]
+        assert format_month_abbr(i, lang="en") == expected_en[i - 1]
+        assert format_month_abbr(i, lang="es") == expected_es[i - 1]
+        assert format_month_abbr(f"2026-{k}", lang="en") == expected_en[i - 1]
+        assert format_month_abbr(f"2026-{k}", lang="es") == expected_es[i - 1]

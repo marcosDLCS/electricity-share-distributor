@@ -12,7 +12,7 @@ from src.ingestion.consumption import DatadisConsumptionLoader
 from src.ingestion.generation import HuaweiGenerationLoader
 from src.optimization.engine import DistributionOptimizer
 from src.optimization.models import OptimizationStrategy
-from src.presentation.export import export_all
+from src.presentation.export import ReportExporter
 
 
 def create_synthetic_environment(tmp_path: Path) -> tuple[Path, Path]:
@@ -145,10 +145,10 @@ def test_synthetic_community_optimization(tmp_path: Path) -> None:
 
     # 4. Multi-format export (3 CSVs, 1 JSON, 1 Markdown, 1 HTML, 1 TXT)
     out_dir = tmp_path / "output"
-    exported = export_all(
+    exporter = ReportExporter(output_dir=out_dir)
+    exported = exporter.export_all(
         res,
         aligned.metadata,
-        out_dir,
         formats="all",
         lang="en",
         aligned_dataset=aligned,

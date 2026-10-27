@@ -532,3 +532,40 @@ def test_cli_config_invalid_coordinates() -> None:
     res_lon = runner.invoke(app, ["config", "--longitude", "200.0"])
     assert res_lon.exit_code != 0
     assert "Longitude must be between -180.0 and 180.0" in res_lon.output
+
+
+def test_downloader_insecure_url_scheme(tmp_path: Path) -> None:
+    """Initializing downloader with insecure or non-HTTPS schemes raises IngestionError."""
+    with pytest.raises(IngestionError, match="Only HTTPS is permitted"):
+        OpenMeteoWeatherDownloader(weather_dir=tmp_path, base_url="http://insecure-api.com")
+
+    with pytest.raises(IngestionError, match="Only HTTPS is permitted"):
+        OpenMeteoWeatherDownloader(weather_dir=tmp_path, base_url="ftp://files.org")
+
+
+def test_downloader_query_encoding(tmp_path: Path) -> None:
+    """Download request URL properly encodes query parameters including special characters."""
+    downloader = OpenMeteoWeatherDownloader(weather_dir=tmp_path)
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = _mock_open_meteo_response(hours_count=24)
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.__exit__.return_value = None
+
+    captured_url: str = ""
+
+    def mock_urlopen(req: urllib.request.Request, **kwargs: object) -> MagicMock:
+        nonlocal captured_url
+        captured_url = req.full_url
+        return mock_resp
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        downloader.download_year(
+            year=2024,
+            latitude=40.4168,
+            longitude=-3.7038,
+            timezone="America/Argentina/Buenos_Aires",
+        )
+
+    assert "timezone=America%2FArgentina%2FBuenos_Aires" in captured_url
+    assert "latitude=40.4168" in captured_url
+    assert "longitude=-3.7038" in captured_url

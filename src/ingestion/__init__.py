@@ -21,6 +21,7 @@ from src.ingestion.weather import (
     extract_coordinates_from_cups_data,
     extract_coordinates_from_cups_file,
     format_weather_filename,
+    parse_coordinate_pair,
 )
 
 __all__ = [
@@ -46,4 +47,5 @@ __all__ = [
     "extract_coordinates_from_cups_data",
     "extract_coordinates_from_cups_file",
     "format_weather_filename",
+    "parse_coordinate_pair",
 ]

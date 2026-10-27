@@ -501,3 +501,43 @@ def test_cli_cleanup_with_output_dir_override(tmp_path: Path) -> None:
     result = runner.invoke(app, ["cleanup", "-o", str(test_dir), "--force"])
     assert result.exit_code == 0
     assert not (test_dir / "temp_file.csv").exists()
+
+
+def test_cli_config_invalid_coordinates_localized() -> None:
+    """Test localized error messages for out-of-range coordinates in config command."""
+    res_en_lat = runner.invoke(app, ["config", "--lat", "95.0", "--lang", "en"])
+    assert res_en_lat.exit_code != 0
+    assert "Latitude must be between -90.0 and 90.0 (got 95.0)." in res_en_lat.output
+
+    res_es_lat = runner.invoke(app, ["config", "--lat", "-95.0", "--lang", "es"])
+    assert res_es_lat.exit_code != 0
+    assert "La latitud debe estar entre -90.0 y 90.0 (valor recibido: -95.0)." in res_es_lat.output
+
+    res_en_lon = runner.invoke(app, ["config", "--lon", "190.0", "--lang", "en"])
+    assert res_en_lon.exit_code != 0
+    assert "Longitude must be between -180.0 and 180.0 (got 190.0)." in res_en_lon.output
+
+    res_es_lon = runner.invoke(app, ["config", "--lon", "-190.0", "--lang", "es"])
+    assert res_es_lon.exit_code != 0
+    assert (
+        "La longitud debe estar entre -180.0 y 180.0 (valor recibido: -190.0)." in res_es_lon.output
+    )
+
+
+def test_cli_calculate_invalid_strategy_and_share_localized() -> None:
+    """Test localized error messages for invalid strategy and share bounds."""
+    res_en_strat = runner.invoke(app, ["calculate", "--strategy", "invalid_strat", "--lang", "en"])
+    assert res_en_strat.exit_code != 0
+    assert "Invalid strategy 'invalid_strat'." in res_en_strat.output
+
+    res_es_strat = runner.invoke(app, ["calculate", "--strategy", "invalid_strat", "--lang", "es"])
+    assert res_es_strat.exit_code != 0
+    assert "Estrategia no válida 'invalid_strat'." in res_es_strat.output
+
+    res_en_share = runner.invoke(app, ["calculate", "--min-share", "150", "--lang", "en"])
+    assert res_en_share.exit_code != 0
+    assert "--min-share must be between 0% and 100%. Got 150.0." in res_en_share.output
+
+    res_es_share = runner.invoke(app, ["calculate", "--max-share", "-5", "--lang", "es"])
+    assert res_es_share.exit_code != 0
+    assert "--max-share debe estar entre 0% y 100%. Valor recibido: -5.0." in res_es_share.output

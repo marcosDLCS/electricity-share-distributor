@@ -36,18 +36,6 @@ MONTH_ABBR_EN: Final[dict[str, str]] = {
     "10": "Oct",
     "11": "Nov",
     "12": "Dec",
-    "2026-01": "Jan",
-    "2026-02": "Feb",
-    "2026-03": "Mar",
-    "2026-04": "Apr",
-    "2026-05": "May",
-    "2026-06": "Jun",
-    "2026-07": "Jul",
-    "2026-08": "Aug",
-    "2026-09": "Sep",
-    "2026-10": "Oct",
-    "2026-11": "Nov",
-    "2026-12": "Dec",
 }
 
 MONTH_ABBR_ES: Final[dict[str, str]] = {
@@ -63,19 +51,14 @@ MONTH_ABBR_ES: Final[dict[str, str]] = {
     "10": "Oct",
     "11": "Nov",
     "12": "Dic",
-    "2026-01": "Ene",
-    "2026-02": "Feb",
-    "2026-03": "Mar",
-    "2026-04": "Abr",
-    "2026-05": "May",
-    "2026-06": "Jun",
-    "2026-07": "Jul",
-    "2026-08": "Ago",
-    "2026-09": "Sep",
-    "2026-10": "Oct",
-    "2026-11": "Nov",
-    "2026-12": "Dic",
 }
+
+
+def format_month_abbr(month: str | int, lang: str = "en") -> str:
+    """Format month identifier ('01'..'12', '2026-05', or int 1..12) as localized abbreviation."""
+    m_clean = str(month).split("-")[-1].zfill(2)
+    abbr_map = MONTH_ABBR_ES if lang == "es" else MONTH_ABBR_EN
+    return abbr_map.get(m_clean, str(month))
 
 
 def render_help(lang: str | None = None) -> None:

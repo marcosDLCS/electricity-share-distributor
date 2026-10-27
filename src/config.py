@@ -254,15 +254,17 @@ def resolve_cups_config_path(
     """Find existing cups.json configuration file path.
 
     Checks:
-    1. custom_path (if provided)
+    1. custom_path (if provided, returns path if it exists, else None)
     2. config.cups_config_path (if configured)
     3. DEFAULT_CUPS_CONFIG_PATH (.input/cups/cups.json)
     4. .input/cups.json
     5. cups.json
     """
+    if custom_path is not None:
+        cp = Path(custom_path)
+        return cp if cp.exists() and cp.is_file() else None
+
     candidates: list[Path] = []
-    if custom_path:
-        candidates.append(Path(custom_path))
     if config and config.cups_config_path:
         candidates.append(Path(config.cups_config_path))
     candidates.extend(

@@ -13,39 +13,11 @@ import pandas as pd
 
 from src.ingestion.schema import AlignedDataset, IngestionSummary
 from src.optimization.models import OptimizationResult
+from src.presentation.views.common import format_month_abbr
 from src.version import get_version
 
 if TYPE_CHECKING:
     from src.curation.models import CuratedDataset
-
-MONTH_ABBR_EN: dict[str, str] = {
-    "01": "Jan",
-    "02": "Feb",
-    "03": "Mar",
-    "04": "Apr",
-    "05": "May",
-    "06": "Jun",
-    "07": "Jul",
-    "08": "Aug",
-    "09": "Sep",
-    "10": "Oct",
-    "11": "Nov",
-    "12": "Dec",
-}
-MONTH_ABBR_ES: dict[str, str] = {
-    "01": "Ene",
-    "02": "Feb",
-    "03": "Mar",
-    "04": "Abr",
-    "05": "May",
-    "06": "Jun",
-    "07": "Jul",
-    "08": "Ago",
-    "09": "Sep",
-    "10": "Oct",
-    "11": "Nov",
-    "12": "Dic",
-}
 
 
 def get_export_timestamp() -> str:
@@ -109,7 +81,6 @@ class ReportExporter:
         - Boolean columns (is_weekend) formatted with intuitive emojis (✅ / ❌).
         - Centered, right, and left alignments per column domain.
         - Auto-fit column widths, freeze panes on header row, and native AutoFilter.
-        - Creates a sibling .xslx symlink for compatibility with user-specified extension.
         """
         import openpyxl
         from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -248,14 +219,6 @@ class ReportExporter:
         ws.auto_filter.ref = ws.dimensions
 
         wb.save(excel_file)
-
-        # Create sibling symlink .xslx -> .xlsx for compatibility with user-specified extension
-        xslx_file = target_dir / f"{base_name}.xslx"
-        try:
-            if not xslx_file.exists() and not xslx_file.is_symlink():
-                xslx_file.symlink_to(excel_file.name)
-        except Exception:
-            pass
 
         return excel_file
 
@@ -633,9 +596,8 @@ class ReportExporter:
             "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
         ]
 
-        abbr_map = MONTH_ABBR_ES if target_lang == "es" else MONTH_ABBR_EN
         for m in opt_result.monthly_results:
-            m_label = abbr_map.get(m.month, m.month)
+            m_label = format_month_abbr(m.month, lang=target_lang)
             if m.has_data:
                 lines.append(
                     f"| **{m_label}** | {m.total_generation_kwh:,.1f} | {m.total_consumption_kwh:,.1f} | "
@@ -698,7 +660,7 @@ class ReportExporter:
             lines.append(t("md_desc_coeff_matrix", lang=target_lang))
             lines.append("")
 
-            month_headers = [abbr_map.get(m, m) for m in matrix.months]
+            month_headers = [format_month_abbr(m, lang=target_lang) for m in matrix.months]
             headers = [
                 "CUPS",
                 t("col_use", lang=target_lang),
@@ -768,7 +730,7 @@ class ReportExporter:
         for m in opt_result.monthly_results:
             if not m.has_data:
                 continue
-            m_label = abbr_map.get(m.month, m.month)
+            m_label = format_month_abbr(m.month, lang=target_lang)
             lines.append(
                 t(
                     "md_month_header",
@@ -924,144 +886,3 @@ class ReportExporter:
         )
         file_path.write_text(html_content, encoding="utf-8")
         return file_path
-
-
-# -------------------------------------------------------------------------
-# Standalone functions preserving exact backward-compatible API
-# -------------------------------------------------------------------------
-
-
-def export_coefficients_csv(
-    opt_result: OptimizationResult,
-    output_dir: Path | str,
-    precision: int | None = None,
-    timestamp: str | None = None,
-) -> Path:
-    """Export monthly distribution coefficients and metrics per CUPS as CSV."""
-    exporter = ReportExporter(output_dir=output_dir, timestamp=timestamp)
-    return exporter.export_coefficients_csv(opt_result, precision=precision)
-
-
-def export_coefficients_matrix_csv(
-    opt_result: OptimizationResult,
-    output_dir: Path | str,
-    precision: int | None = None,
-    timestamp: str | None = None,
-) -> Path:
-    """Export consolidated monthly distribution shares matrix (CUPS in Y, Months in X) as CSV."""
-    exporter = ReportExporter(output_dir=output_dir, timestamp=timestamp)
-    return exporter.export_coefficients_matrix_csv(opt_result, precision=precision)
-
-
-def export_hourly_shares_csv(
-    opt_result: OptimizationResult,
-    output_dir: Path | str,
-    timestamp: str | None = None,
-) -> Path:
-    """Export full hourly time-series distribution coefficients and energy balance as CSV."""
-    exporter = ReportExporter(output_dir=output_dir, timestamp=timestamp)
-    return exporter.export_hourly_shares_csv(opt_result)
-
-
-def export_hourly_profile_matrix_csv(
-    opt_result: OptimizationResult,
-    output_dir: Path | str,
-    precision: int | None = None,
-    timestamp: str | None = None,
-) -> Path:
-    """Export 24-hour diurnal distribution profile matrix (CUPS in Y, Hours 00..23 in X) as CSV."""
-    exporter = ReportExporter(output_dir=output_dir, timestamp=timestamp)
-    return exporter.export_hourly_profile_matrix_csv(opt_result, precision=precision)
-
-
-def export_results_json(
-    opt_result: OptimizationResult,
-    ingestion_summary: IngestionSummary,
-    output_dir: Path | str,
-    timestamp: str | None = None,
-) -> Path:
-    """Export full optimization results and metadata as JSON."""
-    exporter = ReportExporter(output_dir=output_dir, timestamp=timestamp)
-    return exporter.export_results_json(opt_result, ingestion_summary)
-
-
-def export_summary_markdown(
-    opt_result: OptimizationResult,
-    ingestion_summary: IngestionSummary,
-    output_dir: Path | str,
-    lang: str | None = None,
-    precision: int | None = None,
-    timestamp: str | None = None,
-    file_suffix: str = "",
-) -> Path:
-    """Export complete human-readable optimization and coefficient report in Markdown."""
-    exporter = ReportExporter(output_dir=output_dir, timestamp=timestamp)
-    return exporter.export_summary_markdown(
-        opt_result,
-        ingestion_summary,
-        lang=lang,
-        precision=precision,
-        timestamp=timestamp,
-        file_suffix=file_suffix,
-    )
-
-
-def export_dso_regulatory_csv(
-    opt_result: OptimizationResult,
-    output_dir: Path | str,
-    aligned_dataset: AlignedDataset | None = None,
-    consumption_dir: Path | str | None = None,
-    year: int | None = None,
-    hourly: bool | None = None,
-    timestamp: str | None = None,
-) -> Path:
-    """Export standardized annual 8,760-hour regulatory flat file (Orden TED/1247/2021)."""
-    exporter = ReportExporter(output_dir=output_dir, timestamp=timestamp)
-    return exporter.export_dso_regulatory_csv(
-        opt_result,
-        aligned_dataset=aligned_dataset,
-        consumption_dir=consumption_dir,
-        year=year,
-        hourly=hourly,
-        timestamp=timestamp,
-    )
-
-
-def export_all(
-    opt_result: OptimizationResult,
-    ingestion_summary: IngestionSummary,
-    output_dir: Path | str,
-    formats: str = "all",
-    lang: str | None = None,
-    precision: int | None = None,
-    aligned_dataset: AlignedDataset | None = None,
-    consumption_dir: Path | str | None = None,
-    year: int | None = None,
-) -> list[Path]:
-    """Execute exports according to the specified format flag."""
-    exporter = ReportExporter(output_dir=output_dir)
-    return exporter.export_all(
-        opt_result,
-        ingestion_summary,
-        formats=formats,
-        lang=lang,
-        precision=precision,
-        aligned_dataset=aligned_dataset,
-        consumption_dir=consumption_dir,
-        year=year,
-    )
-
-
-def export_interactive_html(
-    opt_result: OptimizationResult,
-    ingestion_summary: IngestionSummary,
-    output_dir: Path | str,
-    lang: str | None = None,
-    precision: int | None = None,
-    timestamp: str | None = None,
-) -> Path:
-    """Export standalone offline interactive HTML report."""
-    exporter = ReportExporter(output_dir=output_dir, timestamp=timestamp)
-    return exporter.export_interactive_html(
-        opt_result, ingestion_summary, lang=lang, precision=precision
-    )

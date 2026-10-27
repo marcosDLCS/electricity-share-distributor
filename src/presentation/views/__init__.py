@@ -3,6 +3,7 @@
 from src.presentation.views.common import (
     MONTH_ABBR_EN,
     MONTH_ABBR_ES,
+    format_month_abbr,
     render_cleanup_result,
     render_config_view,
     render_export_success,
@@ -28,6 +29,7 @@ from src.presentation.views.trajectory import (
 __all__ = [
     "MONTH_ABBR_EN",
     "MONTH_ABBR_ES",
+    "format_month_abbr",
     "render_cleanup_result",
     "render_coefficients_matrix_table",
     "render_community_summary",

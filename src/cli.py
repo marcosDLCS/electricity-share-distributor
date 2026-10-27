@@ -121,7 +121,7 @@ def init_command(
     if lang is None:
         try:
             raw_lang = typer.prompt(
-                "Select desired language ('en' for English, 'es' for Spanish)",
+                t("prompt_lang", lang=cfg.language),
                 default="en",
             )
         except typer.exceptions.Abort, EOFError:
@@ -139,7 +139,7 @@ def init_command(
     if precision is None:
         try:
             raw_precision = typer.prompt(
-                "Select desired share precision (0, 1, or 2 decimal places)",
+                t("prompt_precision", lang=target_lang),
                 default=DEFAULT_SHARE_PRECISION,
                 type=int,
             )
@@ -558,7 +558,7 @@ def calculate_command(
     except ValueError:
         valid_strats = ", ".join(f"'{s.value}'" for s in OptimizationStrategy)
         console.print(
-            f"[bold red]Error:[/bold red] Invalid strategy '{strategy}'. Valid options: {valid_strats}"
+            f"[bold red]Error:[/bold red] {t('err_invalid_strategy', lang=active_lang, strategy=strategy, options=valid_strats)}"
         )
         sys.exit(1)
 
@@ -567,7 +567,7 @@ def calculate_command(
             return None
         if val < 0.0 or val > 100.0:
             console.print(
-                f"[bold red]Error:[/bold red] {name} must be between 0% and 100%. Got {val}."
+                f"[bold red]Error:[/bold red] {t('err_share_range', lang=active_lang, name=name, val=val)}"
             )
             sys.exit(1)
         return val / 100.0 if val > 1.0 else val
@@ -708,10 +708,12 @@ def config_command(
     """View or update persistent application configuration."""
     cfg = load_config()
     modified = False
+    active_lang = cfg.language
 
     if lang is not None:
         try:
-            cfg.language = normalize_language_code(lang)
+            active_lang = normalize_language_code(lang)
+            cfg.language = active_lang
             modified = True
         except ValueError as err:
             console.print(f"[bold red]Error:[/bold red] {err}")
@@ -735,7 +737,7 @@ def config_command(
     if latitude is not None:
         if not (-90.0 <= latitude <= 90.0):
             console.print(
-                f"[bold red]Error:[/bold red] Latitude must be between -90.0 and 90.0 (got {latitude})."
+                f"[bold red]Error:[/bold red] {t('err_lat_range', lang=active_lang, val=latitude)}"
             )
             sys.exit(1)
         cfg.latitude = latitude
@@ -743,7 +745,7 @@ def config_command(
     if longitude is not None:
         if not (-180.0 <= longitude <= 180.0):
             console.print(
-                f"[bold red]Error:[/bold red] Longitude must be between -180.0 and 180.0 (got {longitude})."
+                f"[bold red]Error:[/bold red] {t('err_lon_range', lang=active_lang, val=longitude)}"
             )
             sys.exit(1)
         cfg.longitude = longitude

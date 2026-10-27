@@ -9,11 +9,11 @@ import pandas as pd
 
 from src.config import (
     DEFAULT_CONSUMPTION_DIR,
-    DEFAULT_CUPS_CONFIG_PATH,
     DEFAULT_CURATED_DIR,
     DEFAULT_GENERATION_DIR,
     DEFAULT_WEATHER_DIR,
     load_config,
+    resolve_cups_config_path,
 )
 from src.curation.models import (
     CuratedCupsReading,
@@ -36,6 +36,7 @@ from src.ingestion.weather import (
     OpenMeteoWeatherDownloader,
     WeatherLoader,
     extract_coordinates_from_cups_file,
+    parse_coordinate_pair,
 )
 
 
@@ -240,24 +241,7 @@ class DataCurator:
         Returns:
             Dictionary mapping CUPS string identifiers to SupplyPoint instances.
         """
-        candidate_paths: list[Path] = []
-        if self.cups_config_path:
-            candidate_paths.append(self.cups_config_path)
-        else:
-            candidate_paths.extend(
-                [
-                    DEFAULT_CUPS_CONFIG_PATH,
-                    Path(".input/cups.json"),
-                    Path("cups.json"),
-                ]
-            )
-
-        found_path: Path | None = None
-        for cp in candidate_paths:
-            if cp.exists() and cp.is_file():
-                found_path = cp
-                break
-
+        found_path = resolve_cups_config_path(custom_path=self.cups_config_path)
         if not found_path:
             return {}
 
@@ -284,25 +268,9 @@ class DataCurator:
             use = str(item.get("use") or "").strip()
             primary = bool(item.get("primary", False))
 
-            lat_val: float | None = None
-            lon_val: float | None = None
-            raw_lat = item.get("lat") or item.get("latitude") or item.get("latitud")
-            raw_lon = (
-                item.get("long")
-                or item.get("lon")
-                or item.get("lng")
-                or item.get("longitude")
-                or item.get("longitud")
-            )
-            if raw_lat is not None and raw_lon is not None:
-                try:
-                    f_lat = float(raw_lat)
-                    f_lon = float(raw_lon)
-                    if -90.0 <= f_lat <= 90.0 and -180.0 <= f_lon <= 180.0:
-                        lat_val = f_lat
-                        lon_val = f_lon
-                except ValueError, TypeError:
-                    pass
+            coord_pair = parse_coordinate_pair(item)
+            lat_val = coord_pair[0] if coord_pair else None
+            lon_val = coord_pair[1] if coord_pair else None
 
             min_val: float | None = None
             max_val: float | None = None
@@ -372,18 +340,11 @@ class DataCurator:
                 return (round(cfg.latitude, 4), round(cfg.longitude, 4))
 
         # 3. Direct extraction from cups configuration file if configs was empty
-        candidate_paths: list[Path] = []
-        if self.cups_config_path:
-            candidate_paths.append(self.cups_config_path)
-        else:
-            candidate_paths.extend(
-                [DEFAULT_CUPS_CONFIG_PATH, Path(".input/cups.json"), Path("cups.json")]
-            )
-        for cp in candidate_paths:
-            if cp.exists() and cp.is_file():
-                coords = extract_coordinates_from_cups_file(cp)
-                if coords:
-                    return coords[0]
+        found_path = resolve_cups_config_path(custom_path=self.cups_config_path)
+        if found_path:
+            coords = extract_coordinates_from_cups_file(found_path)
+            if coords:
+                return coords[0]
 
         # 4. Fallback to persistent configuration if custom cups config not specified
         if not self.cups_config_path:
