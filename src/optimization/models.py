@@ -198,31 +198,12 @@ class HourlyProfileMatrix:
         return f"{self.average_sum * 100.0:.{precision}f}%"
 
 
-@dataclass(frozen=True)
-class CupsHourlyMetrics:
-    """Hourly self-consumption and energy metrics for an individual CUPS."""
-
-    timestamp: str
-    hour: int
-    cups: str
-    beta: float
-    consumption_kwh: float
-    generation_allocated_kwh: float
-    self_consumed_kwh: float
-    surplus_kwh: float
-    grid_demand_kwh: float
-    self_consumption_rate: float
-    solar_coverage_rate: float
-    use: str = ""
-
-
 @dataclass
 class HourlyOptimizationResult:
     """Full hourly optimization results including 24-hour diurnal profile and time-series balance."""
 
     profile_matrix: HourlyProfileMatrix
     time_series_df: pd.DataFrame
-    metrics: list[CupsHourlyMetrics] = field(default_factory=list)
 
 
 @dataclass

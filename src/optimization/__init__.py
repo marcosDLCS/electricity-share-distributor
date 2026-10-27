@@ -4,7 +4,6 @@ from src.optimization.engine import DistributionOptimizer, OptimizationError
 from src.optimization.models import (
     CoefficientsMatrix,
     CommunityMonthlyMetrics,
-    CupsHourlyMetrics,
     CupsMonthlyMetrics,
     HourlyOptimizationResult,
     HourlyProfileMatrix,
@@ -15,7 +14,6 @@ from src.optimization.models import (
 __all__ = [
     "CoefficientsMatrix",
     "CommunityMonthlyMetrics",
-    "CupsHourlyMetrics",
     "CupsMonthlyMetrics",
     "DistributionOptimizer",
     "HourlyOptimizationResult",

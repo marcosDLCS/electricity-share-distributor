@@ -31,27 +31,9 @@ REQUIRED_CONSUMPTION_COLUMNS: Final[list[str]] = [
     "consumo_kWh",
 ]
 
-# Standard normalized column names used internally
-COL_CUPS: Final[str] = "cups"
-COL_TIMESTAMP: Final[str] = "timestamp"
-COL_DATE: Final[str] = "date"
-COL_TIME: Final[str] = "time"
-COL_YEAR: Final[str] = "year"
-COL_MONTH: Final[str] = "month"
-COL_CONSUMPTION_KWH: Final[str] = "consumption_kwh"
-COL_GENERATION_KWH: Final[str] = "generation_kwh"
-
 # Delimiters and encodings commonly encountered in DATADIS exports
 SUPPORTED_DELIMITERS: Final[list[str]] = [";", ",", "\t"]
 SUPPORTED_ENCODINGS: Final[list[str]] = ["utf-8", "utf-8-sig", "latin-1", "cp1252"]
-
-# Supported date string patterns
-DATE_FORMATS: Final[list[str]] = [
-    "%Y/%m/%d",
-    "%Y-%m-%d",
-    "%d/%m/%Y",
-    "%d-%m-%Y",
-]
 
 # Supported application languages
 SUPPORTED_LANGUAGES: Final[dict[str, str]] = {

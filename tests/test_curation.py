@@ -160,6 +160,57 @@ def test_cups_config_invalid_share_bounds(tmp_path: Path) -> None:
         curator.load_cups_config()
 
 
+def test_cups_config_share_percentage_normalization(tmp_path: Path) -> None:
+    """Verify DataCurator normalizes percentage and string share formats in cups.json."""
+    shares_file = tmp_path / "shares.json"
+    shares_file.write_text(
+        json.dumps(
+            [
+                {
+                    "cups": "ES0021000000000001AA",
+                    "use": "ascensor",
+                    "min_share": "10%",
+                    "max_share": 50.0,
+                },
+                {
+                    "cups": "ES0021000000000002BB",
+                    "use": "garaje",
+                    "cuota_minima": 0.05,
+                    "cuota_maxima": "30%",
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    curator = DataCurator(cups_config_path=shares_file)
+    configs = curator.load_cups_config()
+    assert configs["ES0021000000000001AA"].min_share == 0.10
+    assert configs["ES0021000000000001AA"].max_share == 0.50
+    assert configs["ES0021000000000002BB"].min_share == 0.05
+    assert configs["ES0021000000000002BB"].max_share == 0.30
+
+
+def test_cups_config_out_of_range_share_bounds(tmp_path: Path) -> None:
+    """Verify CurationError raised when min_share or max_share is out of range."""
+    bad_file = tmp_path / "out_of_range.json"
+    bad_file.write_text(
+        json.dumps([{"cups": "ES0021000000000001AA", "min_share": 150}]),
+        encoding="utf-8",
+    )
+    curator = DataCurator(cups_config_path=bad_file)
+    with pytest.raises(CurationError, match="Invalid min_share '150'"):
+        curator.load_cups_config()
+
+    bad_max_file = tmp_path / "out_of_range_max.json"
+    bad_max_file.write_text(
+        json.dumps([{"cups": "ES0021000000000001AA", "max_share": "-5%"}]),
+        encoding="utf-8",
+    )
+    curator_max = DataCurator(cups_config_path=bad_max_file)
+    with pytest.raises(CurationError, match="Invalid max_share '-5%'"):
+        curator_max.load_cups_config()
+
+
 def test_curation_reconciliation_fake_zeros(tmp_path: Path) -> None:
     """Verify data reconciliation: primary CUPS fake zero readings are corrected from Huawei."""
     cons_dir = tmp_path / "consumption"

@@ -25,6 +25,7 @@ from src.config import (
     validate_share_precision,
 )
 from src.domain.exceptions import EsdError
+from src.domain.models import parse_share_fraction
 from src.i18n import t
 from src.optimization import OptimizationStrategy
 from src.presentation.console import console
@@ -565,12 +566,13 @@ def calculate_command(
     def _parse_share(val: float | None, name: str) -> float | None:
         if val is None:
             return None
-        if val < 0.0 or val > 100.0:
+        try:
+            return parse_share_fraction(val)
+        except ValueError, TypeError:
             console.print(
                 f"[bold red]Error:[/bold red] {t('err_share_range', lang=active_lang, name=name, val=val)}"
             )
             sys.exit(1)
-        return val / 100.0 if val > 1.0 else val
 
     parsed_min_share = _parse_share(min_share, "--min-share")
     parsed_max_share = _parse_share(max_share, "--max-share")

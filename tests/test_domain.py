@@ -11,7 +11,12 @@ from src.domain.exceptions import (
     IngestionError,
     OptimizationError,
 )
-from src.domain.models import EnergyBalance, ShareAllocation, SupplyPoint
+from src.domain.models import (
+    EnergyBalance,
+    ShareAllocation,
+    SupplyPoint,
+    parse_share_fraction,
+)
 
 
 def test_domain_exceptions_hierarchy() -> None:
@@ -134,3 +139,57 @@ def test_energy_balance_zero_division() -> None:
     )
     assert eb_zero_cons.self_consumption_rate == 0.0
     assert eb_zero_cons.solar_coverage_rate == 100.0
+
+
+def test_parse_share_fraction() -> None:
+    """Verify parse_share_fraction normalizes fractions, percentages, strings, and rejects invalid inputs."""
+    # None
+    assert parse_share_fraction(None) is None
+
+    # Valid fractions <= 1.0
+    assert parse_share_fraction(0.25) == 0.25
+    assert parse_share_fraction(0.0) == 0.0
+    assert parse_share_fraction(1.0) == 1.0
+    assert parse_share_fraction(0) == 0.0
+    assert parse_share_fraction(1) == 1.0
+
+    # Percentages > 1.0 normalized to fractions
+    assert parse_share_fraction(25.0) == 0.25
+    assert parse_share_fraction(25) == 0.25
+    assert parse_share_fraction(100.0) == 1.0
+    assert parse_share_fraction(100) == 1.0
+
+    # String percentage formats
+    assert parse_share_fraction("25%") == 0.25
+    assert parse_share_fraction("25.0%") == 0.25
+    assert parse_share_fraction("100%") == 1.0
+    assert parse_share_fraction("1%") == 0.01
+    assert parse_share_fraction("0.5%") == 0.005
+    assert parse_share_fraction("0.25") == 0.25
+    assert parse_share_fraction("25") == 0.25
+
+    # Out-of-range inputs
+    with pytest.raises(ValueError, match=r"between 0\.0 and 1\.0"):
+        parse_share_fraction(-0.1)
+
+    with pytest.raises(ValueError, match=r"between 0\.0 and 1\.0"):
+        parse_share_fraction(150.0)
+
+    with pytest.raises(ValueError, match=r"between 0\.0 and 1\.0"):
+        parse_share_fraction("-5%")
+
+    with pytest.raises(ValueError, match=r"between 0\.0 and 1\.0"):
+        parse_share_fraction("150%")
+
+    with pytest.raises(ValueError, match="cannot convert to float"):
+        parse_share_fraction("invalid")
+
+    with pytest.raises(ValueError, match="cannot be empty"):
+        parse_share_fraction("   ")
+
+    # Invalid types
+    with pytest.raises(TypeError, match="cannot be a boolean"):
+        parse_share_fraction(True)
+
+    with pytest.raises(TypeError, match="Invalid share value type"):
+        parse_share_fraction([0.25])  # type: ignore[arg-type]

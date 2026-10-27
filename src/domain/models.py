@@ -10,6 +10,62 @@ from src.domain.exceptions import EsdError, OptimizationError
 CUPS_PATTERN = re.compile(r"^[A-Z]{2}[0-9A-Z]{18,22}$")
 
 
+def parse_share_fraction(value: float | int | str | None) -> float | None:
+    """Parse and normalize a share coefficient or percentage into a fraction in [0.0, 1.0].
+
+    Accepts:
+        - None: returns None.
+        - Fractional numeric values in [0.0, 1.0] (e.g. 0.25 -> 0.25).
+        - Percentage numeric values in (1.0, 100.0] (e.g. 25.0 -> 0.25, 100 -> 1.0).
+        - Numeric strings with or without '%' (e.g. "25%", "25.0", "0.25", "100%").
+
+    Returns:
+        Normalized fraction as a float in [0.0, 1.0], or None if value is None.
+
+    Raises:
+        TypeError: If value is a boolean or unsupported type.
+        ValueError: If value is not a valid number or falls outside [0.0, 1.0] (or [0%, 100%]).
+    """
+    if value is None:
+        return None
+
+    if isinstance(value, bool):
+        raise TypeError("Share value cannot be a boolean.")
+
+    if not isinstance(value, (int, float, str)):
+        raise TypeError(f"Invalid share value type: {type(value).__name__}")
+
+    is_explicit_percent = False
+    if isinstance(value, str):
+        clean_str = value.strip()
+        if not clean_str:
+            raise ValueError("Share value string cannot be empty.")
+        if "%" in clean_str:
+            is_explicit_percent = True
+            clean_str = clean_str.replace("%", "").strip()
+        try:
+            num = float(clean_str)
+        except ValueError as err:
+            raise ValueError(f"Invalid share value '{value}': cannot convert to float.") from err
+    else:
+        num = float(value)
+
+    import math
+
+    if math.isnan(num) or math.isinf(num):
+        raise ValueError(f"Share value must be a finite number (got {value}).")
+
+    if num < 0.0 or num > 100.0:
+        raise ValueError(f"Share value must be between 0.0 and 1.0 (or 0% and 100%). Got {value}.")
+
+    fraction = num / 100.0 if (is_explicit_percent or num > 1.0) else num
+
+    if not (0.0 <= fraction <= 1.0):
+        raise ValueError(f"Normalized share fraction must be between 0.0 and 1.0. Got {fraction}.")
+
+    return fraction
+
+
 @dataclass(frozen=True, slots=True)
 class SupplyPoint:
     """Domain entity representing a participating Universal Supply Point Code (CUPS)."""

@@ -27,8 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | Priority | Category | Task | Target Components |
 | :--- | :--- | :--- | :--- |
-| **P1** | `Simplicity` | Remove Unused Legacy Schema Constants and Unused `CupsHourlyMetrics` Model | `src/config.py`, `src/optimization/models.py`, `src/optimization/engine.py` |
-| **P1** | `Simplicity` | Consolidate Duplicate Share-Fraction Parsing into a Single Domain Helper | `src/domain/models.py`, `src/cli.py`, `src/curation/curator.py` |
 | **P1** | `Security` | Harden `OpenMeteoWeatherDownloader` Against SSRF and Unbounded Payload DoS | `src/ingestion/weather.py`, `tests/test_ingestion.py` |
 | **P1** | `Security` | Neutralize Spreadsheet Formula Injection in Exported `use` Labels | `src/presentation/export.py`, `tests/test_export.py` |
 | **P1** | `Architecture` | Vectorize Hourly Time-Series Assembly and HTML Prevision Calculation | `src/presentation/html_report.py`, `src/optimization/engine.py` |
@@ -122,21 +120,7 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 ## 🧹 Simplicity
 
-### 1. [P1] Remove Unused Legacy Schema Constants and Unused `CupsHourlyMetrics` Model
-- **Goal:** Eliminate dead schema constants in `src/config.py` (`COL_CUPS`, `COL_TIMESTAMP`, `COL_DATE`, `COL_TIME`, `COL_YEAR`, `COL_MONTH`, `COL_CONSUMPTION_KWH`, `COL_GENERATION_KWH`, `DATE_FORMATS`) and the unpopulated `CupsHourlyMetrics` dataclass and `HourlyOptimizationResult.metrics` field in `src/optimization/models.py` to keep the domain surface lean.
-- **Target Files:** `src/config.py`, `src/optimization/models.py`, `src/optimization/engine.py`
-- **Acceptance Criteria:**
-  - Unused column/date constants are removed from `src/config.py`.
-  - `CupsHourlyMetrics` and `HourlyOptimizationResult.metrics` are removed from `src/optimization/models.py` and `src/optimization/engine.py`.
-  - All existing unit and integration tests pass (`pytest`).
-
-### 2. [P1] Consolidate Duplicate Share-Fraction Parsing into a Single Domain Helper
-- **Goal:** Replace duplicate ad-hoc percentage/fraction share parsing logic in `src/cli.py` (`_parse_share`) and `src/curation/curator.py` (`load_cups_metadata`) with a single pure helper function in `src/domain/models.py`.
-- **Target Files:** `src/domain/models.py`, `src/cli.py`, `src/curation/curator.py`, `tests/test_curation.py`
-- **Acceptance Criteria:**
-  - A pure helper `parse_share_fraction(value: float | int | str | None) -> float | None` is defined in `src/domain/models.py` normalizing percentages (`> 1.0` divided by `100.0`) and validating `[0.0, 1.0]`.
-  - Both `src/cli.py` and `src/curation/curator.py` delegate share parsing to `parse_share_fraction`.
-  - Unit tests verify fraction (`0.25`), percentage (`25.0`, `"25%"`), `None`, and out-of-range inputs.
+_No pending tasks._
 
 ## 🎨 Design
 

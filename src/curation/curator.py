@@ -23,7 +23,7 @@ from src.curation.models import (
     CurationError,
 )
 from src.domain.exceptions import EsdError
-from src.domain.models import SupplyPoint
+from src.domain.models import SupplyPoint, parse_share_fraction
 from src.ingestion.aligner import TimeSeriesAligner
 from src.ingestion.consumption import DatadisConsumptionLoader
 from src.ingestion.generation import HuaweiGenerationLoader
@@ -278,20 +278,14 @@ class DataCurator:
             raw_max = item.get("max_share") or item.get("max") or item.get("cuota_maxima")
             if raw_min is not None:
                 try:
-                    f_min = float(str(raw_min).replace("%", "").strip())
-                    if f_min > 1.0:
-                        f_min /= 100.0
-                    min_val = f_min
+                    min_val = parse_share_fraction(raw_min)
                 except (ValueError, TypeError) as err:
                     raise CurationError(
                         f"Invalid min_share '{raw_min}' for CUPS '{cups_id}': {err}"
                     ) from err
             if raw_max is not None:
                 try:
-                    f_max = float(str(raw_max).replace("%", "").strip())
-                    if f_max > 1.0:
-                        f_max /= 100.0
-                    max_val = f_max
+                    max_val = parse_share_fraction(raw_max)
                 except (ValueError, TypeError) as err:
                     raise CurationError(
                         f"Invalid max_share '{raw_max}' for CUPS '{cups_id}': {err}"

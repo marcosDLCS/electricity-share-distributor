@@ -604,7 +604,6 @@ class DistributionOptimizer:
             return HourlyOptimizationResult(
                 profile_matrix=empty_matrix,
                 time_series_df=pd.DataFrame(),
-                metrics=[],
             )
 
         # Identify effective primary CUPS if configured
@@ -826,7 +825,6 @@ class DistributionOptimizer:
         return HourlyOptimizationResult(
             profile_matrix=profile_matrix,
             time_series_df=ts_df,
-            metrics=[],
         )
 
     @classmethod
