@@ -27,8 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | Priority | Category | Task | Target Components |
 | :--- | :--- | :--- | :--- |
-| **P2** | `Cohesion` | Propagate `primary_cups` on `OptimizationResult` to Eliminate Redundant Disk I/O | `src/optimization/models.py`, `src/optimization/engine.py`, `src/presentation/html_report.py` |
-| **P2** | `Cohesion` | Unify CLI Domain Exception Handling Across All Subcommands | `src/cli.py`, `tests/test_cli.py` |
 | **P2** | `Design` | Align `--curated-dir` Short Flag (`-u`) Across `esd curate` and `esd calculate` | `src/cli.py`, `tests/test_cli.py` |
 | **P2** | `Design` | Add `TOTAL (RD 244/2019)` Summary Footer Row to HTML Report Matrix Table | `src/presentation/html_report.py`, `tests/test_export.py` |
 | **P2** | `Documentation` | Synchronize `dso` / `html` Export Formats and 1% Minimum Floor in `README.md` and Guides | `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md` |
@@ -53,20 +51,7 @@ _No pending tasks._
 
 ## 🔗 Cohesion
 
-### 1. [P2] Propagate `primary_cups` on `OptimizationResult` to Eliminate Redundant Disk I/O
-- **Goal:** Store `primary_cups: str | None = None` directly on `OptimizationResult` during optimization so `src/presentation/html_report.py` and `src/optimization/engine.py` no longer re-instantiate `DataCurator` to read `cups.json` from disk during report generation.
-- **Target Files:** `src/optimization/models.py`, `src/optimization/engine.py`, `src/presentation/html_report.py`, `tests/test_export.py`
-- **Acceptance Criteria:**
-  - `OptimizationResult` in `src/optimization/models.py` includes `primary_cups: str | None = None`, populated from `aligned_dataset.primary_cups` in `DistributionOptimizer.optimize_dataset()`.
-  - `HtmlReportGenerator` reads `result.primary_cups` directly (falling back to `cups.json` only if `None`), removing redundant disk reads during standard calculation workflows.
-  - Existing optimization and HTML export tests pass.
-
-### 2. [P2] Unify CLI Domain Exception Handling Across All Subcommands
-- **Goal:** Standardize `EsdError` handling across `init`, `doctor`, `curate`, `weather`, `calculate`, and `config` in `src/cli.py` via a shared error-reporting helper so no subcommand leaks raw tracebacks on domain errors.
-- **Target Files:** `src/cli.py`, `tests/test_cli.py`
-- **Acceptance Criteria:**
-  - `doctor_command` and all other CLI commands in `src/cli.py` catch `EsdError` consistently and format errors through a unified helper before raising `typer.Exit(code=1)`.
-  - Unit tests in `tests/test_cli.py` verify clean CLI exit (`exit_code == 1`) when `DoctorService` raises `EsdError`.
+_No pending tasks._
 
 ## 🛡️ Security
 

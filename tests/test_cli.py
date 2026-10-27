@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
+import pytest
 from typer.testing import CliRunner
 
 from src.cli import app
@@ -541,3 +543,54 @@ def test_cli_calculate_invalid_strategy_and_share_localized() -> None:
     res_es_share = runner.invoke(app, ["calculate", "--max-share", "-5", "--lang", "es"])
     assert res_es_share.exit_code != 0
     assert "--max-share debe estar entre 0% y 100%. Valor recibido: -5.0." in res_es_share.output
+
+
+def test_cli_doctor_handles_esd_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure doctor command cleanly catches EsdError and exits with code 1 without traceback."""
+    from src.domain.exceptions import IngestionError
+    from src.services.doctor_service import DoctorService
+
+    def mock_execute(*args: Any, **kwargs: Any) -> Any:
+        raise IngestionError("Simulated ingestion error in DoctorService")
+
+    monkeypatch.setattr(DoctorService, "execute", mock_execute)
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 1
+    assert "Error:" in result.output
+    assert "Simulated ingestion error in DoctorService" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_cli_subcommands_unified_esd_error_handling(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure curate, weather, and calculate cleanly catch EsdError and exit with code 1."""
+    from src.domain.exceptions import CurationError, OptimizationError, ValidationError
+    from src.services.calculation_service import CalculationService
+    from src.services.curation_service import CurationService
+    from src.services.weather_service import WeatherService
+
+    def mock_curation_execute(*args: Any, **kwargs: Any) -> Any:
+        raise CurationError("Mock curation failure")
+
+    def mock_weather_execute(*args: Any, **kwargs: Any) -> Any:
+        raise ValidationError("Mock weather failure")
+
+    def mock_calc_execute(*args: Any, **kwargs: Any) -> Any:
+        raise OptimizationError("Mock calculation failure")
+
+    monkeypatch.setattr(CurationService, "execute", mock_curation_execute)
+    res_curate = runner.invoke(app, ["curate"])
+    assert res_curate.exit_code == 1
+    assert "Mock curation failure" in res_curate.output
+    assert "Traceback" not in res_curate.output
+
+    monkeypatch.setattr(WeatherService, "execute", mock_weather_execute)
+    res_weather = runner.invoke(app, ["weather", "--year", "2024"])
+    assert res_weather.exit_code == 1
+    assert "Mock weather failure" in res_weather.output
+    assert "Traceback" not in res_weather.output
+
+    monkeypatch.setattr(CalculationService, "execute", mock_calc_execute)
+    res_calc = runner.invoke(app, ["calculate", "-y", "2026", "-m", "5", "--format", "none"])
+    assert res_calc.exit_code == 1
+    assert "Mock calculation failure" in res_calc.output
+    assert "Traceback" not in res_calc.output

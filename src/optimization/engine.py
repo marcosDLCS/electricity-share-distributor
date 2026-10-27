@@ -881,6 +881,19 @@ class DistributionOptimizer:
             except Exception:
                 cups_uses = {}
 
+        # Resolve effective primary CUPS
+        effective_primary = primary_cups or getattr(aligned_dataset, "primary_cups", None)
+        if effective_primary is None:
+            try:
+                from src.curation.curator import DataCurator
+
+                cups_cfg = DataCurator().load_cups_config()
+                candidate = next((c.cups for c in cups_cfg.values() if c.primary), None)
+                if candidate and candidate in cups_list:
+                    effective_primary = candidate
+            except Exception:
+                pass
+
         monthly_results = cls._evaluate_calendar_months(
             aligned_dataset=aligned_dataset,
             cups_list=cups_list,
@@ -917,6 +930,7 @@ class DistributionOptimizer:
                         baselines={},
                         cups_list=cups_list,
                         cups_uses=cups_uses,
+                        primary_cups=effective_primary,
                     )
 
         hourly_result: HourlyOptimizationResult | None = None
@@ -925,7 +939,7 @@ class DistributionOptimizer:
                 aligned_dataset=aligned_dataset,
                 strategy=strategy,
                 precision=active_precision,
-                primary_cups=primary_cups or getattr(aligned_dataset, "primary_cups", None),
+                primary_cups=effective_primary,
                 constraints=constraints,
             )
 
@@ -938,6 +952,7 @@ class DistributionOptimizer:
             hourly_result=hourly_result,
             cups_uses=cups_uses,
             constraints=constraints,
+            primary_cups=effective_primary,
         )
 
     @staticmethod

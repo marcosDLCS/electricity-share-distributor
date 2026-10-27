@@ -225,19 +225,23 @@ def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any
     tot_surplus = tot.total_surplus_kwh
 
     # 1. Identify primary supply point (or fallback to first CUPS)
-    primary_cups: str | None = None
+    primary_cups: str | None = opt_result.primary_cups
     primary_name: str = ""
-    try:
-        from src.curation.curator import DataCurator
+    if primary_cups:
+        primary_name = opt_result.cups_uses.get(primary_cups, "")
 
-        cups_cfg = DataCurator().load_cups_config()
-        for c in cups_cfg.values():
-            if c.primary and c.cups in opt_result.cups_list:
-                primary_cups = c.cups
-                primary_name = c.use
-                break
-    except Exception:
-        pass
+    if not primary_cups:
+        try:
+            from src.curation.curator import DataCurator
+
+            cups_cfg = DataCurator().load_cups_config()
+            for c in cups_cfg.values():
+                if c.primary and c.cups in opt_result.cups_list:
+                    primary_cups = c.cups
+                    primary_name = c.use
+                    break
+        except Exception:
+            pass
 
     if not primary_cups:
         for cups_id, use_str in opt_result.cups_uses.items():

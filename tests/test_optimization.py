@@ -780,3 +780,49 @@ def test_compute_hourly_optimization_vectorized_assembly() -> None:
         assert r["share_pct"].endswith("%")
         assert "." in r["share_pct"]
         assert len(r["share_pct"].split(".")[1].rstrip("%")) == 2
+
+
+def test_optimize_dataset_propagates_primary_cups() -> None:
+    """Verify primary_cups is propagated to OptimizationResult and baselines."""
+    timestamps = (
+        pd.date_range("2026-05-01 00:00:00", "2026-05-31 23:00:00", freq="h")
+        .strftime("%Y-%m-%d %H:%M:%S")
+        .tolist()
+    )
+    cups_list = ["ES0021000000000001AA", "ES0021000000000002BB"]
+    df = pd.DataFrame(
+        {
+            "ES0021000000000001AA": [1.0] * len(timestamps),
+            "ES0021000000000002BB": [2.0] * len(timestamps),
+            "generation_kwh": [1.5] * len(timestamps),
+        },
+        index=timestamps,
+    )
+    summary = IngestionSummary(
+        cups_count=2,
+        cups_list=cups_list,
+        consumption_files_loaded=2,
+        generation_files_loaded=1,
+        start_time=timestamps[0],
+        end_time=timestamps[-1],
+        total_hours=len(timestamps),
+    )
+    dataset = AlignedDataset(
+        data=df,
+        cups_list=cups_list,
+        metadata=summary,
+        monthly_groups={"2026-05": df},
+        primary_cups="ES0021000000000001AA",
+    )
+    res = DistributionOptimizer.optimize_dataset(
+        dataset, strategy=OptimizationStrategy.OPTIMAL, include_baselines=True
+    )
+    assert res.primary_cups == "ES0021000000000001AA"
+    assert res.baselines["consumption_share"].primary_cups == "ES0021000000000001AA"
+    assert res.baselines["equal"].primary_cups == "ES0021000000000001AA"
+
+    # Also test explicit override via primary_cups argument
+    res_override = DistributionOptimizer.optimize_dataset(
+        dataset, strategy=OptimizationStrategy.OPTIMAL, primary_cups="ES0021000000000002BB"
+    )
+    assert res_override.primary_cups == "ES0021000000000002BB"

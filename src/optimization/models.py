@@ -217,6 +217,9 @@ class OptimizationResult:
         baselines: Comparison results computed with alternative baseline strategies.
         cups_list: List of CUPS participating in the community.
         hourly_result: Full hourly optimization results (diurnal profile & time-series) if calculated.
+        cups_uses: Mapping of CUPS identifiers to functional descriptions.
+        constraints: Regulatory or community bylaw constraints if applied.
+        primary_cups: Identifier of the primary common-service supply point if designated.
     """
 
     strategy: str
@@ -227,6 +230,7 @@ class OptimizationResult:
     hourly_result: HourlyOptimizationResult | None = None
     cups_uses: dict[str, str] = field(default_factory=dict)
     constraints: BylawConstraints | None = None
+    primary_cups: str | None = None
 
     def build_matrix(self) -> CoefficientsMatrix:
         """Construct the 12-month calendar coefficients matrix (January to December)."""

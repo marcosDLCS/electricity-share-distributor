@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
+from typing import NoReturn
 
 import typer
 
@@ -65,6 +65,17 @@ app = typer.Typer(
 )
 
 
+def _handle_cli_error(err: Exception | str, unexpected: bool = False) -> NoReturn:
+    """Format domain or CLI errors cleanly and exit with code 1."""
+    if isinstance(err, (typer.Exit, typer.Abort)):
+        raise err
+    prefix = (
+        "[bold red]Unexpected error:[/bold red]" if unexpected else "[bold red]Error:[/bold red]"
+    )
+    console.print(f"\n{prefix} {err}\n")
+    raise typer.Exit(code=1)
+
+
 @app.callback(invoke_without_command=True)
 def default_callback(ctx: typer.Context) -> None:
     """Default entrypoint. Renders custom formatted help if no subcommand is passed."""
@@ -112,64 +123,69 @@ def init_command(
     Safe to call multiple times — always re-applies settings, clears .output, and creates
     missing directories. Defaults to English ('en') and zero precision (0) if omitted.
     """
-    cfg = load_config()
-    was_already = is_initialized()
-
-    # 1. Clear .output (always on init / re-init)
-    cleared_count = clear_output_directory(Path(cfg.output_dir))
-
-    # 2. Ask user for desired language if not explicitly provided
-    if lang is None:
-        try:
-            raw_lang = typer.prompt(
-                t("prompt_lang", lang=cfg.language),
-                default="en",
-            )
-        except typer.exceptions.Abort, EOFError:
-            raw_lang = "en"
-    else:
-        raw_lang = lang
-
     try:
-        target_lang = normalize_language_code(raw_lang)
-    except ValueError as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
+        cfg = load_config()
+        was_already = is_initialized()
 
-    # 3. Ask user for desired precision if not explicitly provided
-    if precision is None:
+        # 1. Clear .output (always on init / re-init)
+        cleared_count = clear_output_directory(Path(cfg.output_dir))
+
+        # 2. Ask user for desired language if not explicitly provided
+        if lang is None:
+            try:
+                raw_lang = typer.prompt(
+                    t("prompt_lang", lang=cfg.language),
+                    default="en",
+                )
+            except typer.exceptions.Abort, EOFError:
+                raw_lang = "en"
+        else:
+            raw_lang = lang
+
         try:
-            raw_precision = typer.prompt(
-                t("prompt_precision", lang=target_lang),
-                default=DEFAULT_SHARE_PRECISION,
-                type=int,
-            )
-        except typer.exceptions.Abort, EOFError:
-            raw_precision = DEFAULT_SHARE_PRECISION
-    else:
-        raw_precision = precision
+            target_lang = normalize_language_code(raw_lang)
+        except ValueError as err:
+            _handle_cli_error(err)
 
-    try:
-        target_precision = validate_share_precision(raw_precision)
-    except ValueError as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
+        # 3. Ask user for desired precision if not explicitly provided
+        if precision is None:
+            try:
+                raw_precision = typer.prompt(
+                    t("prompt_precision", lang=target_lang),
+                    default=DEFAULT_SHARE_PRECISION,
+                    type=int,
+                )
+            except typer.exceptions.Abort, EOFError:
+                raw_precision = DEFAULT_SHARE_PRECISION
+        else:
+            raw_precision = precision
 
-    # 4. Ensure all workspace directories exist
-    ensure_directories(config=cfg)
+        try:
+            target_precision = validate_share_precision(raw_precision)
+        except ValueError as err:
+            _handle_cli_error(err)
 
-    # 5. Persist settings and record initialization timestamp
-    set_language(target_lang)
-    set_precision(target_precision)
-    ts = mark_initialized(version=get_version())
+        # 4. Ensure all workspace directories exist
+        ensure_directories(config=cfg)
 
-    render_init_success(
-        lang=target_lang,
-        initialized_at=ts,
-        precision=target_precision,
-        was_already=was_already,
-        cleared_files=cleared_count,
-    )
+        # 5. Persist settings and record initialization timestamp
+        set_language(target_lang)
+        set_precision(target_precision)
+        ts = mark_initialized(version=get_version())
+
+        render_init_success(
+            lang=target_lang,
+            initialized_at=ts,
+            precision=target_precision,
+            was_already=was_already,
+            cleared_files=cleared_count,
+        )
+    except typer.Exit, typer.Abort:
+        raise
+    except EsdError as err:
+        _handle_cli_error(err)
+    except Exception as exc:
+        _handle_cli_error(exc, unexpected=True)
 
 
 @app.command(name="doctor")
@@ -212,28 +228,35 @@ def doctor_command(
     ),
 ) -> None:
     """Audit input data files to detect gaps, missing hourly intervals, and inconsistencies."""
-    active_lang = normalize_language_code(lang) if lang else get_language()
-    cfg = load_config()
-    target_consumption_dir = consumption_dir or Path(cfg.consumption_dir)
-    target_generation_dir = generation_dir or Path(cfg.generation_dir)
-    target_weather_dir = weather_dir or (
-        Path(cfg.weather_dir) if cfg and cfg.weather_dir else DEFAULT_WEATHER_DIR
-    )
-    cups_path = resolve_cups_config_path(custom_path=cups_file, config=cfg)
-
-    with console.status(f"[bold cyan]{t('status_doctor', lang=active_lang)}[/bold cyan]"):
-        req = DoctorRequest(
-            consumption_dir=target_consumption_dir,
-            generation_dir=target_generation_dir,
-            weather_dir=target_weather_dir,
-            cups_config_path=cups_path,
+    try:
+        active_lang = normalize_language_code(lang) if lang else get_language()
+        cfg = load_config()
+        target_consumption_dir = consumption_dir or Path(cfg.consumption_dir)
+        target_generation_dir = generation_dir or Path(cfg.generation_dir)
+        target_weather_dir = weather_dir or (
+            Path(cfg.weather_dir) if cfg and cfg.weather_dir else DEFAULT_WEATHER_DIR
         )
-        report = DoctorService.execute(req)
+        cups_path = resolve_cups_config_path(custom_path=cups_file, config=cfg)
 
-    render_doctor_report(report, verbose=verbose, lang=active_lang)
+        with console.status(f"[bold cyan]{t('status_doctor', lang=active_lang)}[/bold cyan]"):
+            req = DoctorRequest(
+                consumption_dir=target_consumption_dir,
+                generation_dir=target_generation_dir,
+                weather_dir=target_weather_dir,
+                cups_config_path=cups_path,
+            )
+            report = DoctorService.execute(req)
 
-    if not report.can_calculate:
-        sys.exit(1)
+        render_doctor_report(report, verbose=verbose, lang=active_lang)
+
+        if not report.can_calculate:
+            raise typer.Exit(code=1)
+    except typer.Exit, typer.Abort:
+        raise
+    except EsdError as err:
+        _handle_cli_error(err)
+    except Exception as exc:
+        _handle_cli_error(exc, unexpected=True)
 
 
 @app.command(name="curate")
@@ -336,12 +359,12 @@ def curate_command(
             lang=active_lang,
         )
 
+    except typer.Exit, typer.Abort:
+        raise
     except EsdError as err:
-        console.print(f"\n[bold red]Error:[/bold red] {err}\n")
-        sys.exit(1)
+        _handle_cli_error(err)
     except Exception as exc:
-        console.print(f"\n[bold red]Unexpected error:[/bold red] {exc}\n")
-        sys.exit(1)
+        _handle_cli_error(exc, unexpected=True)
 
 
 @app.command(name="weather")
@@ -427,12 +450,12 @@ def weather_command(
         for result in service_result.results:
             render_weather_result(result, lang=active_lang)
 
+    except typer.Exit, typer.Abort:
+        raise
     except EsdError as err:
-        console.print(f"\n[bold red]Error:[/bold red] {err}\n")
-        sys.exit(1)
+        _handle_cli_error(err)
     except Exception as exc:
-        console.print(f"\n[bold red]Unexpected error:[/bold red] {exc}\n")
-        sys.exit(1)
+        _handle_cli_error(exc, unexpected=True)
 
 
 @app.command(name="calculate")
@@ -539,8 +562,7 @@ def calculate_command(
             get_precision() if precision is None else validate_share_precision(precision)
         )
     except ValueError as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        sys.exit(1)
+        _handle_cli_error(err)
 
     if not is_initialized():
         render_not_initialized_warning(lang=active_lang)
@@ -558,10 +580,9 @@ def calculate_command(
         opt_strat = OptimizationStrategy(strat_key)
     except ValueError:
         valid_strats = ", ".join(f"'{s.value}'" for s in OptimizationStrategy)
-        console.print(
-            f"[bold red]Error:[/bold red] {t('err_invalid_strategy', lang=active_lang, strategy=strategy, options=valid_strats)}"
+        _handle_cli_error(
+            t("err_invalid_strategy", lang=active_lang, strategy=strategy, options=valid_strats)
         )
-        sys.exit(1)
 
     def _parse_share(val: float | None, name: str) -> float | None:
         if val is None:
@@ -569,10 +590,7 @@ def calculate_command(
         try:
             return parse_share_fraction(val)
         except ValueError, TypeError:
-            console.print(
-                f"[bold red]Error:[/bold red] {t('err_share_range', lang=active_lang, name=name, val=val)}"
-            )
-            sys.exit(1)
+            _handle_cli_error(t("err_share_range", lang=active_lang, name=name, val=val))
 
     parsed_min_share = _parse_share(min_share, "--min-share")
     parsed_max_share = _parse_share(max_share, "--max-share")
@@ -648,12 +666,12 @@ def calculate_command(
         if calc_result.exported_paths:
             render_export_success(calc_result.exported_paths, lang=active_lang)
 
+    except typer.Exit, typer.Abort:
+        raise
     except EsdError as err:
-        console.print(f"\n[bold red]Error:[/bold red] {err}\n")
-        sys.exit(1)
+        _handle_cli_error(err)
     except Exception as exc:
-        console.print(f"\n[bold red]Unexpected error:[/bold red] {exc}\n")
-        sys.exit(1)
+        _handle_cli_error(exc, unexpected=True)
 
 
 @app.command(name="config")
@@ -708,59 +726,58 @@ def config_command(
     ),
 ) -> None:
     """View or update persistent application configuration."""
-    cfg = load_config()
-    modified = False
-    active_lang = cfg.language
+    try:
+        cfg = load_config()
+        modified = False
+        active_lang = cfg.language
 
-    if lang is not None:
-        try:
-            active_lang = normalize_language_code(lang)
-            cfg.language = active_lang
+        if lang is not None:
+            try:
+                active_lang = normalize_language_code(lang)
+                cfg.language = active_lang
+                modified = True
+            except ValueError as err:
+                _handle_cli_error(err)
+        if precision is not None:
+            try:
+                cfg.share_precision = validate_share_precision(precision)
+                modified = True
+            except ValueError as err:
+                _handle_cli_error(err)
+        if consumption_dir is not None:
+            cfg.consumption_dir = str(consumption_dir)
             modified = True
-        except ValueError as err:
-            console.print(f"[bold red]Error:[/bold red] {err}")
-            sys.exit(1)
-    if precision is not None:
-        try:
-            cfg.share_precision = validate_share_precision(precision)
+        if generation_dir is not None:
+            cfg.generation_dir = str(generation_dir)
             modified = True
-        except ValueError as err:
-            console.print(f"[bold red]Error:[/bold red] {err}")
-            sys.exit(1)
-    if consumption_dir is not None:
-        cfg.consumption_dir = str(consumption_dir)
-        modified = True
-    if generation_dir is not None:
-        cfg.generation_dir = str(generation_dir)
-        modified = True
-    if weather_dir is not None:
-        cfg.weather_dir = str(weather_dir)
-        modified = True
-    if latitude is not None:
-        if not (-90.0 <= latitude <= 90.0):
-            console.print(
-                f"[bold red]Error:[/bold red] {t('err_lat_range', lang=active_lang, val=latitude)}"
-            )
-            sys.exit(1)
-        cfg.latitude = latitude
-        modified = True
-    if longitude is not None:
-        if not (-180.0 <= longitude <= 180.0):
-            console.print(
-                f"[bold red]Error:[/bold red] {t('err_lon_range', lang=active_lang, val=longitude)}"
-            )
-            sys.exit(1)
-        cfg.longitude = longitude
-        modified = True
-    if output_dir is not None:
-        cfg.output_dir = str(output_dir)
-        modified = True
+        if weather_dir is not None:
+            cfg.weather_dir = str(weather_dir)
+            modified = True
+        if latitude is not None:
+            if not (-90.0 <= latitude <= 90.0):
+                _handle_cli_error(t("err_lat_range", lang=active_lang, val=latitude))
+            cfg.latitude = latitude
+            modified = True
+        if longitude is not None:
+            if not (-180.0 <= longitude <= 180.0):
+                _handle_cli_error(t("err_lon_range", lang=active_lang, val=longitude))
+            cfg.longitude = longitude
+            modified = True
+        if output_dir is not None:
+            cfg.output_dir = str(output_dir)
+            modified = True
 
-    if modified:
-        save_config(cfg)
-        console.print(f"[bold green]{t('msg_config_updated', lang=cfg.language)}[/bold green]")
+        if modified:
+            save_config(cfg)
+            console.print(f"[bold green]{t('msg_config_updated', lang=cfg.language)}[/bold green]")
 
-    render_config_view(cfg, lang=cfg.language)
+        render_config_view(cfg, lang=cfg.language)
+    except typer.Exit, typer.Abort:
+        raise
+    except EsdError as err:
+        _handle_cli_error(err)
+    except Exception as exc:
+        _handle_cli_error(exc, unexpected=True)
 
 
 @app.command(name="cleanup")
@@ -785,38 +802,45 @@ def cleanup_command(
     ),
 ) -> None:
     """Clean up generated reports and files from the output directory."""
-    active_lang = normalize_language_code(lang) if lang else get_language()
-    cfg = load_config()
-    out_dir = output_dir or Path(cfg.output_dir)
+    try:
+        active_lang = normalize_language_code(lang) if lang else get_language()
+        cfg = load_config()
+        out_dir = output_dir or Path(cfg.output_dir)
 
-    if not out_dir.exists():
-        render_cleanup_result(count=0, output_dir=str(out_dir), lang=active_lang)
-        return
-
-    files = [f for f in out_dir.iterdir() if f.is_file() and not f.name.startswith(".")]
-
-    if not files:
-        render_cleanup_result(count=0, output_dir=str(out_dir), lang=active_lang)
-        return
-
-    if not force:
-        confirm = typer.confirm(
-            t("prompt_cleanup_confirm", lang=active_lang, count=len(files), dir=str(out_dir)),
-            default=False,
-        )
-        if not confirm:
-            console.print(f"[yellow]{t('cleanup_aborted', lang=active_lang)}[/yellow]")
+        if not out_dir.exists():
+            render_cleanup_result(count=0, output_dir=str(out_dir), lang=active_lang)
             return
 
-    count = 0
-    for f in files:
-        try:
-            f.unlink()
-            count += 1
-        except Exception as err:
-            console.print(f"[red]Error deleting {f.name}: {err}[/red]")
+        files = [f for f in out_dir.iterdir() if f.is_file() and not f.name.startswith(".")]
 
-    render_cleanup_result(count=count, output_dir=str(out_dir), lang=active_lang)
+        if not files:
+            render_cleanup_result(count=0, output_dir=str(out_dir), lang=active_lang)
+            return
+
+        if not force:
+            confirm = typer.confirm(
+                t("prompt_cleanup_confirm", lang=active_lang, count=len(files), dir=str(out_dir)),
+                default=False,
+            )
+            if not confirm:
+                console.print(f"[yellow]{t('cleanup_aborted', lang=active_lang)}[/yellow]")
+                return
+
+        count = 0
+        for f in files:
+            try:
+                f.unlink()
+                count += 1
+            except Exception as err:
+                console.print(f"[red]Error deleting {f.name}: {err}[/red]")
+
+        render_cleanup_result(count=count, output_dir=str(out_dir), lang=active_lang)
+    except typer.Exit, typer.Abort:
+        raise
+    except EsdError as err:
+        _handle_cli_error(err)
+    except Exception as exc:
+        _handle_cli_error(exc, unexpected=True)
 
 
 def main() -> None:
