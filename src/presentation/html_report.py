@@ -592,6 +592,11 @@ def generate_interactive_html_report(
     txt_total_dem = "Demanda Comunitaria" if is_es else "Collective Demand"
     txt_total_surplus = "Excedente a Red" if is_es else "Solar Surplus (Grid)"
     txt_total_sc = "Energía Autoconsumida" if is_es else "Self-Consumed Energy"
+    txt_solar_hours_gen = "Horas de Sol" if is_es else "Solar Hours"
+    txt_solar_hours_dem = "Horas de Sol" if is_es else "Solar Hours"
+    txt_surplus_rate = "Vertido a Red" if is_es else "Spilled to Grid"
+    txt_sc_rate = "Aprovechamiento" if is_es else "Efficiency"
+    txt_cov_rate = "Cobertura" if is_es else "Coverage"
 
     txt_prev_box_title = (
         "Previsión y Comparativa de Autoconsumo"
@@ -943,6 +948,17 @@ def generate_interactive_html_report(
             margin-bottom: 0;
             line-height: 1.15;
             font-family: var(--font-sans);
+        }}
+
+        .kpi-meta {{
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 0.45rem;
+            line-height: 1.4;
+        }}
+
+        .kpi-meta strong {{
+            color: var(--text-main);
         }}
 
         .text-amber {{ color: var(--accent-solar); }}
@@ -1462,6 +1478,7 @@ def generate_interactive_html_report(
                     <span class="kpi-title" data-i18n="kpi_gen_title">🌞 {txt_total_gen}</span>
                 </div>
                 <div class="kpi-value text-amber">{format_kwh(tot.total_generation_kwh)}</div>
+                <div class="kpi-meta"><span data-i18n="kpi_solar_hours_gen">{txt_solar_hours_gen}</span>: <strong>{format_kwh(tot.solar_hours_generation_kwh if tot.solar_hours_generation_kwh > 0 else tot.total_generation_kwh)}</strong></div>
             </div>
 
             <!-- Box 2: Demand -->
@@ -1470,6 +1487,7 @@ def generate_interactive_html_report(
                     <span class="kpi-title" data-i18n="kpi_dem_title">⚡ {txt_total_dem}</span>
                 </div>
                 <div class="kpi-value text-cyan">{format_kwh(tot.total_consumption_kwh)}</div>
+                <div class="kpi-meta"><span data-i18n="kpi_solar_hours_dem">{txt_solar_hours_dem}</span>: <strong>{format_kwh(tot.solar_hours_consumption_kwh)}</strong> ({tot.solar_hours_coverage_rate:.1f}% cov)</div>
             </div>
 
             <!-- Box 3: Surplus -->
@@ -1478,6 +1496,7 @@ def generate_interactive_html_report(
                     <span class="kpi-title" data-i18n="kpi_surplus_title">🛡️ {txt_total_surplus}</span>
                 </div>
                 <div class="kpi-value text-purple">{format_kwh(tot.total_surplus_kwh)}</div>
+                <div class="kpi-meta"><span data-i18n="kpi_surplus_rate">{txt_surplus_rate}</span>: <strong>{tot.total_surplus_kwh / max(tot.total_generation_kwh, 1e-6) * 100:.1f}%</strong></div>
             </div>
 
             <!-- Box 4: Autoconsumption -->
@@ -1486,6 +1505,7 @@ def generate_interactive_html_report(
                     <span class="kpi-title" data-i18n="kpi_sc_title">🏆 {txt_total_sc}</span>
                 </div>
                 <div class="kpi-value text-emerald">{format_kwh(tot.total_self_consumed_kwh)}</div>
+                <div class="kpi-meta"><span data-i18n="kpi_sc_rate">{txt_sc_rate}</span>: <strong>{tot.self_consumption_rate:.1f}%</strong> • <span data-i18n="kpi_cov_rate">{txt_cov_rate}</span>: <strong>{tot.solar_coverage_rate:.1f}%</strong></div>
             </div>
         </div>
 
@@ -1679,6 +1699,11 @@ def generate_interactive_html_report(
                 kpi_surplus_title: "🛡️ Excedente a Red",
                 kpi_surplus_sub: "Vertido a Red",
                 kpi_sc_title: "🏆 Energía Autoconsumida",
+                kpi_solar_hours_gen: "Horas de Sol",
+                kpi_solar_hours_dem: "Horas de Sol",
+                kpi_surplus_rate: "Vertido a Red",
+                kpi_sc_rate: "Aprovechamiento",
+                kpi_cov_rate: "Cobertura",
                 prev_box_title: "⚡ Previsión y Comparativa de Autoconsumo",
                 prev_box_sub: "Comparativa de aprovechamiento solar: Sin reparto colectivo (1 solo CUPS), Reparto Mensual Fijo (RD 244/2019) y Reparto Horario Dinámico (Orden TED/1247/2021)",
                 hourly_box_title: "⚡ Previsión y Comparativa de Autoconsumo",
@@ -1752,6 +1777,11 @@ def generate_interactive_html_report(
                 kpi_dem_title: "⚡ Collective Demand",
                 kpi_surplus_title: "🛡️ Solar Surplus (Grid)",
                 kpi_sc_title: "🏆 Self-Consumed Energy",
+                kpi_solar_hours_gen: "Solar Hours",
+                kpi_solar_hours_dem: "Solar Hours",
+                kpi_surplus_rate: "Spilled to Grid",
+                kpi_sc_rate: "Efficiency",
+                kpi_cov_rate: "Coverage",
                 prev_box_title: "⚡ Self-Consumption Prevision & Comparison",
                 prev_box_sub: "Comparative solar utilization: No collective share (single CUPS), Fixed Monthly Share (RD 244/2019), and Dynamic Hourly Share (Order TED/1247/2021)",
                 hourly_box_title: "⚡ Self-Consumption Prevision & Comparison",

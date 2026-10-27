@@ -72,6 +72,9 @@ def create_dummy_optimization_result() -> tuple[OptimizationResult, IngestionSum
         total_summary=m1,
         baselines={},
         cups_uses={"ES0021000000000001AA": "Aerotermia", "ES0021000000000002BB": "Garaje"},
+        current_self_consumed_kwh=480.0,
+        monthly_share_self_consumed_kwh=750.0,
+        hourly_share_self_consumed_kwh=820.0,
     )
 
     summary = IngestionSummary(
@@ -173,6 +176,11 @@ def test_export_markdown_english(tmp_path: Path) -> None:
     assert "ES0021000000000001AA" in content
     assert "TOTAL (RD 244/2019)" in content
     assert "100.0%" in content
+    assert "Solar PV Generation (Solar Hours)" in content
+    assert "Self-Consumption Modality Comparison" in content
+    assert "Current (No Share)" in content
+    assert "Monthly Share (RD 244/2019)" in content
+    assert "Hourly Share (Order TED)" in content
 
 
 def test_export_markdown_spanish(tmp_path: Path) -> None:
@@ -194,6 +202,11 @@ def test_export_markdown_spanish(tmp_path: Path) -> None:
     assert "ES0021000000000001AA" in content
     assert "TOTAL (RD 244/2019)" in content
     assert "100.0%" in content
+    assert "Generación Solar FV (Horas Solares)" in content
+    assert "Comparativa de Modalidades de Autoconsumo" in content
+    assert "Actual (Sin Reparto)" in content
+    assert "Reparto Mensual (RD 244/2019)" in content
+    assert "Reparto Horario (Orden TED)" in content
 
 
 def test_export_all_filtering(tmp_path: Path) -> None:

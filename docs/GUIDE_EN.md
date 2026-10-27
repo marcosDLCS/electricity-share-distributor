@@ -81,13 +81,13 @@ The output produces two complementary sibling formats in the `.curated/` folder:
 Formatted using `;` as delimiter and `,` for decimals without thousands separators, grouping related analytical dimensions:
 1. **Temporal coordinates:** `timestamp`, `year`, `month`, `day`, `hour`, `day_of_week`, `is_weekend`
 2. **Individual consumer:** `cups_id`, `use`, `consumption`
-3. **Community & solar balance:** `community_demand`, `generation`, `self_consumption`, `hourly_self_consumption`, `exported_energy`, `imported_energy`
+3. **Community & solar balance:** `community_demand`, `generation`, `self_consumption`, `exported_energy`, `imported_energy`
 4. **Weather context:** `temperature`, `cloud_cover`
 
 ```csv
-timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption;community_demand;generation;self_consumption;hourly_self_consumption;exported_energy;imported_energy;temperature;cloud_cover
-2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000001AA;Aerotermia;8,5;9,7;12,5;6,0;8,5;6,0;2,5;21,4;12
-2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000002BB;Garaje;1,2;9,7;12,5;0,0;0,0;0,0;0,0;21,4;12
+timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption;community_demand;generation;self_consumption;exported_energy;imported_energy;temperature;cloud_cover
+2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000001AA;Aerotermia;8,5;9,7;12,5;6,0;6,0;2,5;21,4;12
+2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000002BB;Garaje;1,2;9,7;12,5;0,0;0,0;0,0;21,4;12
 ```
 
 #### 2. Styled Excel Workbook (`curated.xlsx`)
@@ -97,7 +97,7 @@ Created alongside the CSV with executive styling for interactive analysis:
 - **Boolean Emojis:** The `is_weekend` column displays intuitive visual checkmarks (`✅` for weekend, `❌` for weekday).
 - **Freeze Panes & AutoFilter:** The header row is frozen and native Excel filters are enabled across all columns.
 
-For the primary installation point, `esd` always adopts the higher consumption between the utility (DATADIS) and the solar inverter smart power sensor ($\max(C_{\text{DATADIS}}, C_{\text{inverter}})$). This guarantees full equipment demand is captured while avoiding fake zero underreporting. The primary supply point also receives the detailed solar energy balance metrics: physical instantaneous self-consumption (`self_consumption`), regulatory hourly net self-consumption (`hourly_self_consumption` = $\min(C_h, G_h)$), solar generation exported to the grid (`exported_energy`), and grid electricity imported (`imported_energy`). Other participating points receive zero for these plant-level flows prior to collective allocation. The dataset is ordered chronologically by timestamp (date/hour) and within each timestamp alphabetically by facility use. Furthermore, each hourly record includes local weather context (`temperature` in °C and `cloud_cover` percentage from 0 to 100%). If weather data is not already stored locally in `.input/weather/`, `esd curate` automatically queries Open-Meteo using the community's default location from `.input/cups/cups.json`.
+For the primary installation point, `esd` always adopts the higher consumption between the utility (DATADIS) and the solar inverter smart power sensor ($\max(C_{\text{DATADIS}}, C_{\text{inverter}})$). This guarantees full equipment demand is captured while avoiding fake zero underreporting. The primary supply point also receives the detailed solar energy balance metrics: physical instantaneous self-consumption (`self_consumption`), solar generation exported to the grid (`exported_energy`), and grid electricity imported (`imported_energy`). Other participating points receive zero for these plant-level flows prior to collective allocation. The dataset is ordered chronologically by timestamp (date/hour) and within each timestamp alphabetically by facility use. Furthermore, each hourly record includes local weather context (`temperature` in °C and `cloud_cover` percentage from 0 to 100%). If weather data is not already stored locally in `.input/weather/`, `esd curate` automatically queries Open-Meteo using the community's default location from `.input/cups/cups.json`.
 
 ---
 
@@ -154,7 +154,27 @@ Homeowners association agreements and community bylaws frequently establish stat
 
 ---
 
-## 5. 🚀 Practical Workflow & Commands
+## 5. 📊 Community Energy Balance & 3-Way Self-Consumption Progression
+
+To provide complete transparency and support informed decision-making by property owners and HOA boards, `esd` reports a consolidated six-metric energy balance and a three-tier self-consumption progression across all terminal views, interactive HTML dashboards, and multi-format exports.
+
+### The Six Core Energy Balance KPIs
+1. **Total Solar Generation ($G_{\text{total}}$):** Aggregate kilowatt-hours produced by the rooftop photovoltaic system across the entire evaluation horizon.
+2. **Total Community Demand ($C_{\text{total}}$):** Full round-the-clock electrical energy demanded by all participating community facilities.
+3. **Solar-Hours Generation ($G_{\text{solar}}$):** Generation occurring strictly during active daylight hours ($G_h > 0$). Because solar PV operates purely diurnally, this metric matches total generation and confirms zero nocturnal generation distortion.
+4. **Solar-Hours Demand ($C_{\text{solar}}$):** Aggregate community consumption demanded exclusively during daylight/generation intervals ($G_h > 0$). This defines the physical instantaneous upper bound for self-consumption without battery storage.
+5. **Solar Surplus Spilled ($Surplus$):** Excess solar electricity generated when instantaneous photovoltaic production exceeds simultaneous community demand ($\max(0, G_h - C_h)$), injected into the street grid.
+6. **Total Self-Consumed Energy ($SC$):** Net solar kilowatt-hours directly captured and consumed by community equipment on-site ($\min(C_h, G_h)$), avoiding retail utility grid purchases.
+
+### The 3-Way Self-Consumption Modality Progression
+`esd` calculates and contrasts three distinct operating regimes directly from telemetry:
+1. **Current Self-Consumption (Baseline / No Share):** Direct self-consumption achieved when solar generation is wired solely to the primary installation (e.g., central aerothermal heating) with zero collective sharing. Recorded directly from inverter telemetry.
+2. **Estimated Monthly Share (Real Decreto 244/2019):** Optimal collective self-consumption under legally fixed monthly coefficients ($\beta_{i, m}$). By dynamically shifting shares between facilities according to seasonal habits (e.g., allocating higher shares to pool filtration in summer and to central heating in winter), self-consumption increases substantially over single-meter wiring.
+3. **Estimated Hourly Share (Orden TED/1247/2021):** Dynamic diurnal self-consumption utilizing variable hourly schedules ($\beta_{i, h}$). Because facility loads vary significantly throughout the day (elevator motors during commute peaks, pool filtration around solar noon, and heat pumps in diurnal cycles), dynamic hourly allocation maximizes instantaneous coincidence, capturing maximum solar energy and reducing the community's overall electricity bill to the physical minimum.
+
+---
+
+## 6. 🚀 Practical Workflow & Commands
 
 You can execute the entire pipeline with simple commands:
 
@@ -228,7 +248,7 @@ esd calculate --format dso
 
 ---
 
-## 6. 📊 Deliverables & Official Documents (`.output/`)
+## 7. 📊 Deliverables & Official Documents (`.output/`)
 
 Running `esd calculate` generates ready-to-use artifacts in `.output/`:
 
@@ -246,7 +266,7 @@ Running `esd calculate` generates ready-to-use artifacts in `.output/`:
 
 ---
 
-## 7. 🗺️ Code Map & Traceability Reference
+## 8. 🗺️ Code Map & Traceability Reference
 
 For developers and autonomous agents navigating the codebase:
 

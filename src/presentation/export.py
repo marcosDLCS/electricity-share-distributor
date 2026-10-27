@@ -626,6 +626,15 @@ class ReportExporter:
             ),
             t("md_lbl_total_hours", lang=target_lang, hours=ingestion_summary.total_hours),
             t("md_lbl_total_gen", lang=target_lang, gen=tot.total_generation_kwh),
+            t(
+                "md_lbl_solar_hours_gen",
+                lang=target_lang,
+                gen=(
+                    tot.solar_hours_generation_kwh
+                    if tot.solar_hours_generation_kwh > 0
+                    else tot.total_generation_kwh
+                ),
+            ),
             t("md_lbl_total_dem", lang=target_lang, dem=tot.total_consumption_kwh),
             t("md_lbl_solar_hours_dem", lang=target_lang, dem=tot.solar_hours_consumption_kwh),
             t(
@@ -701,6 +710,47 @@ class ReportExporter:
                     f"{b_tot.total_surplus_kwh:,.1f} | {b_tot.self_consumption_rate:.1f}% | {b_gain_str} |"
                 )
             lines.extend(["", "---", ""])
+
+        # 3-Way Self-Consumption Progression Comparison
+        mon_sc = opt_result.monthly_share_self_consumed_kwh or tot.total_self_consumed_kwh
+        if (
+            opt_result.current_self_consumed_kwh > 0
+            or mon_sc > 0
+            or opt_result.hourly_share_self_consumed_kwh > 0
+        ):
+            cur_sc = opt_result.current_self_consumed_kwh
+            hour_sc = opt_result.hourly_share_self_consumed_kwh or mon_sc
+
+            mon_gain = mon_sc - cur_sc
+            mon_gain_pct = (mon_gain / max(cur_sc, 1e-6)) * 100.0 if cur_sc > 0 else 0.0
+            mon_gain_str = (
+                f"+{mon_gain:,.1f} kWh (+{mon_gain_pct:.1f}%)"
+                if mon_gain > 0 and cur_sc > 0
+                else "—"
+            )
+
+            hour_gain = hour_sc - cur_sc
+            hour_gain_pct = (hour_gain / max(cur_sc, 1e-6)) * 100.0 if cur_sc > 0 else 0.0
+            hour_gain_str = (
+                f"+{hour_gain:,.1f} kWh (+{hour_gain_pct:.1f}%)"
+                if hour_gain > 0 and cur_sc > 0
+                else "—"
+            )
+
+            lines.extend(
+                [
+                    t("md_sec_sc_comparison", lang=target_lang),
+                    "",
+                    t("md_sc_comp_header", lang=target_lang),
+                    "| :--- | :---: | :---: | :---: |",
+                    f"| {t('lbl_sc_current', lang=target_lang)} | {cur_sc:,.1f} | {opt_result.current_self_consumption_rate:.1f}% | {t('lbl_baseline', lang=target_lang)} |",
+                    f"| {t('lbl_sc_monthly', lang=target_lang)} | {mon_sc:,.1f} | {opt_result.monthly_share_self_consumption_rate:.1f}% | {mon_gain_str} |",
+                    f"| **{t('lbl_sc_hourly', lang=target_lang)}** | **{hour_sc:,.1f}** | **{opt_result.hourly_share_self_consumption_rate:.1f}%** | **{hour_gain_str}** |",
+                    "",
+                    "---",
+                    "",
+                ]
+            )
 
         # Consolidated Regulatory Coefficients Matrix (RD 244/2019)
         matrix = opt_result.build_matrix()

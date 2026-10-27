@@ -81,12 +81,12 @@ El proceso genera dos formatos complementarios en la carpeta `.curated/`: una ta
 Estructurado con delimitador `;`, coma `,` para decimales y sin separadores de miles, agrupando las dimensiones analíticas por afinidad:
 1. **Coordenadas temporales:** `timestamp`, `year`, `month`, `day`, `hour`, `day_of_week`, `is_weekend`
 2. **Consumidor individual:** `cups_id`, `use`, `consumption`
-3. **Balance comunitario y solar:** `community_demand`, `generation`, `self_consumption`, `hourly_self_consumption`, `exported_energy`, `imported_energy`
+3. **Balance comunitario y solar:** `community_demand`, `generation`, `self_consumption`, `exported_energy`, `imported_energy`
 4. **Contexto meteorológico:** `temperature`, `cloud_cover`
 
 ```csv
-timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption;community_demand;generation;self_consumption;hourly_self_consumption;exported_energy;imported_energy;temperature;cloud_cover
-2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000001AA;Aerotermia;8,5;9,7;12,5;6,0;8,5;6,0;2,5;21,4;12
+timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption;community_demand;generation;self_consumption;exported_energy;imported_energy;temperature;cloud_cover
+2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000001AA;Aerotermia;8,5;9,7;12,5;6,0;6,0;2,5;21,4;12
 2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000002BB;Garaje;1,2;9,7;12,5;0,0;0,0;0,0;0,0;21,4;12
 ```
 
@@ -97,7 +97,7 @@ Creado junto al CSV con formato profesional para análisis interactivo:
 - **Emojis Booleanos:** La columna `is_weekend` muestra marcas visuales intuitivas (`✅` para fin de semana, `❌` para día laborable).
 - **Inmovilización de Paneles y Filtros:** Cabecera fija (`freeze_panes`) y filtros automáticos desplegables nativos en todas las columnas.
 
-Para el suministro principal de la instalación, `esd` adopta siempre el mayor consumo entre la distribuidora (DATADIS) y el sensor de potencia del inversor solar ($\max(C_{\text{DATADIS}}, C_{\text{inversor}})$). Esto garantiza registrar la demanda real y completa de la instalación eliminando los falsos ceros. El punto de suministro principal recibe además las métricas detalladas del balance solar: el autoconsumo físico instantáneo (`self_consumption`), el autoconsumo regulatorio en balance horario (`hourly_self_consumption` = $\min(C_h, G_h)$), los excedentes solares vertidos a la red (`exported_energy`) y la energía importada de la red (`imported_energy`). El resto de puntos participantes reciben cero para estos flujos individuales previos al reparto colectivo. El conjunto de datos se encuentra ordenado cronológicamente por marca de tiempo (fecha/hora) y, dentro de cada hora, alfabéticamente por uso del suministro. Además, cada intervalo horario incorpora el contexto meteorológico local (`temperature` en °C y porcentaje de nubosidad `cloud_cover` de 0 a 100%). Si los datos meteorológicos no están disponibles localmente en `.input/weather/`, `esd curate` ejecuta automáticamente la consulta a Open-Meteo utilizando la ubicación por defecto de la comunidad en `.input/cups/cups.json`.
+Para el suministro principal de la instalación, `esd` adopta siempre el mayor consumo entre la distribuidora (DATADIS) y el sensor de potencia del inversor solar ($\max(C_{\text{DATADIS}}, C_{\text{inversor}})$). Esto garantiza registrar la demanda real y completa de la instalación eliminando los falsos ceros. El punto de suministro principal recibe además las métricas detalladas del balance solar: el autoconsumo físico instantáneo (`self_consumption`), los excedentes solares vertidos a la red (`exported_energy`) y la energía importada de la red (`imported_energy`). El resto de puntos participantes reciben cero para estos flujos individuales previos al reparto colectivo. El conjunto de datos se encuentra ordenado cronológicamente por marca de tiempo (fecha/hora) y, dentro de cada hora, alfabéticamente por uso del suministro. Además, cada intervalo horario incorpora el contexto meteorológico local (`temperature` en °C y porcentaje de nubosidad `cloud_cover` de 0 a 100%). Si los datos meteorológicos no están disponibles localmente en `.input/weather/`, `esd curate` ejecuta automáticamente la consulta a Open-Meteo utilizando la ubicación por defecto de la comunidad en `.input/cups/cups.json`.
 
 ---
 
@@ -154,7 +154,27 @@ Los acuerdos de junta y estatutos de comunidades de propietarios a menudo establ
 
 ---
 
-## 5. 🚀 Flujo Práctico de Uso y Comandos
+## 5. 📊 Balance Energético Comunitario y Progresión de Autoconsumo en 3 Modalidades
+
+Para proporcionar total transparencia a propietarios y administradores de fincas, `esd` evalúa y expone un balance energético completo de seis magnitudes clave junto a una comparativa de tres modalidades de autoconsumo en consola, informes HTML y exportaciones.
+
+### Los Seis Indicadores Clave del Balance Energético
+1. **Generación Solar Total ($G_{\text{total}}$):** Kilovatios-hora totales producidos por la instalación solar fotovoltaica en el conjunto del periodo evaluado.
+2. **Demanda Total de la Comunidad ($C_{\text{total}}$):** Consumo eléctrico total e ininterrumpido (24 horas al día, 7 días a la semana) de todos los servicios comunes participantes.
+3. **Generación en Horas de Sol ($G_{\text{solar}}$):** Electricidad producida exclusivamente en horas con radiación ($G_h > 0$). Dado que la energía solar es estrictamente diurna, certifica la ausencia de distorsiones nocturnas.
+4. **Demanda en Horas de Sol ($C_{\text{solar}}$):** Consumo de la comunidad producido estrictamente en los intervalos de generación solar ($G_h > 0$). Establece el límite físico superior de autoconsumo instantáneo posible sin recurrir a baterías físicas.
+5. **Excedentes Vertidos a Red ($Surplus$):** Energía solar que supera el consumo simultáneo de los servicios comunitarios ($\max(0, G_h - C_h)$), inyectada a la red de distribución.
+6. **Energía Autoconsumida Total ($SC$):** Kilovatios-hora solares aprovechados directamente in situ por las instalaciones comunes ($\min(C_h, G_h)$), evitando la compra de electricidad de la red a precio minorista.
+
+### Las Tres Modalidades de Autoconsumo y su Progresión
+`esd` calcula y compara tres escenarios operativos a partir de la telemetría real:
+1. **Autoconsumo Actual (Sin Reparto / Línea Base):** Autoconsumo directo obtenido cuando la planta solar está conectada físicamente únicamente al contador principal (habitualmente la aerotermia central) sin reparto colectivo con otros servicios. Refleja la situación de partida previa al acuerdo regulatorio.
+2. **Reparto Mensual Fijo (Real Decreto 244/2019):** Autoconsumo colectivo resultante de optimizar coeficientes fijos mensuales ($\beta_{i, m}$). Al redistribuir cuotas según la estacionalidad (mayor cuota a la piscina en verano y a la calefacción central en invierno), el aprovechamiento colectivo aumenta de forma sustancial frente al autoconsumo individual.
+3. **Reparto Horario Dinámico (Orden TED/1247/2021):** Autoconsumo dinámico mediante coeficientes variables hora a hora ($\beta_{i, h}$). Dado que los consumos comunitarios varían sensiblemente a lo largo del día (motores de ascensores en horas punta de entrada y salida, depuradoras en las horas centrales y bombas de calor en ciclos diurnos), el reparto horario maximiza la coincidencia instantánea, capturando el máximo de energía solar y reduciendo la factura eléctrica comunitaria al mínimo legal y físico posible.
+
+---
+
+## 6. 🚀 Flujo Práctico de Uso y Comandos
 
 El proceso completo se ejecuta de forma sencilla mediante la consola:
 
@@ -228,7 +248,7 @@ esd calculate --format dso
 
 ---
 
-## 6. 📊 Entregables e Informes Oficiales (`.output/`)
+## 7. 📊 Entregables e Informes Oficiales (`.output/`)
 
 Al ejecutar `esd calculate`, se generan automáticamente los archivos en `.output/`:
 
@@ -246,7 +266,7 @@ Al ejecutar `esd calculate`, se generan automáticamente los archivos en `.outpu
 
 ---
 
-## 7. 🗺️ Mapa de Código y Referencia de Trazabilidad
+## 8. 🗺️ Mapa de Código y Referencia de Trazabilidad
 
 Para desarrolladores y agentes autónomos que naveguen por la base de código:
 

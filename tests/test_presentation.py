@@ -52,3 +52,69 @@ def test_coverage_sparkline_rendering() -> None:
 
     # Ensure SPARK_BLOCKS are valid unicode
     assert len(SPARK_BLOCKS) == 8
+
+
+def test_render_community_summary_output() -> None:
+    """Verify that render_community_summary renders 6 energy KPIs and 3-way progression."""
+    from src.ingestion.schema import IngestionSummary
+    from src.optimization.models import CommunityMonthlyMetrics, OptimizationResult
+    from src.presentation.console import console
+    from src.presentation.views.summary import render_community_summary
+
+    summary = IngestionSummary(
+        cups_count=2,
+        cups_list=["ES0021000000000001AA", "ES0021000000000002BB"],
+        consumption_files_loaded=2,
+        generation_files_loaded=1,
+        start_time="2026-05-01 00:00:00",
+        end_time="2026-05-31 23:00:00",
+        total_hours=744,
+        missing_hours_count=0,
+    )
+
+    tot = CommunityMonthlyMetrics(
+        month="Total",
+        strategy="optimal",
+        total_consumption_kwh=1500.0,
+        total_generation_kwh=2000.0,
+        solar_hours_generation_kwh=2000.0,
+        solar_hours_consumption_kwh=1200.0,
+        total_self_consumed_kwh=1100.0,
+        total_surplus_kwh=900.0,
+        total_grid_demand_kwh=400.0,
+        self_consumption_rate=55.0,
+        solar_coverage_rate=73.3,
+        solar_hours_coverage_rate=91.7,
+        beta_sum=1.0,
+        cups_metrics=[],
+        has_data=True,
+    )
+
+    opt_result = OptimizationResult(
+        strategy="optimal",
+        monthly_results=[tot],
+        total_summary=tot,
+        cups_list=summary.cups_list,
+        cups_uses={"ES0021000000000001AA": "Aerotermia", "ES0021000000000002BB": "Garaje"},
+        current_self_consumed_kwh=800.0,
+        monthly_share_self_consumed_kwh=1100.0,
+        hourly_share_self_consumed_kwh=1250.0,
+    )
+
+    with console.capture() as capture:
+        render_community_summary(summary, tot, lang="en", opt_result=opt_result)
+
+    output = capture.get()
+    # Check 6 core energy KPIs
+    assert "2,000.00 kWh" in output
+    assert "1,500.00 kWh" in output
+    assert "1,200.00 kWh" in output
+    assert "1,100.00 kWh" in output
+    assert "900.00 kWh" in output
+    # Check 3-way progression table
+    assert "Current (No Share)" in output
+    assert "Monthly Share (RD 244/2019)" in output
+    assert "Hourly Share (Order TED)" in output
+    assert "800.0" in output
+    assert "1,100.0" in output
+    assert "1,250.0" in output
