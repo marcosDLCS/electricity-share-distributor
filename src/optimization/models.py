@@ -240,6 +240,27 @@ class OptimizationResult:
     cups_uses: dict[str, str] = field(default_factory=dict)
     constraints: BylawConstraints | None = None
     primary_cups: str | None = None
+    current_self_consumed_kwh: float = 0.0
+    monthly_share_self_consumed_kwh: float = 0.0
+    hourly_share_self_consumed_kwh: float = 0.0
+
+    @property
+    def current_self_consumption_rate(self) -> float:
+        """Percentage of total generation self-consumed physically before collective distribution."""
+        tot_gen = self.total_summary.total_generation_kwh
+        return (self.current_self_consumed_kwh / tot_gen * 100.0) if tot_gen > 0 else 0.0
+
+    @property
+    def monthly_share_self_consumption_rate(self) -> float:
+        """Percentage of total generation self-consumed under RD 244/2019 fixed monthly shares."""
+        tot_gen = self.total_summary.total_generation_kwh
+        return (self.monthly_share_self_consumed_kwh / tot_gen * 100.0) if tot_gen > 0 else 0.0
+
+    @property
+    def hourly_share_self_consumption_rate(self) -> float:
+        """Percentage of total generation self-consumed under Orden TED/1247/2021 dynamic hourly shares."""
+        tot_gen = self.total_summary.total_generation_kwh
+        return (self.hourly_share_self_consumed_kwh / tot_gen * 100.0) if tot_gen > 0 else 0.0
 
     def build_matrix(self) -> CoefficientsMatrix:
         """Construct the 12-month calendar coefficients matrix (January to December)."""

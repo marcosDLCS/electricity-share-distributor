@@ -851,6 +851,76 @@ class DistributionOptimizer:
         )
 
     @classmethod
+    def evaluate_hourly_self_consumption(
+        cls,
+        aligned_dataset: AlignedDataset,
+        strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL,
+        precision: int = 0,
+        primary_cups: str | None = None,
+        constraints: BylawConstraints | None = None,
+    ) -> float:
+        """Calculate exact collective self-consumption under dynamic hourly allocation (Orden TED/1247/2021).
+
+        Args:
+            aligned_dataset: Ingested and aligned dataset containing hourly timestamps.
+            strategy: Primary optimization strategy.
+            precision: Share percentage precision (0, 1, or 2 decimal places).
+            primary_cups: Optional identifier of primary CUPS.
+            constraints: Optional regulatory or community bylaw constraints.
+
+        Returns:
+            Total kilowatt-hours self-consumed collectively across all timestamps.
+        """
+        aligned_df = aligned_dataset.data
+        cups_list = aligned_dataset.cups_list
+        n_cups = len(cups_list)
+        if aligned_df.empty or n_cups == 0 or "generation_kwh" not in aligned_df.columns:
+            return 0.0
+
+        c_arr = aligned_df[cups_list].to_numpy(dtype=float)
+        g_arr = aligned_df["generation_kwh"].to_numpy(dtype=float)
+
+        # Only hours with non-zero generation contribute to self-consumption
+        sun_mask = g_arr > 1e-6
+        if not np.any(sun_mask):
+            return 0.0
+
+        sun_indices = np.where(sun_mask)[0]
+        c_sun = c_arr[sun_indices]
+        g_sun = g_arr[sun_indices]
+
+        if strategy == OptimizationStrategy.EQUAL:
+            raw_betas = np.full((len(sun_indices), n_cups), 1.0 / n_cups)
+        else:
+            c_row_sums = np.sum(c_sun, axis=1, keepdims=True)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                raw_betas = np.where(c_row_sums > 0, c_sun / c_row_sums, 1.0 / n_cups)
+
+        if constraints and constraints.is_active and cups_list:
+            for i, cups in enumerate(cups_list):
+                l_b, u_b = constraints.get_bounds(cups)
+                l_b = max(0.01, l_b)
+                u_b = max(l_b, u_b)
+                raw_betas[:, i] = np.clip(raw_betas[:, i], l_b, u_b)
+            raw_betas = raw_betas / np.sum(raw_betas, axis=1, keepdims=True)
+        elif n_cups * 0.01 <= 1.0:
+            raw_betas = np.maximum(raw_betas, 0.01)
+            raw_betas = raw_betas / np.sum(raw_betas, axis=1, keepdims=True)
+
+        rounded_betas = np.zeros_like(raw_betas)
+        for idx in range(len(sun_indices)):
+            rounded_betas[idx] = cls._round_betas(
+                raw_betas[idx],
+                precision=precision,
+                cups_list=cups_list,
+                constraints=constraints,
+            )
+
+        alloc_sun = rounded_betas * g_sun[:, np.newaxis]
+        sc_sun = np.minimum(c_sun, alloc_sun)
+        return float(np.sum(sc_sun))
+
+    @classmethod
     def optimize_dataset(
         cls,
         aligned_dataset: AlignedDataset,
@@ -921,6 +991,41 @@ class DistributionOptimizer:
             monthly_results, cups_list, strategy.value, cups_uses=cups_uses
         )
 
+        # 1. Current Self-Consumption (physical baseline prior to collective distribution)
+        aligned_df = aligned_dataset.data
+        if (
+            "self_consumption" in aligned_df.columns
+            and float(aligned_df["self_consumption"].sum()) > 0
+        ):
+            current_sc = float(aligned_df["self_consumption"].sum())
+        elif (
+            effective_primary
+            and effective_primary in aligned_df.columns
+            and "generation_kwh" in aligned_df.columns
+        ):
+            c_pri = aligned_df[effective_primary].to_numpy(dtype=float)
+            g_val = aligned_df["generation_kwh"].to_numpy(dtype=float)
+            current_sc = float(np.sum(np.minimum(c_pri, g_val)))
+        else:
+            pri_metric = (
+                next((c for c in total_summary.cups_metrics if c.cups == effective_primary), None)
+                if effective_primary
+                else (total_summary.cups_metrics[0] if total_summary.cups_metrics else None)
+            )
+            current_sc = float(pri_metric.self_consumed_kwh) if pri_metric else 0.0
+
+        # 2. Monthly Share Self-Consumption (RD 244/2019 fixed monthly betas)
+        monthly_sc = float(total_summary.total_self_consumed_kwh)
+
+        # 3. Dynamic Hourly Share Self-Consumption (Orden TED/1247/2021)
+        hourly_sc = cls.evaluate_hourly_self_consumption(
+            aligned_dataset=aligned_dataset,
+            strategy=strategy,
+            precision=active_precision,
+            primary_cups=effective_primary,
+            constraints=constraints,
+        )
+
         baselines: dict[str, OptimizationResult] = {}
         if include_baselines:
             for base_strat in (OptimizationStrategy.CONSUMPTION_SHARE, OptimizationStrategy.EQUAL):
@@ -944,6 +1049,15 @@ class DistributionOptimizer:
                         cups_list=cups_list,
                         cups_uses=cups_uses,
                         primary_cups=effective_primary,
+                        current_self_consumed_kwh=current_sc,
+                        monthly_share_self_consumed_kwh=float(base_summary.total_self_consumed_kwh),
+                        hourly_share_self_consumed_kwh=cls.evaluate_hourly_self_consumption(
+                            aligned_dataset=aligned_dataset,
+                            strategy=base_strat,
+                            precision=active_precision,
+                            primary_cups=effective_primary,
+                            constraints=constraints,
+                        ),
                     )
 
         hourly_result: HourlyOptimizationResult | None = None
@@ -966,6 +1080,9 @@ class DistributionOptimizer:
             cups_uses=cups_uses,
             constraints=constraints,
             primary_cups=effective_primary,
+            current_self_consumed_kwh=current_sc,
+            monthly_share_self_consumed_kwh=monthly_sc,
+            hourly_share_self_consumed_kwh=hourly_sc,
         )
 
     @staticmethod

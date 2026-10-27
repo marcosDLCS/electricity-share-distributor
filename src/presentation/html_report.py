@@ -261,7 +261,9 @@ def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any
     )
 
     # 2. Compute "No share at all" (solar PV tied solely to primary CUPS)
-    if has_hourly and opt_result.hourly_result is not None:
+    if opt_result.current_self_consumed_kwh > 0:
+        single_sc_val = opt_result.current_self_consumed_kwh
+    elif has_hourly and opt_result.hourly_result is not None:
         df = opt_result.hourly_result.time_series_df
         target_cups = (
             primary_cups
@@ -300,7 +302,12 @@ def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any
     single_sc = round(max(0.0, min(monthly_sc, single_sc_val)), 1)
 
     # 3. Compute Dynamic Hourly Share (Orden TED/1247/2021)
-    if has_hourly and opt_result.hourly_result is not None:
+    if opt_result.hourly_share_self_consumed_kwh > 0:
+        hourly_sc = round(
+            max(0.0, min(tot_gen, min(tot_dem, opt_result.hourly_share_self_consumed_kwh))), 1
+        )
+        is_simulated = True
+    elif has_hourly and opt_result.hourly_result is not None:
         df = opt_result.hourly_result.time_series_df
 
         if "share_pct" in df.columns and "estimated_share_pct" in df.columns:

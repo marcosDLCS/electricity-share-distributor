@@ -1021,3 +1021,71 @@ def test_optimize_dataset_partial_month_evaluated_by_default_and_solar_kpis() ->
     assert tot.solar_hours_count == 4
     assert np.isclose(tot.solar_hours_generation_kwh, 35.0)
     assert np.isclose(tot.solar_hours_consumption_kwh, 14.0)
+
+
+def test_unified_three_way_self_consumption_metrics() -> None:
+    """Verify that optimize_dataset unifies 3-way self-consumption metrics in OptimizationResult."""
+    c1 = "ES0021000000000001AA"
+    c2 = "ES0021000000000002BB"
+    cups_list = [c1, c2]
+
+    # Two hours:
+    # Hour 12: C1=10, C2=0, G=10. Curated raw self_consumption=4.0
+    # Hour 13: C1=0, C2=10, G=10. Curated raw self_consumption=0.0
+    timestamps = ["2026-06-10 12:00:00", "2026-06-10 13:00:00"]
+    df = pd.DataFrame(
+        {
+            c1: [10.0, 0.0],
+            c2: [0.0, 10.0],
+            "generation_kwh": [10.0, 10.0],
+            "self_consumption": [4.0, 0.0],
+        },
+        index=timestamps,
+    )
+    dataset = AlignedDataset(
+        data=df,
+        cups_list=cups_list,
+        metadata=IngestionSummary(
+            cups_count=2,
+            cups_list=cups_list,
+            consumption_files_loaded=2,
+            generation_files_loaded=1,
+            start_time=timestamps[0],
+            end_time=timestamps[-1],
+            total_hours=2,
+        ),
+        monthly_groups={"2026-06": df},
+        cups_uses={c1: "Aerotermia", c2: "Piscina"},
+        primary_cups=c1,
+    )
+
+    # Call WITHOUT compute_hourly (compute_hourly=False)
+    opt_result = DistributionOptimizer.optimize_dataset(
+        dataset,
+        strategy=OptimizationStrategy.OPTIMAL,
+        compute_hourly=False,
+    )
+
+    # 1. Current self consumption: exactly 4.0 from curated series
+    assert np.isclose(opt_result.current_self_consumed_kwh, 4.0)
+    assert np.isclose(opt_result.current_self_consumption_rate, (4.0 / 20.0) * 100.0)
+
+    # 2. Monthly share self consumption: 10.0 kWh (50% of 20 kWh)
+    assert np.isclose(opt_result.monthly_share_self_consumed_kwh, 10.0)
+    assert np.isclose(
+        opt_result.monthly_share_self_consumed_kwh, opt_result.total_summary.total_self_consumed_kwh
+    )
+    assert np.isclose(opt_result.monthly_share_self_consumption_rate, 50.0)
+
+    # 3. Dynamic hourly share self consumption evaluated in-memory even without compute_hourly:
+    # Hour 12: 99% to C1, 1% to C2 = 9.9
+    # Hour 13: 1% to C1, 99% to C2 = 9.9
+    # Total = 19.8 kWh
+    assert np.isclose(opt_result.hourly_share_self_consumed_kwh, 19.8, atol=0.1)
+    assert np.isclose(
+        opt_result.hourly_share_self_consumption_rate, (19.8 / 20.0) * 100.0, atol=0.5
+    )
+
+    # Hierarchy invariant: Current <= Monthly <= Hourly
+    assert opt_result.current_self_consumed_kwh <= opt_result.monthly_share_self_consumed_kwh
+    assert opt_result.monthly_share_self_consumed_kwh <= opt_result.hourly_share_self_consumed_kwh

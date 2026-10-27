@@ -546,6 +546,24 @@ class ReportExporter:
             "monthly_results": [asdict(m) for m in opt_result.monthly_results],
             "baselines": {k: asdict(v.total_summary) for k, v in opt_result.baselines.items()},
             "cups_uses": opt_result.cups_uses,
+            "self_consumption_comparison": {
+                "current_self_consumed_kwh": round(opt_result.current_self_consumed_kwh, 2),
+                "current_self_consumption_rate_pct": round(
+                    opt_result.current_self_consumption_rate, 2
+                ),
+                "monthly_share_self_consumed_kwh": round(
+                    opt_result.monthly_share_self_consumed_kwh, 2
+                ),
+                "monthly_share_self_consumption_rate_pct": round(
+                    opt_result.monthly_share_self_consumption_rate, 2
+                ),
+                "hourly_share_self_consumed_kwh": round(
+                    opt_result.hourly_share_self_consumed_kwh, 2
+                ),
+                "hourly_share_self_consumption_rate_pct": round(
+                    opt_result.hourly_share_self_consumption_rate, 2
+                ),
+            },
         }
 
         if opt_result.hourly_result is not None:

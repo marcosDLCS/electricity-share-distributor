@@ -150,6 +150,8 @@ def test_export_json(tmp_path: Path) -> None:
     assert data["ingestion_metadata"]["cups_count"] == 2
     assert len(data["monthly_results"]) == 1
     assert data["monthly_results"][0]["month"] == "2026-05"
+    assert "self_consumption_comparison" in data
+    assert "hourly_share_self_consumed_kwh" in data["self_consumption_comparison"]
 
 
 def test_export_markdown_english(tmp_path: Path) -> None:

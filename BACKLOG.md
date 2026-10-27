@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | Priority | Category | Task Title | Target Files |
 | :--- | :--- | :--- | :--- |
-| **`P1`** | `Cohesion` | Unify 3-Way Self-Consumption Comparison (Current, Monthly Share, Hourly Share) in Domain Model | `src/optimization/models.py`, `src/optimization/engine.py`, `src/services/calculation_service.py` |
 | **`P2`** | `Features` | Expose Full Solar-Hours Energy Balance & 3-Way Self-Consumption KPIs in Console & HTML Reports | `src/presentation/views/summary.py`, `src/presentation/views/trajectory.py`, `src/presentation/html_report.py`, `src/i18n.py` |
 | **`P2`** | `Design` | Redesign Console & HTML Executive KPI Cards for Clear Solar-Hour & Share Modality Comparison | `src/presentation/views/summary.py`, `src/presentation/html_report.py`, `src/presentation/export.py` |
 | **`P3`** | `Documentation` | Synchronize Curated Dataset Schema & Energy Balance KPIs Across Bilingual Guides | `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md` |
@@ -59,16 +58,7 @@ _No pending tasks._
 
 ## 🔗 Cohesion
 
-### 1. `[P1]` Unify 3-Way Self-Consumption Comparison (Current, Monthly Share, Hourly Share) in Domain Model
-- **Goal:** Compute and store Current Self-Consumption, Monthly Share Self-Consumption, and Hourly Share Self-Consumption directly inside `OptimizationResult` (`src/optimization/models.py`) during `DistributionOptimizer.optimize_dataset()` so all presentation layers (Console, HTML, Markdown, JSON) consume a single, exact source of truth regardless of whether `--hourly` CSV export is requested.
-- **Target Components:** `src/optimization/models.py`, `src/optimization/engine.py`, `src/services/calculation_service.py`, `src/presentation/html_report.py`, `src/presentation/export.py`, `tests/test_optimization.py`.
-- **Acceptance Criteria:**
-  - Preserve the curated `self_consumption` series per timestamp in `AlignedDataset` when loading `.curated/curated.csv` (`dataframe_to_aligned_dataset`).
-  - Compute in `DistributionOptimizer.optimize_dataset()`:
-    1. `current_self_consumed_kwh`: exact sum of curated `self_consumption` (or physical behind-the-meter self-consumption prior to collective sharing).
-    2. `monthly_share_self_consumed_kwh`: exact collective self-consumption $\sum_{m} \sum_{h \in m} \sum_i \min(C_{i,h}, \beta_{i,m} \cdot G_h)$ using optimal monthly shares.
-    3. `hourly_share_self_consumed_kwh`: exact collective self-consumption $\sum_{h} \sum_i \min(C_{i,h}, \beta_{i,h} \cdot G_h)$ using optimal hourly shares (always evaluated cleanly in-memory even when `--hourly` export is not enabled).
-  - Refactor `src/presentation/html_report.py` (`_calculate_hourly_prevision`) and `src/presentation/export.py` to read these exact domain fields directly instead of re-parsing formatted percentage strings in the presentation layer.
+_No pending tasks._
 
 ## 🛡️ Security
 
