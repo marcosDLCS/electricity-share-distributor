@@ -15,14 +15,13 @@ from src.domain.exceptions import (
 from src.domain.exceptions import (
     IngestionError as IngestionError,
 )
+from src.domain.exceptions import (
+    ValidationError as ValidationError,
+)
 
 
 class ParseError(IngestionError):
     """Raised when parsing CSV or Excel data formats fails."""
-
-
-class ValidationError(IngestionError):
-    """Raised when schema validation, columns, or data types are invalid."""
 
 
 @dataclass(frozen=True)

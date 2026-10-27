@@ -11,6 +11,10 @@ class IngestionError(EsdError):
     """Raised when discovering, reading, or parsing raw time-series data fails."""
 
 
+class ValidationError(IngestionError):
+    """Raised when schema validation, columns, coordinates, or data types are invalid."""
+
+
 class AlignmentError(EsdError):
     """Raised when aligning consumption and generation time-series fails."""
 

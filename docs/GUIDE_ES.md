@@ -247,7 +247,7 @@ Para desarrolladores y agentes autónomos que naveguen por la base de código:
 | Capa Arquitectónica | Módulo | Clases / Funciones Clave | Responsabilidad |
 | :--- | :--- | :--- | :--- |
 | **CLI y Comandos** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `curate_command`, `weather_command`, `doctor_command` | Enrutamiento de comandos Typer, validación de parámetros y flujo de ejecución. |
-| **Servicios de Aplicación** | [`src/services/`](../src/services) | `CalculationService`, `CurationService`, `DoctorService` | Orquestadores de flujos y procesos de negocio de la aplicación. |
+| **Servicios de Aplicación** | [`src/services/`](../src/services) | `CalculationService`, `CurationService`, `DoctorService`, `WeatherService` | Orquestadores de flujos y procesos de negocio de la aplicación. |
 | **Núcleo de Dominio** | [`src/domain/`](../src/domain) | `SupplyPoint`, `ShareAllocation`, `EnergyBalance`, `EsdError` | Modelos de dominio puros, objetos de valor y excepciones de dominio centralizadas. |
 | **Configuración** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision`, `get_weather_dir` | Persistencia de ajustes (`.esd_config.json`) y resolución de rutas. |
 | **Localización** | [`src/i18n.py`](../src/i18n.py) | `t()`, `I18nNamespace`, `TRANSLATIONS` | Espacios de nombres de dominio estructurados (app, cli, doctor, curate, weather, tables, export) con paridad de parámetros y resolución dual. |

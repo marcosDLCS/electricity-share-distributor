@@ -14,6 +14,11 @@ from src.services.doctor_service import (
     DoctorRequest,
     DoctorService,
 )
+from src.services.weather_service import (
+    WeatherRequest,
+    WeatherService,
+    WeatherServiceResult,
+)
 
 __all__ = [
     "CalculationRequest",
@@ -24,4 +29,7 @@ __all__ = [
     "CurationService",
     "DoctorRequest",
     "DoctorService",
+    "WeatherRequest",
+    "WeatherService",
+    "WeatherServiceResult",
 ]

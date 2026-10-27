@@ -24,7 +24,7 @@ It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/da
 
 The codebase is organized into focused, modular layers with clean separation of concerns:
 - **CLI & Dispatch (`src/cli.py`):** Typer application orchestrating command dispatch, parameter validation, and user workflow.
-- **Application Services (`src/services/`):** Workflow orchestrators (`CalculationService`, `CurationService`, `DoctorService`) encapsulating business processes.
+- **Application Services (`src/services/`):** Workflow orchestrators (`CalculationService`, `CurationService`, `DoctorService`, `WeatherService`) encapsulating business processes.
 - **Domain Core (`src/domain/`):** Pure domain models, value objects (`SupplyPoint`, `ShareAllocation`, `EnergyBalance`), and centralized domain exceptions (`EsdError`, `IngestionError`, `AlignmentError`, `CurationError`, `OptimizationError`).
 - **Configuration & Localization (`src/config.py`, `src/i18n.py`):** Persistent settings (`.esd_config.json`) and structured domain namespaces (`app`, `cli`, `doctor`, `curate`, `weather`, `tables`, `export`) with bilingual English/Spanish resolution.
 - **Ingestion & Alignment (`src/ingestion/`):** DATADIS CSV loader, solar inverter Excel loader, Open-Meteo weather downloader/loader, `DataDoctor` pre-flight auditor, and DST-aware `TimeSeriesAligner`.

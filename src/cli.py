@@ -26,11 +26,6 @@ from src.config import (
 )
 from src.domain.exceptions import EsdError
 from src.i18n import t
-from src.ingestion import (
-    OpenMeteoWeatherDownloader,
-    WeatherDownloadResult,
-    extract_coordinates_from_cups_file,
-)
 from src.optimization import OptimizationStrategy
 from src.presentation.console import console
 from src.presentation.views import (
@@ -58,6 +53,8 @@ from src.services import (
     CurationService,
     DoctorRequest,
     DoctorService,
+    WeatherRequest,
+    WeatherService,
 )
 from src.version import get_version
 
@@ -394,53 +391,39 @@ def weather_command(
     """Download hourly weather data (temperature, cloud cover, weather code) from Open-Meteo into .input/weather."""
     active_lang = normalize_language_code(lang) if lang else get_language()
     cfg = load_config()
+    cups_path = resolve_cups_config_path(custom_path=cups_file, config=cfg)
 
-    # 1. Resolve coordinates to download
-    coords_to_download: list[tuple[float, float]] = []
+    status_spinner = console.status(
+        f"[bold cyan]{t('status_weather', lang=active_lang, year=year)}[/bold cyan]"
+    )
 
-    if latitude is not None and longitude is not None:
-        coords_to_download = [(latitude, longitude)]
-    elif latitude is not None or longitude is not None:
-        console.print(
-            "[bold red]Error:[/bold red] Both --latitude and --longitude must be provided when specifying manual coordinates."
+    def on_progress(lat: float, lon: float, idx: int, total: int) -> None:
+        coord_str = (
+            f"{abs(lat):.4f}°{'N' if lat >= 0 else 'S'}, {abs(lon):.4f}°{'E' if lon >= 0 else 'W'}"
         )
-        sys.exit(1)
-    else:
-        # Check cups.json configuration file
-        cups_path = resolve_cups_config_path(custom_path=cups_file, config=cfg)
-        if cups_path:
-            coords_to_download = extract_coordinates_from_cups_file(cups_path)
-
-        # Fallback to persistent configuration if cups.json didn't yield any coordinates
-        if not coords_to_download and cfg.latitude is not None and cfg.longitude is not None:
-            coords_to_download = [(cfg.latitude, cfg.longitude)]
-
-    if not coords_to_download:
-        console.print(f"[bold red]Error:[/bold red] {t('err_coords_required', lang=active_lang)}")
-        sys.exit(1)
-
-    target_weather_dir = weather_dir or Path(cfg.weather_dir)
-    downloader = OpenMeteoWeatherDownloader(weather_dir=target_weather_dir)
+        status_text = (
+            f"[bold cyan]{t('status_weather_coord', lang=active_lang, year=year, coords=coord_str)}[/bold cyan]"
+            if total > 1
+            else f"[bold cyan]{t('status_weather', lang=active_lang, year=year)}[/bold cyan]"
+        )
+        status_spinner.update(status_text)
 
     try:
-        results: list[WeatherDownloadResult] = []
-        for lat, lon in coords_to_download:
-            coord_str = f"{abs(lat):.4f}°{'N' if lat >= 0 else 'S'}, {abs(lon):.4f}°{'E' if lon >= 0 else 'W'}"
-            status_text = (
-                f"[bold cyan]{t('status_weather_coord', lang=active_lang, year=year, coords=coord_str)}[/bold cyan]"
-                if len(coords_to_download) > 1
-                else f"[bold cyan]{t('status_weather', lang=active_lang, year=year)}[/bold cyan]"
-            )
-            with console.status(status_text):
-                _, _, result = downloader.download_year(
-                    year=year,
-                    latitude=lat,
-                    longitude=lon,
-                    timezone=timezone,
-                )
-                results.append(result)
+        req = WeatherRequest(
+            year=year,
+            latitude=latitude,
+            longitude=longitude,
+            cups_file=cups_path,
+            weather_dir=weather_dir,
+            timezone=timezone,
+            config=cfg,
+            lang=active_lang,
+            resolve_cups=False,
+        )
+        with status_spinner:
+            service_result = WeatherService.execute(req, progress_callback=on_progress)
 
-        for result in results:
+        for result in service_result.results:
             render_weather_result(result, lang=active_lang)
 
     except EsdError as err:

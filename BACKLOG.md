@@ -22,8 +22,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | Task | Category | Priority |
 | :--- | :--- | :--- |
-| Extract `WeatherService` to Decouple CLI from Ingestion Layer | `Architecture` | `P2` |
-| Vectorize `DatadisConsumptionLoader` Timestamp Normalization | `Architecture` | `P2` |
 | Unify `SupplyPoint` and `CupsConfig` Domain Models | `Cohesion` | `P2` |
 | Synchronize `README.md` and `i18n` Help with All CLI Commands & Flags | `Documentation` | `P2` |
 | Centralize `cups.json` Path Discovery and Coordinate Extraction | `Cohesion` | `P3` |
@@ -40,21 +38,7 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 ## 🏗️ Architecture
 
-### 1. [P2] Extract `WeatherService` to Decouple CLI from Ingestion Layer
-- **Goal:** Align `esd weather` with the application service architecture used by `calculate`, `curate`, and `doctor` by moving coordinate fallback resolution (`CLI -> cups.json -> AppConfig`) and download orchestration out of `src/cli.py` into a dedicated `WeatherService`.
-- **Target Files:** `src/services/weather_service.py`, `src/services/__init__.py`, `src/cli.py`, `tests/test_services.py`.
-- **Acceptance Criteria:**
-  - Create `WeatherRequest`, `WeatherServiceResult`, and `WeatherService.execute()` in `src/services/weather_service.py`.
-  - Refactor `weather_command` in `src/cli.py` to delegate business logic to `WeatherService.execute()`.
-  - Add unit tests in `tests/test_services.py` covering coordinate resolution priority and multi-location downloads.
-
-### 2. [P2] Vectorize `DatadisConsumptionLoader` Timestamp Normalization
-- **Goal:** Replace the Python `groupby("fecha")` + `iterrows()` loop in `DatadisConsumptionLoader.parse_file()` with vectorized Pandas string/integer operations to speed up ingestion of multi-CUPS annual datasets while preserving Spanish 01:00–24:00 billing hour and 23h/25h DST conventions.
-- **Target Files:** `src/ingestion/consumption.py`, `tests/test_ingestion.py`.
-- **Acceptance Criteria:**
-  - Eliminate `.iterrows()` in `DatadisConsumptionLoader.parse_file()`.
-  - Preserve identical timestamp output for standard 24-hour days, 23-hour spring DST transitions, and 25-hour autumn DST transitions.
-  - All existing ingestion and alignment tests pass without regressions.
+*No pending tasks.*
 
 ## 🔗 Cohesion
 

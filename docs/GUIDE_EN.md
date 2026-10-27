@@ -249,7 +249,7 @@ For developers and autonomous agents navigating the codebase:
 | Architecture Layer | Module | Key Classes / Functions | Responsibility |
 | :--- | :--- | :--- | :--- |
 | **CLI & Commands** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `curate_command`, `weather_command`, `doctor_command` | Typer command routing, parameter validation, and user workflow dispatch. |
-| **Application Services** | [`src/services/`](../src/services) | `CalculationService`, `CurationService`, `DoctorService` | Core workflow orchestrators encapsulating business processes. |
+| **Application Services** | [`src/services/`](../src/services) | `CalculationService`, `CurationService`, `DoctorService`, `WeatherService` | Core workflow orchestrators encapsulating business processes. |
 | **Domain Core** | [`src/domain/`](../src/domain) | `SupplyPoint`, `ShareAllocation`, `EnergyBalance`, `EsdError` | Pure domain models, value objects, and centralized domain exceptions. |
 | **Configuration** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision`, `get_weather_dir` | Settings persistence (`.esd_config.json`) and folder resolution. |
 | **Localization** | [`src/i18n.py`](../src/i18n.py) | `t()`, `I18nNamespace`, `TRANSLATIONS` | Structured domain namespaces (app, cli, doctor, curate, weather, tables, export) with parameter parity and dual-mode resolution. |

@@ -20,14 +20,19 @@ def create_mock_datadis_csv(
     encoding: str = "utf-8",
     num_days: int = 2,
     include_spring_dst: bool = False,
+    include_autumn_dst: bool = False,
 ) -> None:
     """Helper to generate synthetic mock DATADIS consumption CSV files."""
     lines = [f"cups{delimiter}fecha{delimiter}hora{delimiter}consumo_kWh{delimiter}metodoObtencion"]
     for d in range(1, num_days + 1):
-        date_str = f"2026/03/{d:02d}"
+        month = "10" if include_autumn_dst else "03"
+        date_str = f"2026/{month}/{d:02d}"
         if include_spring_dst and d == 29:
             # 23 hours on spring DST day (02:00 skipped)
             hours = [f"{h:02d}:00" for h in range(1, 25) if h != 2]
+        elif include_autumn_dst and d == 25:
+            # 25 hours on autumn DST day (25 sequential intervals with repeated 02:00)
+            hours = [f"{h:02d}:00" for h in range(1, 26)]
         else:
             hours = [f"{h:02d}:00" for h in range(1, 25)]
 
@@ -144,6 +149,49 @@ def test_consumption_spring_dst_transition(tmp_path: Path) -> None:
     assert ts_list[0] == "2026-03-29 00:00:00"
     assert ts_list[1] == "2026-03-29 01:00:00"
     assert ts_list[2] == "2026-03-29 03:00:00"
+
+
+def test_consumption_autumn_dst_transition(tmp_path: Path) -> None:
+    csv_file = tmp_path / "dst_autumn.csv"
+    create_mock_datadis_csv(csv_file, num_days=25, include_autumn_dst=True)
+
+    loader = DatadisConsumptionLoader(tmp_path)
+    df = loader.parse_file(csv_file)
+
+    # October 25 should have 25 readings
+    oct25 = df[df["timestamp"].str.startswith("2026-10-25")]
+    assert len(oct25) == 25
+    ts_list = oct25["timestamp"].tolist()
+    assert ts_list[0] == "2026-10-25 00:00:00"
+    assert ts_list[1] == "2026-10-25 01:00:00"
+    assert ts_list[2] == "2026-10-25 02:00:00"
+    assert ts_list[3] == "2026-10-25 02:00:00"
+    assert ts_list[4] == "2026-10-25 03:00:00"
+    assert ts_list[24] == "2026-10-25 23:00:00"
+
+
+def test_consumption_unparseable_hora_fallback(tmp_path: Path) -> None:
+    csv_file = tmp_path / "unparseable_hora.csv"
+    # Create CSV where hora has malformed strings like 'invalid' or '??'
+    lines = [
+        "cups;fecha;hora;consumo_kWh;metodoObtencion",
+        "ES0021000000000001AA;2026/04/01;invalid;0,150;Real",
+        "ES0021000000000001AA;2026/04/01;02:00;0,150;Real",
+        "ES0021000000000001AA;2026/04/01;??;0,150;Real",
+    ]
+    csv_file.write_text("\n".join(lines), encoding="utf-8")
+
+    loader = DatadisConsumptionLoader(tmp_path)
+    df = loader.parse_file(csv_file)
+    assert len(df) == 3
+    # idx 0 fallback: h = idx + 1 = 1 -> 00:00:00
+    # idx 1: h = 2 -> 01:00:00
+    # idx 2 fallback: h = idx + 1 = 3 -> 02:00:00
+    assert df["timestamp"].tolist() == [
+        "2026-04-01 00:00:00",
+        "2026-04-01 01:00:00",
+        "2026-04-01 02:00:00",
+    ]
 
 
 def test_generation_loader_valid(tmp_path: Path) -> None:

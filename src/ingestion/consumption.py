@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from src.config import (
@@ -107,41 +108,39 @@ class DatadisConsumptionLoader:
         )
 
         # Convert fecha and hora to interval-start canonical timestamps YYYY-MM-DD HH:MM:SS
-        timestamps: list[str] = []
-        for date_val, group in clean_df.groupby("fecha", sort=False):
-            norm_date = date_val.replace("/", "-").strip()
-            group_len = len(group)
-            is_spring_dst = group_len == 23
+        norm_date = clean_df["fecha"].str.replace("/", "-", regex=False).str.strip()
 
-            for idx, (_, row) in enumerate(group.iterrows()):
-                hora_str = row["hora"]
-                try:
-                    h = int(hora_str.split(":")[0])
-                except ValueError, IndexError:
-                    h = idx + 1
+        # Parse hour integer from hora column (e.g. "01:00" -> 1)
+        h_extracted = clean_df["hora"].str.split(":").str[0]
+        h_series = pd.to_numeric(h_extracted, errors="coerce")
 
-                if is_spring_dst and h >= 3:
-                    # In 23-hour spring daylight saving switch:
-                    # 01:00 -> 00:00
-                    # 03:00 -> 01:00
-                    # 04:00 -> 03:00
-                    h_start = 1 if h == 3 else h - 1
-                elif group_len == 25:
-                    # In 25-hour autumn daylight saving switch:
-                    # sequential 25 intervals
-                    if idx <= 1:
-                        h_start = idx
-                    elif idx == 2:
-                        h_start = 2
-                    else:
-                        h_start = idx - 1
-                else:
-                    # Standard 24h day: 01:00 -> 00:00, 24:00 -> 23:00
-                    h_start = max(0, min(23, h - 1))
+        group_cols = ["cups", "fecha"] if clean_df["cups"].nunique() > 1 else "fecha"
+        idx_series = clean_df.groupby(group_cols, sort=False).cumcount()
+        group_len = clean_df.groupby(group_cols, sort=False)["fecha"].transform("size")
 
-                timestamps.append(f"{norm_date} {h_start:02d}:00:00")
+        # Fallback for unparseable hora strings matches idx + 1
+        h_series = h_series.fillna(idx_series + 1).astype(int)
 
-        clean_df["timestamp"] = timestamps
+        # Determine interval start hour based on DST transition rules
+        # Case 1: 25-hour autumn DST transition (sequential intervals with duplicate hour 02:00)
+        autumn_mask = group_len == 25
+        h_autumn = np.where(idx_series <= 2, idx_series, idx_series - 1)
+
+        # Case 2: 23-hour spring DST transition (hour 02:00 skipped, 03:00 -> 01:00)
+        spring_mask = group_len == 23
+        h_spring = np.where(h_series == 3, 1, np.clip(h_series - 1, 0, 23))
+
+        # Case 3: Standard 24h day: 01:00 -> 00:00, 24:00 -> 23:00
+        h_standard = np.clip(h_series - 1, 0, 23)
+
+        h_start = np.where(
+            autumn_mask,
+            h_autumn,
+            np.where(spring_mask, h_spring, h_standard),
+        )
+
+        h_str = pd.Series(h_start, index=clean_df.index).astype(str).str.zfill(2)
+        clean_df["timestamp"] = norm_date + " " + h_str + ":00:00"
         return clean_df[["cups", "timestamp", "consumption_kwh"]]
 
     def load_all(self) -> pd.DataFrame:
