@@ -27,8 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | Priority | Category | Task Title | Target Files |
 | :--- | :--- | :--- | :--- |
-| **`P1`** | `Simplicity` | Preserve Unmodified Raw Telemetry in `.curated/curated.csv` as Single Source of Truth | `src/curation/curator.py`, `src/curation/models.py`, `src/optimization/engine.py` |
-| **`P1`** | `Simplicity` | Remove Cooked Self-Consumption Heuristics & Fabricated Fallback Multipliers | `src/presentation/html_report.py`, `src/optimization/engine.py` |
 | **`P1`** | `Architecture` | Fix Hourly vs. Monthly Share Calculation & Pandas 3.0 `StringDtype` Parsing Bugs | `src/optimization/engine.py`, `src/presentation/html_report.py`, `src/curation/curator.py` |
 | **`P1`** | `Architecture` | Align Evaluated Horizon With Curated Dataset Totals & Track Solar-Hour Generation KPI | `src/optimization/engine.py`, `src/optimization/models.py` |
 | **`P1`** | `Cohesion` | Unify 3-Way Self-Consumption Comparison (Current, Monthly Share, Hourly Share) in Domain Model | `src/optimization/models.py`, `src/optimization/engine.py`, `src/services/calculation_service.py` |
@@ -104,20 +102,7 @@ _No pending tasks._
 
 ## 🧹 Simplicity
 
-### 1. `[P1]` Preserve Unmodified Raw Telemetry in `.curated/curated.csv` as Single Source of Truth
-- **Goal:** Ensure `.curated/curated.csv` contains plain raw data aggregated and modelled from the input sources without modifying/inflating consumption values or adding synthetic columns, and ensure all downstream calculations rely exclusively on `.curated/curated.csv`.
-- **Target Components:** `src/curation/curator.py`, `src/curation/models.py`, `src/optimization/engine.py`, `tests/test_curation.py`.
-- **Acceptance Criteria:**
-  - In `DataCurator.curate()` (`src/curation/curator.py`), stop modifying primary CUPS consumption via `max(datadis_cons, hw_cons_val)`. Use plain raw consumption directly from the source series (Huawei inverter `consumption_kwh` for the behind-the-meter primary supply point when present, and raw DATADIS consumption for each secondary CUPS) so `consumption`, `self_consumption`, `imported_energy`, and `exported_energy` reflect exact raw measurements.
-  - Remove the synthetic `hourly_self_consumption` column from `CuratedDataset` (`src/curation/models.py`, `src/curation/curator.py`, `src/presentation/views/curate.py`), keeping only the raw inverter `self_consumption` column.
-  - Remove the raw `.input/consumption` CSV reloading in `DistributionOptimizer.resolve_full_year_monthly_betas()` (`src/optimization/engine.py`) so all optimization and reporting workflows operate strictly on the curated dataset from `.curated/curated.csv`.
-
-### 2. `[P1]` Remove Cooked Self-Consumption Heuristics & Fabricated Fallback Multipliers
-- **Goal:** Eliminate all hardcoded heuristic multipliers and fabricated fallback formulas in the reporting pipeline so every reported number is strictly derived from actual dataset measurements and linear programming solutions.
-- **Target Components:** `src/presentation/html_report.py`, `src/optimization/engine.py`, `tests/test_html_report.py`.
-- **Acceptance Criteria:**
-  - Remove fabricated multipliers from `_calculate_hourly_prevision()` in `src/presentation/html_report.py` (`pri_metric.consumption_kwh * 0.70`, `tot_gen * 0.45`, `monthly_sc * 0.65`, `tot_surplus * 0.28`, `tot_dem - monthly_sc * 0.15`).
-  - Remove the artificial `max(monthly_sc, ...)` silent clamping mask in `src/presentation/html_report.py` that hid calculation failures by forcing hourly self-consumption to equal monthly self-consumption.
+_No pending tasks._
 
 ## 🎨 Design
 

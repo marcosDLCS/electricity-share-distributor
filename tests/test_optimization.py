@@ -826,3 +826,71 @@ def test_optimize_dataset_propagates_primary_cups() -> None:
         dataset, strategy=OptimizationStrategy.OPTIMAL, primary_cups="ES0021000000000002BB"
     )
     assert res_override.primary_cups == "ES0021000000000002BB"
+
+
+def test_resolve_full_year_monthly_betas_uses_aligned_dataset_without_disk_reload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify resolve_full_year_monthly_betas uses aligned_dataset directly and never reloads DatadisConsumptionLoader."""
+    from typing import Any
+
+    from src.ingestion.consumption import DatadisConsumptionLoader
+    from src.optimization.models import CommunityMonthlyMetrics, OptimizationResult
+
+    def fail_discover(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("DatadisConsumptionLoader should not be invoked")
+
+    monkeypatch.setattr(DatadisConsumptionLoader, "discover_files", fail_discover)
+
+    cups_list = ["ES0021000000000001AA", "ES0021000000000002BB"]
+    df = pd.DataFrame(
+        {
+            cups_list[0]: [3.0, 3.0],
+            cups_list[1]: [1.0, 1.0],
+            "generation_kwh": [0.0, 0.0],
+        },
+        index=["2026-06-10 12:00:00", "2026-06-10 13:00:00"],
+    )
+    dataset = AlignedDataset(
+        data=df,
+        cups_list=cups_list,
+        metadata=IngestionSummary(
+            cups_count=2,
+            cups_list=cups_list,
+            consumption_files_loaded=2,
+            generation_files_loaded=1,
+            start_time="2026-06-10 12:00:00",
+            end_time="2026-06-10 13:00:00",
+            total_hours=2,
+        ),
+    )
+    empty_summary = CommunityMonthlyMetrics(
+        month="Total",
+        strategy="optimal",
+        total_consumption_kwh=0.0,
+        total_generation_kwh=0.0,
+        total_self_consumed_kwh=0.0,
+        total_surplus_kwh=0.0,
+        total_grid_demand_kwh=0.0,
+        self_consumption_rate=0.0,
+        solar_coverage_rate=0.0,
+        beta_sum=1.0,
+        cups_metrics=[],
+        has_data=False,
+    )
+    opt_res = OptimizationResult(
+        strategy="optimal",
+        monthly_results=[],
+        total_summary=empty_summary,
+        cups_list=cups_list,
+    )
+
+    resolved = DistributionOptimizer.resolve_full_year_monthly_betas(
+        opt_res,
+        aligned_dataset=dataset,
+        consumption_dir="/nonexistent/dir",
+        target_year=2026,
+    )
+    assert len(resolved) == 12
+    assert np.isclose(resolved["06"][cups_list[0]], 0.75)
+    assert np.isclose(resolved["06"][cups_list[1]], 0.25)

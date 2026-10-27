@@ -1143,31 +1143,13 @@ class DistributionOptimizer:
                     )
                     complete_monthly[m_str] = rounded
 
-        # 2. For missing months, try to estimate from consumption data
+        # 2. For missing months, estimate from aligned curated dataset
         missing_months = [f"{m:02d}" for m in range(1, 13) if f"{m:02d}" not in complete_monthly]
         if missing_months:
             cons_df: pd.DataFrame | None = None
+            _ = consumption_dir
 
-            # Try loading from consumption_dir
-            if consumption_dir:
-                try:
-                    from src.ingestion.consumption import DatadisConsumptionLoader
-
-                    c_path = Path(consumption_dir)
-                    if c_path.exists():
-                        loader = DatadisConsumptionLoader(c_path)
-                        files = loader.discover_files()
-                        if files:
-                            cons_df = loader.load_all()
-                except Exception:
-                    cons_df = None
-
-            # Fallback to aligned_dataset if consumption_dir had no data
-            if (
-                (cons_df is None or cons_df.empty)
-                and aligned_dataset is not None
-                and not aligned_dataset.data.empty
-            ):
+            if aligned_dataset is not None and not aligned_dataset.data.empty:
                 try:
                     avail_cols = [c for c in cups_list if c in aligned_dataset.data.columns]
                     if avail_cols:

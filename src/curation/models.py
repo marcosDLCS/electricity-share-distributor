@@ -32,7 +32,6 @@ class CuratedCupsReading:
         primary: Whether this CUPS is the primary point directly connected to the solar plant.
         reconciled: Whether this reading was reconciled/corrected from the PV generation meter.
         self_consumption: PV physical instantaneous self-consumed electricity in this hour (in kWh).
-        hourly_self_consumption: Regulatory hourly self-consumed electricity min(consumption, generation) (kWh).
         exported_energy: Solar generation exported to the grid in this hour (in kWh).
         imported_energy: Grid electricity imported by this point in this hour (in kWh).
     """
@@ -43,7 +42,6 @@ class CuratedCupsReading:
     primary: bool = False
     reconciled: bool = False
     self_consumption: float | int = 0
-    hourly_self_consumption: float | int = 0
     exported_energy: float | int = 0
     imported_energy: float | int = 0
 
@@ -54,7 +52,6 @@ class CuratedCupsReading:
             "use": self.use,
             "consumption": self.consumption,
             "self_consumption": self.self_consumption,
-            "hourly_self_consumption": self.hourly_self_consumption,
             "exported_energy": self.exported_energy,
             "imported_energy": self.imported_energy,
             "primary": self.primary,
@@ -76,7 +73,6 @@ class CuratedHourRecord:
         solar_surplus: Surplus generation exceeding collective demand (kWh).
         net_grid_demand: Net grid electricity demand exceeding solar generation (kWh).
         self_consumption: Solar PV physical instantaneous self-consumed electricity (kWh).
-        hourly_self_consumption: Regulatory hourly self-consumption for primary installation (kWh).
         exported_energy: Solar PV generation exported to grid from inverter meter (kWh).
         imported_energy: Grid electricity imported from inverter meter (kWh).
         temperature: Ambient temperature in degrees Celsius (°C), if available.
@@ -92,7 +88,6 @@ class CuratedHourRecord:
     solar_surplus: float | int = 0
     net_grid_demand: float | int = 0
     self_consumption: float | int = 0
-    hourly_self_consumption: float | int = 0
     exported_energy: float | int = 0
     imported_energy: float | int = 0
     temperature: float | None = None
@@ -105,7 +100,6 @@ class CuratedHourRecord:
             "hour": self.hour,
             "generation": self.generation,
             "self_consumption": self.self_consumption,
-            "hourly_self_consumption": self.hourly_self_consumption,
             "exported_energy": self.exported_energy,
             "imported_energy": self.imported_energy,
             "cups": [c.to_dict() for c in self.cups],
@@ -165,7 +159,7 @@ class CuratedDataset:
         Columns are grouped logically by analytical role:
         1. Temporal coordinates: timestamp, year, month, day, hour, day_of_week, is_weekend
         2. Individual consumer: cups_id, use, consumption
-        3. Community & solar balance: community_demand, generation, self_consumption, hourly_self_consumption, exported_energy, imported_energy
+        3. Community & solar balance: community_demand, generation, self_consumption, exported_energy, imported_energy
         4. Weather context: temperature, cloud_cover
         """
         rows: list[dict[str, Any]] = []
@@ -215,10 +209,6 @@ class CuratedDataset:
                 if self_cons == 0 and c.primary and getattr(r, "self_consumption", 0):
                     self_cons = r.self_consumption
 
-                h_sc = getattr(c, "hourly_self_consumption", 0)
-                if h_sc == 0 and c.primary and getattr(r, "hourly_self_consumption", 0):
-                    h_sc = r.hourly_self_consumption
-
                 exp_e = getattr(c, "exported_energy", 0)
                 if exp_e == 0 and c.primary and getattr(r, "exported_energy", 0):
                     exp_e = r.exported_energy
@@ -242,7 +232,6 @@ class CuratedDataset:
                         "community_demand": comm_demand,
                         "generation": r.generation,
                         "self_consumption": self_cons,
-                        "hourly_self_consumption": h_sc,
                         "exported_energy": exp_e,
                         "imported_energy": imp_e,
                         "temperature": r.temperature,
@@ -264,7 +253,6 @@ class CuratedDataset:
             "community_demand",
             "generation",
             "self_consumption",
-            "hourly_self_consumption",
             "exported_energy",
             "imported_energy",
             "temperature",

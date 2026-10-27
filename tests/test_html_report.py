@@ -199,10 +199,11 @@ def test_prevision_three_way_comparison() -> None:
     opt_result, _ = _create_mock_optimization_result()
     prev = _calculate_hourly_prevision(opt_result)
 
-    # All 3 scenarios must be present
-    assert "single_sc_kwh" in prev
-    assert "monthly_sc_kwh" in prev
-    assert "hourly_sc_kwh" in prev
+    # All 3 scenarios must be present with exact non-cooked values
+    assert prev["single_sc_kwh"] == 800.0
+    assert prev["monthly_sc_kwh"] == 1100.0
+    assert prev["hourly_sc_kwh"] == 1100.0
+    assert prev["is_simulated"] is False
 
     # Physical progression invariant: single_sc <= monthly_sc <= hourly_sc
     assert prev["single_sc_kwh"] <= prev["monthly_sc_kwh"]
@@ -296,10 +297,9 @@ def test_prevision_with_hourly_simulation_three_way() -> None:
     # Hourly simulation collective:
     # Hour 10: min(1.5, 0.3*5.0=1.5) + min(2.5, 0.5*5.0=2.5) = 1.5 + 2.5 = 4.0
     # Hour 11: min(2.0, 0.2*10.0=2.0) + min(4.0, 0.4*10.0=4.0) = 2.0 + 4.0 = 6.0
-    # Total hourly_sc = 10.0 kWh (bounded by monthly_sc if monthly_sc were larger, but here 1100 > 10 so it's bounded by monthly_sc = 1100)
-    assert prev["single_sc_kwh"] <= prev["monthly_sc_kwh"]
-    assert prev["gain_monthly_kwh"] >= 0.0
-    assert prev["gain_total_kwh"] >= prev["gain_monthly_kwh"]
+    # Total hourly_sc = 10.0 kWh (exact without max(monthly_sc) clamping)
+    assert prev["hourly_sc_kwh"] == 10.0
+    assert prev["single_sc_kwh"] <= prev["hourly_sc_kwh"]
 
 
 def test_prevision_vectorized_numeric_and_fallback_shares() -> None:
@@ -347,9 +347,9 @@ def test_prevision_vectorized_numeric_and_fallback_shares() -> None:
     assert prev["is_simulated"] is True
     # Primary: min(3.0, 0.40 * 10.0 = 4.0) = 3.0
     # Secondary: min(5.0, 0.60 * 10.0 = 6.0) = 5.0
-    # Expected collective = 8.0 kWh (clamped within physical limits)
+    # Expected collective = 8.0 kWh (exact without max(monthly_sc) clamping)
     assert prev["single_sc_kwh"] == 3.0
-    assert prev["hourly_sc_kwh"] >= prev["monthly_sc_kwh"]
+    assert prev["hourly_sc_kwh"] == 8.0
 
 
 def test_export_interactive_html_file(tmp_path: Path) -> None:

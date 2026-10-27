@@ -223,7 +223,6 @@ def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any
     monthly_sc = tot.total_self_consumed_kwh
     tot_gen = tot.total_generation_kwh
     tot_dem = tot.total_consumption_kwh
-    tot_surplus = tot.total_surplus_kwh
 
     # 1. Identify primary supply point (or fallback to first CUPS)
     primary_cups: str | None = opt_result.primary_cups
@@ -273,21 +272,14 @@ def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any
             pri_rows = df[df["cups"] == target_cups]
             single_sc_val = float(pri_rows[["consumption_kwh", "generation_kwh"]].min(axis=1).sum())
         else:
-            single_sc_val = monthly_sc * 0.55
+            single_sc_val = 0.0
     else:
-        # Approximate from monthly data
         pri_metric = (
             next((c for c in tot.cups_metrics if c.cups == primary_cups), None)
             if primary_cups
             else None
         )
-        if pri_metric and pri_metric.consumption_kwh > 0:
-            # Diurnal coincidence limit for single supply point
-            single_sc_val = min(
-                pri_metric.consumption_kwh * 0.70, tot_gen * 0.45, monthly_sc * 0.65
-            )
-        else:
-            single_sc_val = monthly_sc * 0.55
+        single_sc_val = float(pri_metric.self_consumed_kwh) if pri_metric else 0.0
 
     single_sc = round(max(0.0, min(monthly_sc, single_sc_val)), 1)
 
@@ -308,7 +300,7 @@ def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any
         else:
             raw_shares = pd.Series(0.0, index=df.index)
 
-        if raw_shares.dtype == object:
+        if pd.api.types.is_string_dtype(raw_shares.dtype) or raw_shares.dtype == object:
             clean_shares = raw_shares.astype(str).str.rstrip("%").str.strip()
             numeric_shares = pd.to_numeric(clean_shares, errors="coerce").fillna(0.0).to_numpy()
         else:
@@ -331,20 +323,11 @@ def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any
         )
 
         total_hourly_sc = float(np.sum(np.minimum(c_vals, betas * g_vals)))
-        hourly_sc = round(total_hourly_sc, 1)
+        hourly_sc = round(max(0.0, min(tot_gen, min(tot_dem, total_hourly_sc))), 1)
         is_simulated = True
     else:
-        # Analytical model: under Orden TED/1247/2021, diurnal hourly matching
-        # recovers ~28% of unharvested solar surplus within demand ceiling.
-        potential_unharvested = max(0.0, min(tot_gen, tot_dem) - monthly_sc)
-        gain = min(tot_surplus * 0.28, potential_unharvested)
-        if gain <= 0.0 and tot_surplus > 0 and tot_dem > monthly_sc:
-            gain = min(tot_surplus * 0.15, tot_dem - monthly_sc)
-        hourly_sc = round(monthly_sc + max(0.0, gain), 1)
+        hourly_sc = round(max(0.0, min(tot_gen, min(tot_dem, monthly_sc))), 1)
         is_simulated = False
-
-    # Bound within physical conservation of energy: single_sc <= monthly_sc <= hourly_sc
-    hourly_sc = max(monthly_sc, min(tot_gen, min(tot_dem, hourly_sc)))
 
     # Rates
     single_sc_rate = (single_sc / max(tot_gen, 1e-6)) * 100.0

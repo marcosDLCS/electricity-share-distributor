@@ -325,9 +325,10 @@ def test_curation_exports_csv(tmp_path: Path) -> None:
     expected_header = (
         "timestamp;year;month;day;hour;day_of_week;is_weekend;"
         "cups_id;use;consumption;community_demand;generation;self_consumption;"
-        "hourly_self_consumption;exported_energy;imported_energy;temperature;cloud_cover"
+        "exported_energy;imported_energy;temperature;cloud_cover"
     )
     assert header == expected_header
+    assert "hourly_self_consumption" not in header.split(";")
     assert "date" not in header.split(";")
     assert "primary" not in header.split(";")
     assert "reconciled" not in header.split(";")
@@ -841,8 +842,8 @@ def test_cli_curate_with_weather_dir(tmp_path: Path) -> None:
     assert (curated_dir / "cli_weather_curated.csv").exists()
 
 
-def test_primary_cups_always_gets_higher_consumption(tmp_path: Path) -> None:
-    """Verify that primary CUPS always adopts the higher consumption between DATADIS and the inverter."""
+def test_primary_cups_uses_unmodified_raw_inverter_consumption(tmp_path: Path) -> None:
+    """Verify that primary CUPS uses unmodified raw inverter consumption without max-inflation."""
     cons_dir = tmp_path / "consumption"
     gen_dir = tmp_path / "generation"
     curated_dir = tmp_path / "curated"
@@ -861,8 +862,7 @@ def test_primary_cups_always_gets_higher_consumption(tmp_path: Path) -> None:
     )
 
     # Inverter: has 8.5 during solar hours (8-17) and 2.0 at night
-    # During solar peak (12:00): inverter (8.5) > datadis (0.0) -> picks 8.5
-    # During night (22:00): datadis (5.0) > inverter (2.0) -> picks 5.0 (the higher!)
+    # Primary CUPS uses exact unmodified raw inverter consumption (8.5 solar, 2.0 night)
     create_mock_huawei_excel(gen_dir / "gen.xlsx", solar_gen=12.0, solar_cons=8.5, night_cons=2.0)
 
     cups_file = tmp_path / "cups.json"
@@ -884,16 +884,16 @@ def test_primary_cups_always_gets_higher_consumption(tmp_path: Path) -> None:
     )
     dataset = curator.curate()
 
-    # Hour 12:00: inverter (8.5) > datadis (0.0) -> picks 8.5
+    # Hour 12:00: inverter raw consumption is 8.5
     rec_noon = next(r for r in dataset.records if r.hour == "12:00")
     pri_reading_noon = next(c for c in rec_noon.cups if c.id == pri_cups)
     assert pri_reading_noon.consumption == 8.5
     assert pri_reading_noon.reconciled is True
 
-    # Hour 22:00: datadis (5.0) > inverter (2.0) -> picks 5.0 (the higher!)
+    # Hour 22:00: inverter raw consumption is 2.0 (not inflated by max(5.0, 2.0))
     rec_night = next(r for r in dataset.records if r.hour == "22:00")
     pri_reading_night = next(c for c in rec_night.cups if c.id == pri_cups)
-    assert pri_reading_night.consumption == 5
+    assert pri_reading_night.consumption == 2
     assert pri_reading_night.reconciled is False
 
 
@@ -976,7 +976,7 @@ def test_curated_csv_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
     expected_header = (
         "timestamp;year;month;day;hour;day_of_week;is_weekend;"
         "cups_id;use;consumption;community_demand;generation;self_consumption;"
-        "hourly_self_consumption;exported_energy;imported_energy;temperature;cloud_cover"
+        "exported_energy;imported_energy;temperature;cloud_cover"
     )
     assert header == expected_header
 
@@ -984,21 +984,19 @@ def test_curated_csv_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
     sample_line = lines[1]
     assert ";" in sample_line
     parts = sample_line.split(";")
-    assert len(parts) == 18
+    assert len(parts) == 17
     # Verify no thousand separators (e.g. no '.' within numeric values when ',' is decimal)
     # Check that consumption, community_demand, generation, and self_consumption parse as float with comma decimal
     cons_val = float(parts[9].replace(",", "."))
     comm_val = float(parts[10].replace(",", "."))
     gen_val = float(parts[11].replace(",", "."))
     sc_val = float(parts[12].replace(",", "."))
-    h_sc_val = float(parts[13].replace(",", "."))
-    exp_val = float(parts[14].replace(",", "."))
-    imp_val = float(parts[15].replace(",", "."))
+    exp_val = float(parts[13].replace(",", "."))
+    imp_val = float(parts[14].replace(",", "."))
     assert isinstance(cons_val, float)
     assert isinstance(comm_val, float)
     assert isinstance(gen_val, float)
     assert isinstance(sc_val, float)
-    assert isinstance(h_sc_val, float)
     assert isinstance(exp_val, float)
     assert isinstance(imp_val, float)
 
@@ -1088,7 +1086,6 @@ def test_curated_dataset_calendar_decomposition_and_community_demand() -> None:
         "community_demand",
         "generation",
         "self_consumption",
-        "hourly_self_consumption",
         "exported_energy",
         "imported_energy",
         "temperature",
@@ -1176,7 +1173,7 @@ def test_curation_self_consumption_assigned_to_primary_cups(tmp_path: Path) -> N
     df = pd.read_csv(csv_file, sep=";", decimal=",", dtype=str)
 
     assert "self_consumption" in df.columns
-    assert "hourly_self_consumption" in df.columns
+    assert "hourly_self_consumption" not in df.columns
     assert "exported_energy" in df.columns
     assert "imported_energy" in df.columns
 
@@ -1189,8 +1186,6 @@ def test_curation_self_consumption_assigned_to_primary_cups(tmp_path: Path) -> N
 
     # Primary CUPS receives Huawei physical self_consumption (6.0 kWh)
     assert float(pri_row["self_consumption"].replace(",", ".")) == 6.0
-    # Primary CUPS receives regulatory hourly min(cons, gen) = min(8.5, 12.0) = 8.5 kWh
-    assert float(pri_row["hourly_self_consumption"].replace(",", ".")) == 8.5
     # Primary CUPS receives exported_energy = 6.0 kWh
     assert float(pri_row["exported_energy"].replace(",", ".")) == 6.0
     # Primary CUPS receives imported_energy = 2.5 kWh
@@ -1198,7 +1193,6 @@ def test_curation_self_consumption_assigned_to_primary_cups(tmp_path: Path) -> N
 
     # Secondary CUPS receives 0.0 for all primary PV plant metrics
     assert float(sec_row["self_consumption"].replace(",", ".")) == 0.0
-    assert float(sec_row["hourly_self_consumption"].replace(",", ".")) == 0.0
     assert float(sec_row["exported_energy"].replace(",", ".")) == 0.0
     assert float(sec_row["imported_energy"].replace(",", ".")) == 0.0
 
@@ -1262,14 +1256,13 @@ def test_curation_exports_styled_excel(tmp_path: Path) -> None:
         "community_demand": "009C5B28",
         "generation": "002D6A4F",
         "self_consumption": "002D6A4F",
-        "hourly_self_consumption": "002D6A4F",
         "exported_energy": "002D6A4F",
         "imported_energy": "002D6A4F",
         "temperature": "005C4D7D",
         "cloud_cover": "005C4D7D",
     }
 
-    for col in range(1, 19):
+    for col in range(1, 18):
         col_name = str(ws.cell(row=1, column=col).value)
         assert col_name in header_group_expected
         expected_color = header_group_expected[col_name]

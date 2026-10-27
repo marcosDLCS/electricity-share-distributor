@@ -77,7 +77,6 @@ def dataframe_to_aligned_dataset(
         "generation",
         "community_demand",
         "self_consumption",
-        "hourly_self_consumption",
         "exported_energy",
         "imported_energy",
     ):
@@ -93,7 +92,6 @@ def dataframe_to_aligned_dataset(
         ).fillna(0.0)
     for add_col in (
         "self_consumption",
-        "hourly_self_consumption",
         "exported_energy",
         "imported_energy",
     ):
@@ -134,7 +132,6 @@ def dataframe_to_aligned_dataset(
         )
     for add_col in (
         "self_consumption",
-        "hourly_self_consumption",
         "exported_energy",
         "imported_energy",
     ):
@@ -544,24 +541,18 @@ class DataCurator:
                 is_reconciled = False
                 final_cons = datadis_cons
 
-                # For primary CUPS: always get the higher consumption between DATADIS or the solar inverter data
+                # For primary CUPS: use the plain raw solar inverter consumption reading directly when present
                 if cfg.primary and hw_cons_val is not None:
-                    if hw_cons_val > datadis_cons:
-                        final_cons = hw_cons_val
-                        # Genuine reconciliation when inverter reveals higher behind-the-meter load
-                        if (hw_cons_val - datadis_cons) > 0.001:
-                            is_reconciled = True
-                            diff = hw_cons_val - datadis_cons
-                            recovered_kwh += diff
-                            reconciled_hours_set.add(ts_str)
-                            cups_reconciled_counts[cups_id] += 1
-                    else:
-                        final_cons = datadis_cons
+                    final_cons = hw_cons_val
+                    if (hw_cons_val - datadis_cons) > 0.001:
+                        is_reconciled = True
+                        diff = hw_cons_val - datadis_cons
+                        recovered_kwh += diff
+                        reconciled_hours_set.add(ts_str)
+                        cups_reconciled_counts[cups_id] += 1
 
                 # Self-consumed electricity: primary CUPS receives the Huawei reading, others receive 0.0
                 c_self_cons = hw_sc_val if cfg.primary else 0.0
-                # Regulatory hourly self-consumption for primary CUPS: min(final_cons, gen_val)
-                c_hourly_sc = min(final_cons, gen_val) if cfg.primary else 0.0
                 c_exp = hw_exp_val if cfg.primary else 0.0
                 c_imp = hw_imp_val if cfg.primary else 0.0
 
@@ -576,7 +567,6 @@ class DataCurator:
                         primary=cfg.primary,
                         reconciled=is_reconciled,
                         self_consumption=format_energy_value(c_self_cons),
-                        hourly_self_consumption=format_energy_value(c_hourly_sc),
                         exported_energy=format_energy_value(c_exp),
                         imported_energy=format_energy_value(c_imp),
                     )
@@ -592,12 +582,6 @@ class DataCurator:
             w_reading = weather_map.get(ts_str)
             temp_val, cloud_val = w_reading if w_reading is not None else (None, None)
 
-            pri_hourly_sc = 0.0
-            for cr in cups_readings:
-                if cr.primary:
-                    pri_hourly_sc = float(cr.hourly_self_consumption)
-                    break
-
             records.append(
                 CuratedHourRecord(
                     date=date_str,
@@ -609,7 +593,6 @@ class DataCurator:
                     solar_surplus=format_energy_value(surplus),
                     net_grid_demand=format_energy_value(grid_demand),
                     self_consumption=format_energy_value(hw_sc_val),
-                    hourly_self_consumption=format_energy_value(pri_hourly_sc),
                     exported_energy=format_energy_value(hw_exp_val),
                     imported_energy=format_energy_value(hw_imp_val),
                     temperature=temp_val,
@@ -741,7 +724,7 @@ class DataCurator:
                     and "temperature" in cols
                     and "cloud_cover" in cols
                     and "self_consumption" in cols
-                    and "hourly_self_consumption" in cols
+                    and "hourly_self_consumption" not in cols
                     and "exported_energy" in cols
                     and "imported_energy" in cols
                     and "primary" not in cols

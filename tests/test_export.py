@@ -834,7 +834,6 @@ def test_formula_injection_neutralized_in_curated_csv_and_excel(tmp_path: Path) 
         hour="12:00",
         generation=15.0,
         self_consumption=10.0,
-        hourly_self_consumption=10.0,
         exported_energy=5.0,
         imported_energy=0.0,
         cups=[

@@ -140,7 +140,6 @@ class ReportExporter:
             # 4. Solar PV generation & balance: Solar Emerald Forest
             "generation": "2D6A4F",
             "self_consumption": "2D6A4F",
-            "hourly_self_consumption": "2D6A4F",
             "exported_energy": "2D6A4F",
             "imported_energy": "2D6A4F",
             # 5. Weather context: Royal Amethyst Plum
@@ -162,7 +161,6 @@ class ReportExporter:
             "community_demand": 18,
             "generation": 14,
             "self_consumption": 18,
-            "hourly_self_consumption": 22,
             "exported_energy": 16,
             "imported_energy": 16,
             "temperature": 14,
