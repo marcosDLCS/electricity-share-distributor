@@ -149,7 +149,7 @@ Los acuerdos de junta y estatutos de comunidades de propietarios a menudo establ
 - **Cuota Mínima Garantizada (`--min-share`):** Garantiza que los circuitos comunes menores (ventilación de garajes, alumbrado de escaleras, ascensores) perciban un porcentaje base de energía solar (p. ej. $\beta_i \ge 0.05$ o 5%), evitando que un único suministro acapare toda la generación.
 - **Cuota Máxima Tope (`--max-share`):** Impide que consumos intensivos (p. ej. bombas de calor centralizadas de aerotermia) monopolicen en exceso la producción (p. ej. tope del 70% o $\beta_i \le 0.70$).
 - **Límites Individuales por CUPS en `cups.json`:** Cada suministro puede fijar directamente en `cups.json` sus propios valores `"min_share"` y `"max_share"`.
-- El optimizador de programación lineal HiGHS incorpora las cotas de variables $L_i \le \beta_i \le U_i$, verifica la factibilidad matemática ($\sum L_i \le 1.0$) y aplica el redondeo exacto de Hare-Niemeyer garantizando $\sum \beta_i = 100.0\%$ estricto.
+- El optimizador de programación lineal HiGHS incorpora las cotas de variables $L_i \le \beta_i \le U_i$, verifica la factibilidad matemática ($\sum L_i \le 1.0$) y aplica el redondeo exacto de Hare-Niemeyer dentro de los límites tanto en el cálculo mensual como en el perfil diurno y serie temporal horaria (`--hourly`), garantizando $\sum \beta_i = 100.0\%$ estricto.
 
 ---
 

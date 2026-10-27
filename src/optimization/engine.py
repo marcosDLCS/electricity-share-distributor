@@ -559,6 +559,7 @@ class DistributionOptimizer:
         strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL,
         precision: int = 0,
         primary_cups: str | None = None,
+        constraints: BylawConstraints | None = None,
     ) -> HourlyOptimizationResult:
         """Compute 24-hour diurnal distribution profile and full hourly time-series balance.
 
@@ -567,6 +568,7 @@ class DistributionOptimizer:
             strategy: Primary optimization strategy ('optimal', 'consumption_share', 'equal').
             precision: Share percentage precision (0, 1, or 2 decimal places).
             primary_cups: Optional identifier of primary CUPS. If None, derived from dataset or configuration.
+            constraints: Optional regulatory or community bylaw constraints.
 
         Returns:
             HourlyOptimizationResult containing HourlyProfileMatrix and time_series_df.
@@ -650,13 +652,26 @@ class DistributionOptimizer:
                 hourly_gen_totals[h_str] = tot_g_h
 
                 if pri_idx is not None and tot_g_h <= 1e-6:
-                    for c in cups_list:
-                        matrix[c][h_str] = (
-                            (1.0 - (n_cups - 1) * 0.01) if c == effective_primary else 0.01
-                        )
-                    hourly_sums[h_str] = 1.0
+                    raw_zero = np.full(n_cups, 0.01)
+                    raw_zero[pri_idx] = 1.0
+                    betas_h = cls._round_betas(
+                        raw_zero,
+                        precision=precision,
+                        cups_list=cups_list,
+                        constraints=constraints,
+                    )
+                    for i, c in enumerate(cups_list):
+                        matrix[c][h_str] = float(betas_h[i])
+                    hourly_sums[h_str] = round(float(np.sum(betas_h)), 6)
                 else:
-                    betas_h = cls.calculate_betas(c_h, g_h, strategy=strategy, precision=precision)
+                    betas_h = cls.calculate_betas(
+                        c_h,
+                        g_h,
+                        strategy=strategy,
+                        precision=precision,
+                        cups_list=cups_list,
+                        constraints=constraints,
+                    )
                     for i, c in enumerate(cups_list):
                         matrix[c][h_str] = float(betas_h[i])
                     hourly_sums[h_str] = round(float(np.sum(betas_h)), 6)
@@ -710,20 +725,38 @@ class DistributionOptimizer:
             with np.errstate(divide="ignore", invalid="ignore"):
                 raw_betas = np.where(c_row_sums > 0, c_arr / c_row_sums, 1.0 / n_cups)
 
-        # Enforce 1% minimum share floor per CUPS row-by-row
-        if n_cups * 0.01 <= 1.0:
+        # Enforce bylaw constraints or 1% minimum share floor per CUPS row-by-row
+        if constraints and constraints.is_active and cups_list:
+            for i, cups in enumerate(cups_list):
+                l_b, u_b = constraints.get_bounds(cups)
+                l_b = max(0.01, l_b)
+                u_b = max(l_b, u_b)
+                raw_betas[:, i] = np.clip(raw_betas[:, i], l_b, u_b)
+            raw_betas = raw_betas / np.sum(raw_betas, axis=1, keepdims=True)
+        elif n_cups * 0.01 <= 1.0:
             raw_betas = np.maximum(raw_betas, 0.01)
             raw_betas = raw_betas / np.sum(raw_betas, axis=1, keepdims=True)
 
-        # Apply exact Hare-Niemeyer rounding row-by-row
-        # In zero-generation hours (e.g. night hours), assign 1% to all and remainder to primary CUPS
+        # Apply exact Hare-Niemeyer rounding row-by-row respecting constraints
+        # In zero-generation hours (e.g. night hours), assign 1% to all and remainder to primary CUPS (bounded by constraints)
         rounded_betas = np.zeros_like(raw_betas)
         for t in range(t_steps):
             if pri_idx is not None and g_arr[t] <= 1e-6:
-                rounded_betas[t] = 0.01
-                rounded_betas[t, pri_idx] = 1.0 - (n_cups - 1) * 0.01
+                raw_zero = np.full(n_cups, 0.01)
+                raw_zero[pri_idx] = 1.0
+                rounded_betas[t] = cls._round_betas(
+                    raw_zero,
+                    precision=precision,
+                    cups_list=cups_list,
+                    constraints=constraints,
+                )
             else:
-                rounded_betas[t] = cls._round_betas(raw_betas[t], precision=precision)
+                rounded_betas[t] = cls._round_betas(
+                    raw_betas[t],
+                    precision=precision,
+                    cups_list=cups_list,
+                    constraints=constraints,
+                )
 
         temp_series = aligned_df["temperature"] if "temperature" in aligned_df.columns else None
         cloud_series = aligned_df["cloud_cover"] if "cloud_cover" in aligned_df.columns else None
@@ -736,7 +769,6 @@ class DistributionOptimizer:
             m_int = int(dt_index[t].month)
             h_str = f"{h_int:02d}"
             gen_val = round(float(g_arr[t]), 4)
-            is_zero_gen = (pri_idx is not None) and (g_arr[t] <= 1e-6)
 
             # Solar efficiency index: integer (1-100) for hours with generation (> 1e-6), 0 for hours without generation
             efficiency_val: int = 0
@@ -761,15 +793,9 @@ class DistributionOptimizer:
             for i, cups in enumerate(cups_list):
                 cons_val = round(float(c_arr[t, i]), 4)
                 actual_share = f"{rounded_betas[t, i] * 100:.{precision}f}%"
-                if is_zero_gen:
-                    est_val = (
-                        (1.0 - (n_cups - 1) * 0.01) * 100.0 if cups == effective_primary else 1.0
-                    )
-                    est_share = f"{est_val:.{precision}f}%"
-                else:
-                    est_share = profile_matrix.format_cell(cups, h_str, precision=precision)
-                    if est_share == "—":
-                        est_share = actual_share
+                est_share = profile_matrix.format_cell(cups, h_str, precision=precision)
+                if est_share == "—":
+                    est_share = actual_share
 
                 use_val = cups_uses.get(cups, "")
 
@@ -891,6 +917,7 @@ class DistributionOptimizer:
                 strategy=strategy,
                 precision=active_precision,
                 primary_cups=primary_cups or getattr(aligned_dataset, "primary_cups", None),
+                constraints=constraints,
             )
 
         return OptimizationResult(

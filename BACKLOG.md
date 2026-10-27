@@ -22,7 +22,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | Task | Category | Priority |
 | :--- | :--- | :--- |
-| Propagate Bylaw Constraints into Hourly Optimization | `Features` | `P1` |
 | Official CNMC / DSO 8760-Hour Regulatory Export (`Orden TED/1247/2021`) | `Features` | `P1` |
 | Extend Privacy Scanner to Inspect `.xlsx` Workbooks & `cups.json` | `Security` | `P1` |
 | Extract `WeatherService` to Decouple CLI from Ingestion Layer | `Architecture` | `P2` |
@@ -39,15 +38,7 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 ## 🚀 Features
 
-### 1. [P1] Propagate Bylaw Constraints into Hourly Optimization
-- **Goal:** Ensure community bylaw bounds (`--min-share`, `--max-share`, and per-CUPS `min_share`/`max_share` in `cups.json`) are enforced when computing the 24-hour diurnal profile and hourly time-series (`--hourly`). Currently, `DistributionOptimizer.optimize_dataset()` passes `constraints` to monthly optimization but omits them in `compute_hourly_optimization()`.
-- **Target Files:** `src/optimization/engine.py`, `tests/test_bylaws.py`, `tests/test_optimization.py`.
-- **Acceptance Criteria:**
-  - Add `constraints: BylawConstraints | None = None` to `DistributionOptimizer.compute_hourly_optimization()` and pass it from `optimize_dataset()`.
-  - Enforce `constraints` in both the 24-hour diurnal `HourlyProfileMatrix` and the row-by-row hourly shares calculation while maintaining an exact 100% hourly sum via Hare-Niemeyer rounding.
-  - Add unit tests verifying `--hourly` respects global and per-CUPS min/max share bounds.
-
-### 2. [P1] Official CNMC / DSO 8760-Hour Regulatory Export (`Orden TED/1247/2021`)
+### 1. [P1] Official CNMC / DSO 8760-Hour Regulatory Export (`Orden TED/1247/2021`)
 - **Goal:** Generate the standardized annual 8,760-hour (or 8,784-hour leap-year) flat file (`CUPS;Hora;Coeficiente` with 6 decimal places, e.g. `0,150000`) required by Spanish distribution system operators (i-DE, e-distribución, UFD) when registering collective self-consumption coefficients under Orden TED/1247/2021.
 - **Target Files:** `src/presentation/export.py`, `src/cli.py`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `tests/test_export.py`.
 - **Acceptance Criteria:**

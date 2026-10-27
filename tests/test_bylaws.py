@@ -109,3 +109,208 @@ def test_hare_niemeyer_rounding_with_constraints() -> None:
     assert rounded[0] <= 0.7001
     for i in range(n_cups):
         assert rounded[i] >= 0.0999
+
+
+def test_compute_hourly_optimization_with_global_bylaw_constraints() -> None:
+    """Verify compute_hourly_optimization enforces global min_share and max_share across hours."""
+    import pandas as pd
+
+    from src.ingestion.schema import AlignedDataset, IngestionSummary
+    from src.optimization.models import OptimizationStrategy
+
+    pri_cups = "ES0021000000000001AA"
+    cups_2 = "ES0021000000000002BB"
+    cups_3 = "ES0021000000000003CC"
+    cups_list = [pri_cups, cups_2, cups_3]
+    timestamps = [f"2026-05-01 {h:02d}:00:00" for h in range(24)]
+
+    # CUPS 1 has dominant demand, CUPS 2 and 3 have minor demand
+    df = pd.DataFrame(
+        {
+            pri_cups: [40.0] * 24,
+            cups_2: [0.5] * 24,
+            cups_3: [0.5] * 24,
+            "generation_kwh": [0.0 if (h < 7 or h > 20) else 15.0 for h in range(24)],
+        },
+        index=timestamps,
+    )
+    summary = IngestionSummary(
+        cups_count=3,
+        cups_list=cups_list,
+        consumption_files_loaded=3,
+        generation_files_loaded=1,
+        start_time=timestamps[0],
+        end_time=timestamps[-1],
+        total_hours=24,
+    )
+    dataset = AlignedDataset(
+        data=df,
+        cups_list=cups_list,
+        metadata=summary,
+        monthly_groups={"2026-05": df},
+        primary_cups=pri_cups,
+    )
+
+    constraints = BylawConstraints(min_share=0.08, max_share=0.60)
+    res = DistributionOptimizer.compute_hourly_optimization(
+        dataset,
+        strategy=OptimizationStrategy.OPTIMAL,
+        precision=1,
+        constraints=constraints,
+    )
+
+    matrix = res.profile_matrix
+    ts_df = res.time_series_df
+
+    # 1. Check 24-hour diurnal matrix
+    for h in range(24):
+        h_str = f"{h:02d}"
+        for cups in cups_list:
+            share = matrix.matrix[cups][h_str]
+            assert share is not None
+            assert share >= 0.0799, f"CUPS {cups} in hour {h_str} below min_share: {share}"
+            assert share <= 0.6001, f"CUPS {cups} in hour {h_str} above max_share: {share}"
+        assert np.isclose(matrix.hourly_sums[h_str], 1.0, atol=1e-4)
+
+    # 2. Check full time-series rows
+    for h in range(24):
+        ts = f"2026-05-01 {h:02d}:00:00"
+        ts_slice = ts_df[ts_df["timestamp"] == ts]
+        for _, row in ts_slice.iterrows():
+            pct = float(str(row["share_pct"]).replace("%", ""))
+            est_pct = float(str(row["estimated_share_pct"]).replace("%", ""))
+            assert pct >= 7.99, f"{row['cups']} at {ts} share_pct {pct}% below min_share"
+            assert pct <= 60.01, f"{row['cups']} at {ts} share_pct {pct}% above max_share"
+            assert est_pct >= 7.99, (
+                f"{row['cups']} at {ts} estimated_share_pct {est_pct}% below min_share"
+            )
+            assert est_pct <= 60.01, (
+                f"{row['cups']} at {ts} estimated_share_pct {est_pct}% above max_share"
+            )
+
+
+def test_compute_hourly_optimization_with_cups_specific_constraints() -> None:
+    """Verify compute_hourly_optimization honors per-CUPS min_share and max_share bounds."""
+    import pandas as pd
+
+    from src.ingestion.schema import AlignedDataset, IngestionSummary
+    from src.optimization.models import OptimizationStrategy
+
+    pri_cups = "ES0021000000000001AA"
+    cups_2 = "ES0021000000000002BB"
+    cups_3 = "ES0021000000000003CC"
+    cups_list = [pri_cups, cups_2, cups_3]
+    timestamps = [f"2026-05-01 {h:02d}:00:00" for h in range(24)]
+
+    df = pd.DataFrame(
+        {
+            pri_cups: [30.0] * 24,
+            cups_2: [1.0] * 24,
+            cups_3: [1.0] * 24,
+            "generation_kwh": [0.0 if (h < 7 or h > 20) else 10.0 for h in range(24)],
+        },
+        index=timestamps,
+    )
+    summary = IngestionSummary(
+        cups_count=3,
+        cups_list=cups_list,
+        consumption_files_loaded=3,
+        generation_files_loaded=1,
+        start_time=timestamps[0],
+        end_time=timestamps[-1],
+        total_hours=24,
+    )
+    dataset = AlignedDataset(
+        data=df,
+        cups_list=cups_list,
+        metadata=summary,
+        monthly_groups={"2026-05": df},
+        primary_cups=pri_cups,
+    )
+
+    # CUPS 1 capped at 50%, CUPS 2 guaranteed at least 25%
+    constraints = BylawConstraints(
+        cups_min_shares={cups_2: 0.25},
+        cups_max_shares={pri_cups: 0.50},
+    )
+    res = DistributionOptimizer.compute_hourly_optimization(
+        dataset,
+        strategy=OptimizationStrategy.OPTIMAL,
+        precision=1,
+        constraints=constraints,
+    )
+
+    matrix = res.profile_matrix
+    ts_df = res.time_series_df
+
+    for h in range(24):
+        h_str = f"{h:02d}"
+        assert matrix.matrix[pri_cups][h_str] <= 0.5001
+        assert matrix.matrix[cups_2][h_str] >= 0.2499
+        assert np.isclose(matrix.hourly_sums[h_str], 1.0, atol=1e-4)
+
+    for h in range(24):
+        ts = f"2026-05-01 {h:02d}:00:00"
+        ts_slice = ts_df[ts_df["timestamp"] == ts]
+        pri_pct = float(
+            str(ts_slice[ts_slice["cups"] == pri_cups]["share_pct"].iloc[0]).replace("%", "")
+        )
+        c2_pct = float(
+            str(ts_slice[ts_slice["cups"] == cups_2]["share_pct"].iloc[0]).replace("%", "")
+        )
+        assert pri_pct <= 50.01
+        assert c2_pct >= 24.99
+
+
+def test_optimize_dataset_hourly_propagates_constraints() -> None:
+    """Verify that optimize_dataset forwards constraints to compute_hourly_optimization."""
+    import pandas as pd
+
+    from src.ingestion.schema import AlignedDataset, IngestionSummary
+
+    pri_cups = "ES0021000000000001AA"
+    sec_cups = "ES0021000000000002BB"
+    cups_list = [pri_cups, sec_cups]
+    timestamps = [f"2026-05-01 {h:02d}:00:00" for h in range(24)]
+
+    df = pd.DataFrame(
+        {
+            pri_cups: [20.0] * 24,
+            sec_cups: [1.0] * 24,
+            "generation_kwh": [5.0] * 24,
+        },
+        index=timestamps,
+    )
+    summary = IngestionSummary(
+        cups_count=2,
+        cups_list=cups_list,
+        consumption_files_loaded=2,
+        generation_files_loaded=1,
+        start_time=timestamps[0],
+        end_time=timestamps[-1],
+        total_hours=24,
+    )
+    dataset = AlignedDataset(
+        data=df,
+        cups_list=cups_list,
+        metadata=summary,
+        monthly_groups={"2026-05": df},
+        primary_cups=pri_cups,
+    )
+
+    constraints = BylawConstraints(min_share=0.15, max_share=0.65)
+    opt_res = DistributionOptimizer.optimize_dataset(
+        dataset,
+        compute_hourly=True,
+        constraints=constraints,
+        require_full_month=False,
+    )
+
+    assert opt_res.hourly_result is not None
+    matrix = opt_res.hourly_result.profile_matrix
+    for h in range(24):
+        h_str = f"{h:02d}"
+        for cups in cups_list:
+            share = matrix.matrix[cups][h_str]
+            assert share >= 0.1499
+            assert share <= 0.6501

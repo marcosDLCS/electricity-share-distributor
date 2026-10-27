@@ -151,7 +151,7 @@ Homeowners association agreements and community bylaws frequently establish stat
 - **Minimum Share Floor (`--min-share`):** Guarantees smaller common circuits (e.g. garage ventilation, elevator cabs, stair lighting) a baseline allocation (e.g., $\beta_i \ge 0.05$ or 5%) so all facilities benefit from the collective installation.
 - **Maximum Share Cap (`--max-share`):** Prevents dominant consumers (e.g. centralized aerothermal heating) from monopolizing generation (e.g., capped at $\beta_i \le 0.70$ or 70%).
 - **Custom Per-CUPS Bylaws in `cups.json`:** Individual supply points can also define specific `"min_share"` and `"max_share"` limits directly in `cups.json`.
-- The HiGHS linear programming solver incorporates variable bounds $L_i \le \beta_i \le U_i$, checks mathematical feasibility ($\sum L_i \le 1.0$), and applies Hare-Niemeyer exact rounding strictly within bounds while guaranteeing $\sum \beta_i = 100.0\%$.
+- The HiGHS linear programming solver incorporates variable bounds $L_i \le \beta_i \le U_i$, checks mathematical feasibility ($\sum L_i \le 1.0$), and applies Hare-Niemeyer exact rounding strictly within bounds across both monthly calculations and the 24-hour diurnal profile and hourly time-series (`--hourly`), guaranteeing an exact $\sum \beta_i = 100.0\%$.
 
 ---
 
