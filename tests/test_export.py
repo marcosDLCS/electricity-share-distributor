@@ -1,13 +1,12 @@
-"""Unit tests for multi-format report exports."""
+"""Unit tests for report exports (monthly shares CSV, hourly shares CSV, and interactive HTML)."""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pandas as pd
 
-from src.ingestion.schema import AlignedDataset, IngestionSummary
+from src.ingestion.schema import IngestionSummary
 from src.optimization.models import (
     CommunityMonthlyMetrics,
     CupsMonthlyMetrics,
@@ -66,11 +65,56 @@ def create_dummy_optimization_result() -> tuple[OptimizationResult, IngestionSum
         cups_metrics=[c1, c2],
     )
 
+    hours = [f"{h:02d}" for h in range(24)]
+    profile_matrix = HourlyProfileMatrix(
+        cups_list=cups_list,
+        hours=hours,
+        matrix={
+            cups_list[0]: dict.fromkeys(hours, 0.6),
+            cups_list[1]: dict.fromkeys(hours, 0.4),
+        },
+        hourly_sums=dict.fromkeys(hours, 1.0),
+        average_shares={cups_list[0]: 0.6, cups_list[1]: 0.4},
+        average_sum=1.0,
+    )
+    ts_rows = []
+    for h in hours:
+        ts_rows.append(
+            {
+                "timestamp": f"2026-05-01 {h}:00:00",
+                "hour": int(h),
+                "cups": cups_list[0],
+                "use": "Aerotermia",
+                "consumption_kwh": 2.4,
+                "generation_kwh": 5.0,
+                "share_pct": "60%",
+                "estimated_share_pct": "60%",
+                "solar_efficiency": 75,
+            }
+        )
+        ts_rows.append(
+            {
+                "timestamp": f"2026-05-01 {h}:00:00",
+                "hour": int(h),
+                "cups": cups_list[1],
+                "use": "Garaje",
+                "consumption_kwh": 1.6,
+                "generation_kwh": 5.0,
+                "share_pct": "40%",
+                "estimated_share_pct": "40%",
+                "solar_efficiency": 75,
+            }
+        )
+
     result = OptimizationResult(
         strategy=OptimizationStrategy.OPTIMAL,
         monthly_results=[m1],
         total_summary=m1,
         baselines={},
+        hourly_result=HourlyOptimizationResult(
+            profile_matrix=profile_matrix,
+            time_series_df=pd.DataFrame(ts_rows),
+        ),
         cups_uses={"ES0021000000000001AA": "Aerotermia", "ES0021000000000002BB": "Garaje"},
         current_self_consumed_kwh=480.0,
         monthly_share_self_consumed_kwh=750.0,
@@ -90,137 +134,66 @@ def create_dummy_optimization_result() -> tuple[OptimizationResult, IngestionSum
     return result, summary
 
 
-def test_export_csv(tmp_path: Path) -> None:
+def test_export_monthly_shares_csv(tmp_path: Path) -> None:
     opt_result, _ = create_dummy_optimization_result()
     csv_path = ReportExporter(
         output_dir=tmp_path, timestamp="20260531_120000"
-    ).export_coefficients_csv(opt_result)
+    ).export_monthly_shares_csv(opt_result, precision=1)
     assert csv_path.exists()
+    assert csv_path.name == "20260531_120000_esd_monthly_shares.csv"
 
     df = pd.read_csv(csv_path, sep=";", decimal=",")
     assert len(df) == 2
-    assert "month" in df.columns
-    assert "cups" in df.columns
-    assert "use" in df.columns
-    assert "beta" in df.columns
-    assert df["beta"].sum() == 1.0
-    assert df.iloc[0]["use"] == "Aerotermia"
-    assert df.iloc[1]["use"] == "Garaje"
-
-
-def test_export_coefficients_matrix_csv(tmp_path: Path) -> None:
-    opt_result, _ = create_dummy_optimization_result()
-    csv_path = ReportExporter(
-        output_dir=tmp_path, timestamp="20260531_120000"
-    ).export_coefficients_matrix_csv(opt_result, precision=1)
-    assert csv_path.exists()
-    assert csv_path.name == "20260531_120000_esd_coefficients_matrix.csv"
-
-    df = pd.read_csv(csv_path, sep=";", decimal=",")
-    # 2 CUPS rows + 1 TOTAL row
-    assert len(df) == 3
-    expected_cols = ["cups", "use"] + [f"{m:02d}" for m in range(1, 13)] + ["annual_average"]
+    expected_cols = [
+        "month",
+        "cups",
+        "use",
+        "consumption_kwh",
+        "generation_kwh",
+        "share_pct",
+        "self_consumed_kwh",
+        "surplus_kwh",
+        "grid_demand_kwh",
+    ]
     assert list(df.columns) == expected_cols
-
-    # Verify CUPS rows
-    assert df.iloc[0]["cups"] == "ES0021000000000001AA"
     assert df.iloc[0]["use"] == "Aerotermia"
-    assert df.iloc[0]["05"] == "60,0%"
-    assert df.iloc[0]["01"] == "—"
-    assert df.iloc[1]["cups"] == "ES0021000000000002BB"
+    assert df.iloc[0]["share_pct"] == "60,0%"
+    assert df.iloc[0]["consumption_kwh"] == 500.0
+    assert df.iloc[0]["generation_kwh"] == 1000.0
+    assert df.iloc[0]["self_consumed_kwh"] == 480.0
+    assert df.iloc[0]["surplus_kwh"] == 120.0
+    assert df.iloc[0]["grid_demand_kwh"] == 20.0
+
     assert df.iloc[1]["use"] == "Garaje"
-    assert df.iloc[1]["05"] == "40,0%"
-    assert df.iloc[1]["01"] == "—"
-
-    # Verify TOTAL row
-    assert df.iloc[2]["cups"] == "TOTAL"
-    assert df.iloc[2]["use"] == "TOTAL"
-    assert df.iloc[2]["05"] == "100,0%"
-    assert df.iloc[2]["annual_average"] == "100,0%"
-
-
-def test_export_json(tmp_path: Path) -> None:
-    opt_result, meta = create_dummy_optimization_result()
-    json_path = ReportExporter(
-        output_dir=tmp_path, timestamp="20260531_120000"
-    ).export_results_json(opt_result, meta)
-    assert json_path.exists()
-
-    with open(json_path) as f:
-        data = json.load(f)
-
-    assert data["primary_strategy"] == "optimal"
-    assert data["ingestion_metadata"]["cups_count"] == 2
-    assert len(data["monthly_results"]) == 1
-    assert data["monthly_results"][0]["month"] == "2026-05"
-    assert "self_consumption_comparison" in data
-    assert "hourly_share_self_consumed_kwh" in data["self_consumption_comparison"]
-
-
-def test_export_markdown_english(tmp_path: Path) -> None:
-    opt_result, meta = create_dummy_optimization_result()
-    md_path = ReportExporter(
-        output_dir=tmp_path, timestamp="20260531_120000"
-    ).export_summary_markdown(opt_result, meta, lang="en", precision=1)
-    assert md_path.exists()
-
-    content = md_path.read_text(encoding="utf-8")
-    assert "Electricity Share Distributor" in content
-    assert "Collective Community Overview" in content
-    assert "Month-by-Month Energy Trajectory" in content
-    assert "Regulatory Distribution Coefficients Matrix (RD 244/2019)" in content
-    assert "Community Optimization Insights & Generation Dynamics" in content
-    assert "Diurnal Alignment" in content
-    assert "Proposed Monthly Distribution Coefficients" in content
-    assert "Participating CUPS" in content
-    assert "ES0021000000000001AA" in content
-    assert "TOTAL (RD 244/2019)" in content
-    assert "100.0%" in content
-    assert "Solar PV Generation (Solar Hours)" in content
-    assert "Self-Consumption Modality Comparison" in content
-    assert "Current (No Share)" in content
-    assert "Monthly Share (RD 244/2019)" in content
-    assert "Hourly Share (Order TED)" in content
-
-
-def test_export_markdown_spanish(tmp_path: Path) -> None:
-    opt_result, meta = create_dummy_optimization_result()
-    md_path = ReportExporter(
-        output_dir=tmp_path, timestamp="20260531_120000"
-    ).export_summary_markdown(opt_result, meta, lang="es", precision=1)
-    assert md_path.exists()
-
-    content = md_path.read_text(encoding="utf-8")
-    assert "Distribuidor de Energía Compartida" in content
-    assert "Resumen de la Comunidad de Autoconsumo Colectivo" in content
-    assert "Trayectoria Energética Mensual" in content
-    assert "Matriz Regulatoria de Coeficientes de Reparto (RD 244/2019)" in content
-    assert "Análisis de Rendimiento y Dinámica de Generación" in content
-    assert "Coincidencia Diurna" in content
-    assert "Propuesta de Coeficientes de Reparto Mensuales" in content
-    assert "Puntos de Suministro (CUPS)" in content
-    assert "ES0021000000000001AA" in content
-    assert "TOTAL (RD 244/2019)" in content
-    assert "100.0%" in content
-    assert "Generación Solar FV (Horas Solares)" in content
-    assert "Comparativa de Modalidades de Autoconsumo" in content
-    assert "Actual (Sin Reparto)" in content
-    assert "Reparto Mensual (RD 244/2019)" in content
-    assert "Reparto Horario (Orden TED)" in content
+    assert df.iloc[1]["share_pct"] == "40,0%"
+    assert df.iloc[1]["consumption_kwh"] == 300.0
+    assert df.iloc[1]["generation_kwh"] == 1000.0
+    assert df.iloc[1]["self_consumed_kwh"] == 270.0
+    assert df.iloc[1]["surplus_kwh"] == 130.0
+    assert df.iloc[1]["grid_demand_kwh"] == 30.0
 
 
 def test_export_all_filtering(tmp_path: Path) -> None:
     opt_result, meta = create_dummy_optimization_result()
 
-    # CSV exports both detailed metrics and consolidated matrix CSV
+    # CSV exports monthly_shares and hourly_shares
     paths_csv = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="csv")
     assert len(paths_csv) == 2
     assert all(p.suffix == ".csv" for p in paths_csv)
     file_names = [p.name for p in paths_csv]
-    assert any("_esd_coefficients.csv" in n for n in file_names)
-    assert any("_esd_coefficients_matrix.csv" in n for n in file_names)
+    assert any("_esd_monthly_shares.csv" in n for n in file_names)
+    assert any("_esd_hourly_shares.csv" in n for n in file_names)
 
-    # None
+    # HTML exports interactive_report.html
+    paths_html = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="html")
+    assert len(paths_html) == 1
+    assert paths_html[0].name.endswith("_esd_interactive_report.html")
+
+    # All exports monthly_shares, hourly_shares, and interactive_report
+    paths_all = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="all")
+    assert len(paths_all) == 3
+
+    # None / table
     paths_none = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="table")
     assert len(paths_none) == 0
 
@@ -275,7 +248,7 @@ def test_export_hourly_files(tmp_path: Path) -> None:
         time_series_df=ts_df,
     )
 
-    # Export hourly CSV files directly
+    # Export hourly CSV file directly
     shares_path = ReportExporter(
         output_dir=tmp_path, timestamp="20260531_120000"
     ).export_hourly_shares_csv(opt_result)
@@ -290,42 +263,15 @@ def test_export_hourly_files(tmp_path: Path) -> None:
     # Verify that within the same timestamp, Aerotermia appears before Portal 1
     lines = shares_content.strip().splitlines()
     assert len(lines) == 1 + (len(hours) * 2)
-    # Line 1: Header, Line 2: 2026-05-01 00:00:00 with Aerotermia, Line 3: 2026-05-01 00:00:00 with Portal 1
     assert "Aerotermia" in lines[1]
     assert "Portal 1" in lines[2]
 
-    matrix_path = ReportExporter(
-        output_dir=tmp_path, timestamp="20260531_120000"
-    ).export_hourly_profile_matrix_csv(opt_result, precision=0)
-    assert matrix_path.exists()
-    matrix_content = matrix_path.read_text(encoding="utf-8")
-    assert "cups;use;00;01;02" in matrix_content
-    assert "TOTAL;TOTAL;100%;100%" in matrix_content
-
-    # export_all with formats='csv' should export 4 CSVs
+    # export_all with formats='csv' should export 2 CSVs (monthly_shares and hourly_shares)
     exported = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="csv")
-    assert len(exported) == 4
+    assert len(exported) == 2
     file_names = [p.name for p in exported]
+    assert any("_esd_monthly_shares.csv" in n for n in file_names)
     assert any("_esd_hourly_shares.csv" in n for n in file_names)
-    assert any("_esd_hourly_profile_matrix.csv" in n for n in file_names)
-
-    # export_all with json should serialize hourly profile
-    json_paths = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="json")
-    assert len(json_paths) == 1
-    with open(json_paths[0], encoding="utf-8") as f:
-        data = json.load(f)
-    assert "hourly_profile" in data
-    assert data["hourly_profile"]["hours"] == hours
-
-    # export_all with markdown should render hourly section in both ES and EN
-    md_paths = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="markdown")
-    assert len(md_paths) == 2
-    es_path = next(p for p in md_paths if "_es.md" in p.name)
-    en_path = next(p for p in md_paths if "_en.md" in p.name)
-    assert es_path.exists()
-    assert en_path.exists()
-    assert "Perfil Diario de Coeficientes de Reparto" in es_path.read_text(encoding="utf-8")
-    assert "Diurnal Distribution Share Profile" in en_path.read_text(encoding="utf-8")
 
 
 def test_export_csvs_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
@@ -368,33 +314,22 @@ def test_export_csvs_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
     csv_paths = ReportExporter(output_dir=tmp_path).export_all(
         opt_result, meta, formats="csv", precision=2
     )
-    assert len(csv_paths) == 4
+    assert len(csv_paths) == 2
 
     for p in csv_paths:
         text = p.read_text(encoding="utf-8")
         lines = text.strip().splitlines()
-        # Header has semicolon
         assert ";" in lines[0]
-        # Data rows have semicolon
         for line in lines[1:]:
             assert ";" in line
-            # Verify no thousand separators (e.g. no 1,234.56 or 1.234,56)
             for part in line.split(";"):
-                # No 1,234 or 1.234 style thousand grouping
                 assert not (part.count(",") > 1 or ("," in part and "." in part))
 
-    # Check coefficients CSV specific values
-    coeff_path = next(p for p in csv_paths if "_esd_coefficients.csv" in p.name)
-    coeff_text = coeff_path.read_text(encoding="utf-8")
-    assert "0,6000" in coeff_text
-    assert "0,4000" in coeff_text
-    assert "60,00" in coeff_text
-
-    # Check matrix CSV specific values
-    matrix_path = next(p for p in csv_paths if "_esd_coefficients_matrix.csv" in p.name)
-    matrix_text = matrix_path.read_text(encoding="utf-8")
-    assert "60,00%" in matrix_text
-    assert "100,00%" in matrix_text
+    # Check monthly shares CSV specific values
+    monthly_path = next(p for p in csv_paths if "_esd_monthly_shares.csv" in p.name)
+    monthly_text = monthly_path.read_text(encoding="utf-8")
+    assert "60,00%" in monthly_text
+    assert "40,00%" in monthly_text
 
     # Check hourly shares CSV specific values
     shares_path = next(p for p in csv_paths if "_esd_hourly_shares.csv" in p.name)
@@ -403,12 +338,6 @@ def test_export_csvs_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
     assert "5000,78" in shares_text
     assert "62,5%" in shares_text
     assert "82" in shares_text
-
-    # Check hourly profile matrix CSV specific values
-    h_matrix_path = next(p for p in csv_paths if "_esd_hourly_profile_matrix.csv" in p.name)
-    h_matrix_text = h_matrix_path.read_text(encoding="utf-8")
-    assert "62,50%" in h_matrix_text
-    assert "37,50%" in h_matrix_text
 
 
 def test_report_exporter_class(tmp_path: Path) -> None:
@@ -427,195 +356,11 @@ def test_report_exporter_class(tmp_path: Path) -> None:
 
     # Test all exports via ReportExporter instance
     exported = exporter.export_all(opt_result, meta, formats="all", precision=1)
-    assert len(exported) >= 4
+    assert len(exported) == 3
     for p in exported:
         assert p.exists()
         assert p.parent == out_dir
         assert p.name.startswith("20261025_120000")
-
-
-def test_export_dso_regulatory_csv_standard_year(tmp_path: Path) -> None:
-    opt_result, _ = create_dummy_optimization_result()
-    csv_path = ReportExporter(
-        output_dir=tmp_path, timestamp="20251231_235959"
-    ).export_dso_regulatory_csv(
-        opt_result,
-        year=2025,
-    )
-    assert csv_path.exists()
-    assert csv_path.name == "20251231_235959_esd_dso_8760h.csv"
-
-    txt_path = tmp_path / "20251231_235959_esd_dso_8760h.txt"
-    assert txt_path.exists()
-
-    df = pd.read_csv(csv_path, sep=";", decimal=",")
-    # 8760 hours * 2 CUPS = 17520 rows
-    assert len(df) == 17520
-    assert list(df.columns) == ["CUPS", "Hora", "Coeficiente"]
-
-    # Verify hour numbering is strictly 1 to 8760
-    assert df["Hora"].min() == 1
-    assert df["Hora"].max() == 8760
-
-    # Verify per-hour coefficient sum is strictly 1,000000 across all hours
-    hourly_sums = df.groupby("Hora")["Coeficiente"].sum().round(6)
-    assert (hourly_sums == 1.0).all()
-
-    # Verify May (hours ~2881 to ~3624) preserves optimized betas (0.6 and 0.4)
-    # May 1st is day 121 -> hour (120 * 24 + 1) = 2881
-    may_sample = df[df["Hora"] == 2881]
-    c1_row = may_sample[may_sample["CUPS"] == "ES0021000000000001AA"]
-    c2_row = may_sample[may_sample["CUPS"] == "ES0021000000000002BB"]
-    assert float(c1_row["Coeficiente"].iloc[0]) == 0.600000
-    assert float(c2_row["Coeficiente"].iloc[0]) == 0.400000
-
-    # Verify string representation has 6 decimals with comma separator
-    raw_lines = csv_path.read_text(encoding="utf-8").strip().splitlines()
-    assert raw_lines[0] == "CUPS;Hora;Coeficiente"
-    # Check sample lines
-    assert "ES0021000000000001AA;1;0,600000" in raw_lines
-    assert "ES0021000000000002BB;1;0,400000" in raw_lines
-
-
-def test_export_dso_regulatory_csv_leap_year(tmp_path: Path) -> None:
-    opt_result, _ = create_dummy_optimization_result()
-    csv_path = ReportExporter(
-        output_dir=tmp_path, timestamp="20241231_235959"
-    ).export_dso_regulatory_csv(
-        opt_result,
-        year=2024,
-    )
-    assert csv_path.exists()
-    df = pd.read_csv(csv_path, sep=";", decimal=",")
-    # 2024 is a leap year: 366 days * 24 hours * 2 CUPS = 8784 * 2 = 17568 rows
-    assert len(df) == 17568
-    assert df["Hora"].min() == 1
-    assert df["Hora"].max() == 8784
-
-    hourly_sums = df.groupby("Hora")["Coeficiente"].sum().round(6)
-    assert (hourly_sums == 1.0).all()
-
-
-def test_export_dso_estimate_missing_generation_from_consumption(tmp_path: Path) -> None:
-    cups_list = ["ES0021000000000001AA", "ES0021000000000002BB"]
-
-    # Only Month 5 has solved generation data (0.60 vs 0.40)
-    c1 = CupsMonthlyMetrics(
-        cups="ES0021000000000001AA",
-        use="Aerotermia",
-        month="05",
-        beta=0.6,
-        consumption_kwh=500.0,
-        generation_allocated_kwh=600.0,
-        self_consumed_kwh=480.0,
-        surplus_kwh=120.0,
-        grid_demand_kwh=20.0,
-        self_consumption_rate=80.0,
-        solar_coverage_rate=96.0,
-    )
-    c2 = CupsMonthlyMetrics(
-        cups="ES0021000000000002BB",
-        use="Garaje",
-        month="05",
-        beta=0.4,
-        consumption_kwh=300.0,
-        generation_allocated_kwh=400.0,
-        self_consumed_kwh=270.0,
-        surplus_kwh=130.0,
-        grid_demand_kwh=30.0,
-        self_consumption_rate=67.5,
-        solar_coverage_rate=90.0,
-    )
-    m5 = CommunityMonthlyMetrics(
-        month="05",
-        strategy=OptimizationStrategy.OPTIMAL,
-        total_generation_kwh=1000.0,
-        total_consumption_kwh=800.0,
-        total_self_consumed_kwh=750.0,
-        total_surplus_kwh=250.0,
-        total_grid_demand_kwh=50.0,
-        self_consumption_rate=75.0,
-        solar_coverage_rate=93.75,
-        beta_sum=1.0,
-        cups_metrics=[c1, c2],
-        has_data=True,
-    )
-    opt_result = OptimizationResult(
-        strategy=OptimizationStrategy.OPTIMAL,
-        monthly_results=[m5],
-        total_summary=m5,
-        cups_list=cups_list,
-    )
-
-    # In month 6 (June), generation is missing, but consumption during daylight solar hours (12:00) exists:
-    # CUPS 1 consumes 1.0 kWh, CUPS 2 consumes 3.0 kWh (share: 25% vs 75%)
-    mock_df = pd.DataFrame(
-        {
-            "ES0021000000000001AA": [1.0, 1.0, 0.0],
-            "ES0021000000000002BB": [3.0, 3.0, 0.0],
-            "generation_kwh": [0.0, 0.0, 0.0],
-        },
-        index=["2026-06-15 12:00:00", "2026-06-15 13:00:00", "2026-06-15 02:00:00"],
-    )
-    aligned_ds = AlignedDataset(
-        data=mock_df,
-        cups_list=cups_list,
-        metadata=IngestionSummary(
-            cups_count=2,
-            cups_list=cups_list,
-            start_time="2026-05-01 00:00:00",
-            end_time="2026-06-30 23:00:00",
-            total_hours=3,
-            consumption_files_loaded=2,
-            generation_files_loaded=1,
-        ),
-    )
-
-    csv_path = ReportExporter(
-        output_dir=tmp_path, timestamp="20260630_120000"
-    ).export_dso_regulatory_csv(
-        opt_result,
-        aligned_dataset=aligned_ds,
-        year=2026,
-    )
-    df = pd.read_csv(csv_path, sep=";", decimal=",")
-    assert len(df) == 17520
-
-    # Month 5 (hours in May): should use solved 0.60 vs 0.40
-    may_hr = 120 * 24 + 1
-    may_sample = df[df["Hora"] == may_hr]
-    assert float(may_sample[may_sample["CUPS"] == cups_list[0]]["Coeficiente"].iloc[0]) == 0.600000
-    assert float(may_sample[may_sample["CUPS"] == cups_list[1]]["Coeficiente"].iloc[0]) == 0.400000
-
-    # Month 6 (June 15): day 151 + 15 = day 166 -> hour (165 * 24 + 12) = 3972
-    june_sample = df[df["Hora"] == 3972]
-    # In June daylight hours, CUPS 1 had 25% (0.250000) and CUPS 2 had 75% (0.750000)
-    assert (
-        float(june_sample[june_sample["CUPS"] == cups_list[0]]["Coeficiente"].iloc[0]) == 0.250000
-    )
-    assert (
-        float(june_sample[june_sample["CUPS"] == cups_list[1]]["Coeficiente"].iloc[0]) == 0.750000
-    )
-
-    # Every hour across the year sums strictly to 1.000000
-    hourly_sums = df.groupby("Hora")["Coeficiente"].sum().round(6)
-    assert (hourly_sums == 1.0).all()
-
-
-def test_export_all_formats_dso(tmp_path: Path) -> None:
-    opt_result, meta = create_dummy_optimization_result()
-    exported = ReportExporter(output_dir=tmp_path).export_all(
-        opt_result,
-        meta,
-        formats="dso",
-        year=2025,
-    )
-    assert len(exported) == 2
-    exts = {p.suffix for p in exported}
-    assert exts == {".csv", ".txt"}
-    for p in exported:
-        assert p.exists()
-        assert "_esd_dso_8760h" in p.name
 
 
 def test_month_abbr_consolidation_and_formatter() -> None:
@@ -656,7 +401,6 @@ def test_month_abbr_consolidation_and_formatter() -> None:
         k = f"{i:02d}"
         assert MONTH_ABBR_EN[k] == expected_en[i - 1]
         assert MONTH_ABBR_ES[k] == expected_es[i - 1]
-        # format_month_abbr should resolve 2-digit strings, ints, and ISO year-month strings
         assert format_month_abbr(k, lang="en") == expected_en[i - 1]
         assert format_month_abbr(k, lang="es") == expected_es[i - 1]
         assert format_month_abbr(i, lang="en") == expected_en[i - 1]
@@ -667,7 +411,6 @@ def test_month_abbr_consolidation_and_formatter() -> None:
 
 def test_sanitize_formula_injection_helper() -> None:
     """sanitize_formula_injection escapes dangerous spreadsheet prefixes while preserving safe values."""
-    # Formula prefixes: =, +, -, @, \t, \r
     assert sanitize_formula_injection("=SUM(1,2)") == "'=SUM(1,2)"
     assert sanitize_formula_injection("+cmd|' /C calc'!A0") == "'+cmd|' /C calc'!A0"
     assert sanitize_formula_injection("-MinusUse") == "'-MinusUse"
@@ -675,25 +418,22 @@ def test_sanitize_formula_injection_helper() -> None:
     assert sanitize_formula_injection("\tTabbed") == "'\tTabbed"
     assert sanitize_formula_injection("\rCarriage") == "'\rCarriage"
 
-    # Legitimate alphanumeric descriptions remain unaltered
     assert sanitize_formula_injection("Aerotermia") == "Aerotermia"
     assert sanitize_formula_injection("Garaje") == "Garaje"
     assert sanitize_formula_injection("Community Lighting") == "Community Lighting"
     assert sanitize_formula_injection("Ascensor 1") == "Ascensor 1"
     assert sanitize_formula_injection("") == ""
 
-    # Non-string types are returned unchanged
     assert sanitize_formula_injection(None) is None
     assert sanitize_formula_injection(123) == 123
     assert sanitize_formula_injection(45.67) == 45.67
     assert sanitize_formula_injection(True) is True
 
-    # Verify prefix constant tuple completeness
     assert set(FORMULA_INJECTION_PREFIXES) == {"=", "+", "-", "@", "\t", "\r"}
 
 
-def test_formula_injection_neutralized_in_coefficients_and_matrix_csv(tmp_path: Path) -> None:
-    """Coefficients and matrix CSV exports prefix formula-starting use labels with single quote."""
+def test_formula_injection_neutralized_in_monthly_and_hourly_shares_csv(tmp_path: Path) -> None:
+    """Monthly shares and hourly shares CSV exports prefix formula-starting use labels with single quote."""
     c1 = CupsMonthlyMetrics(
         cups="ES0021000000000001AA",
         use="=2+2",
@@ -734,40 +474,6 @@ def test_formula_injection_neutralized_in_coefficients_and_matrix_csv(tmp_path: 
         cups_metrics=[c1, c2],
     )
 
-    result = OptimizationResult(
-        strategy=OptimizationStrategy.OPTIMAL,
-        monthly_results=[m1],
-        total_summary=m1,
-        baselines={},
-        cups_uses={"ES0021000000000001AA": "=2+2", "ES0021000000000002BB": "@SUM(B1:B10)"},
-    )
-
-    exporter = ReportExporter(output_dir=tmp_path, timestamp="20260531_test")
-
-    # 1. Test export_coefficients_csv
-    coef_csv = exporter.export_coefficients_csv(result)
-    raw_text = coef_csv.read_text(encoding="utf-8")
-    assert "'=2+2" in raw_text
-    assert "'@SUM(B1:B10)" in raw_text
-
-    df_coef = pd.read_csv(coef_csv, sep=";", decimal=",")
-    assert df_coef["use"].tolist() == ["'=2+2", "'@SUM(B1:B10)"]
-
-    # 2. Test export_coefficients_matrix_csv
-    matrix_csv = exporter.export_coefficients_matrix_csv(result)
-    raw_matrix_text = matrix_csv.read_text(encoding="utf-8")
-    assert "'=2+2" in raw_matrix_text
-    assert "'@SUM(B1:B10)" in raw_matrix_text
-    assert ";TOTAL;TOTAL;" in raw_matrix_text or ";TOTAL;" in raw_matrix_text
-
-    df_matrix = pd.read_csv(matrix_csv, sep=";", decimal=",")
-    assert df_matrix[df_matrix["cups"] == "ES0021000000000001AA"]["use"].iloc[0] == "'=2+2"
-    assert df_matrix[df_matrix["cups"] == "ES0021000000000002BB"]["use"].iloc[0] == "'@SUM(B1:B10)"
-    assert df_matrix[df_matrix["cups"] == "TOTAL"]["use"].iloc[0] == "TOTAL"
-
-
-def test_formula_injection_neutralized_in_hourly_shares_and_profile_csv(tmp_path: Path) -> None:
-    """Hourly shares and diurnal profile CSV exports escape formula-prefixed use values."""
     time_series_df = pd.DataFrame(
         [
             {
@@ -797,23 +503,30 @@ def test_formula_injection_neutralized_in_hourly_shares_and_profile_csv(tmp_path
         cups_uses={"ES0021000000000001AA": "-MinusFormula", "ES0021000000000002BB": "Normal Use"},
     )
 
-    hourly_result = HourlyOptimizationResult(
-        time_series_df=time_series_df,
-        profile_matrix=profile_matrix,
-    )
-
     result = OptimizationResult(
         strategy=OptimizationStrategy.OPTIMAL,
-        monthly_results=[],
-        total_summary=None,
+        monthly_results=[m1],
+        total_summary=m1,
         baselines={},
-        hourly_result=hourly_result,
-        cups_uses=profile_matrix.cups_uses,
+        hourly_result=HourlyOptimizationResult(
+            time_series_df=time_series_df,
+            profile_matrix=profile_matrix,
+        ),
+        cups_uses={"ES0021000000000001AA": "=2+2", "ES0021000000000002BB": "@SUM(B1:B10)"},
     )
 
-    exporter = ReportExporter(output_dir=tmp_path, timestamp="20260531_hourly")
+    exporter = ReportExporter(output_dir=tmp_path, timestamp="20260531_test")
 
-    # 1. Hourly shares CSV
+    # 1. Test export_monthly_shares_csv
+    monthly_csv = exporter.export_monthly_shares_csv(result)
+    raw_text = monthly_csv.read_text(encoding="utf-8")
+    assert "'=2+2" in raw_text
+    assert "'@SUM(B1:B10)" in raw_text
+
+    df_monthly = pd.read_csv(monthly_csv, sep=";", decimal=",")
+    assert set(df_monthly["use"].tolist()) == {"'=2+2", "'@SUM(B1:B10)"}
+
+    # 2. Test export_hourly_shares_csv
     shares_csv = exporter.export_hourly_shares_csv(result)
     df_shares = pd.read_csv(shares_csv, sep=";")
     assert (
@@ -821,15 +534,6 @@ def test_formula_injection_neutralized_in_hourly_shares_and_profile_csv(tmp_path
         == "'+cmd|' /C calc'!A0"
     )
     assert df_shares[df_shares["cups"] == "ES0021000000000002BB"]["use"].iloc[0] == "Normal Use"
-
-    # 2. Hourly profile matrix CSV
-    profile_csv = exporter.export_hourly_profile_matrix_csv(result)
-    df_profile = pd.read_csv(profile_csv, sep=";")
-    assert (
-        df_profile[df_profile["cups"] == "ES0021000000000001AA"]["use"].iloc[0] == "'-MinusFormula"
-    )
-    assert df_profile[df_profile["cups"] == "ES0021000000000002BB"]["use"].iloc[0] == "Normal Use"
-    assert df_profile[df_profile["cups"] == "TOTAL"]["use"].iloc[0] == "TOTAL"
 
 
 def test_formula_injection_neutralized_in_curated_csv_and_excel(tmp_path: Path) -> None:
@@ -904,11 +608,9 @@ def test_formula_injection_neutralized_in_curated_csv_and_excel(tmp_path: Path) 
     headers = [cell.value for cell in ws[1]]
     use_col_idx = headers.index("use") + 1
 
-    # Row 2 (first CUPS reading) has '=1+1 escaped with single quote
     val_row2 = ws.cell(row=2, column=use_col_idx).value
     assert val_row2 == "'=1+1"
 
-    # Row 3 (second CUPS reading) has Aerotermia unescaped
     val_row3 = ws.cell(row=3, column=use_col_idx).value
     assert val_row3 == "Aerotermia"
 

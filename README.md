@@ -3,7 +3,7 @@
 > Optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic self-consumption (*autoconsumo colectivo*) across shared community services in Spain under **Real Decreto 244/2019**.
 
 [![Python](https://img.shields.io/badge/Python-3.14+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.10.071-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.10.072-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-SciPy%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -31,7 +31,7 @@ It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/da
 - **📋 Annual Prevision Distribution Matrix:** Formulates a 12-month calendar schedule (Jan–Dec) for an upcoming operating year, skipping incomplete months (`—`) and pooling multi-year observations with $1/K$ energy scaling.
 - **⚖️ Strategy Benchmarking:** Evaluates `optimal` LP against `consumption_share` and `equal` ($1/N$) baselines.
 - **📊 Rich 80-Column Terminal UI:** Tabular overviews, monthly trajectories, strategy comparisons, and visual share bars formatted for 80-column terminals.
-- **📝 Multi-Format Reporting:** Timestamped exports in CSV, JSON, Markdown, standalone interactive HTML (`html`), and regulatory DSO flat files (`dso`) in `.output/`.
+- **📝 Multi-Format Reporting:** Timestamped exports in CSV (monthly and hourly shares) and standalone interactive HTML (`html`) in `.output/`.
 - **🌐 Localization & Versioning:** Bilingual English/Spanish (`en`/`es`) support and automated per-commit CalVer (`YYYY.MM.NNN`).
 
 ---
@@ -144,14 +144,11 @@ esd init --lang es
 # Calculate optimal coefficients for all available data
 esd calculate
 
-# Focus on a specific month and export all reports (CSV, JSON, Markdown, HTML, DSO)
+# Focus on a specific month and export all reports (CSV shares and HTML)
 esd calculate -y 2026 -m 5 -f all
 
 # Generate standalone interactive HTML report for property owners
 esd calculate -f html
-
-# Export official regulatory DSO coefficient files (CSV & TXT) under Orden TED/1247/2021
-esd calculate -f dso
 
 # Inspect comparison between LP optimization and equal allocation
 esd calculate -v comparison
@@ -175,7 +172,7 @@ esd calculate [OPTIONS]
 | `--month` | `-m` | Filter calculation to a specific month (1–12) | `None` (all) |
 | `--view` | `-v` | Terminal view mode: `summary` (overview + matrix + details), `matrix` (share matrix), `trajectory`, `hourly`, `coefficients`, `comparison`, or `all` | `summary` |
 | `--hourly` | `-H` | Calculate and export distribution shares per hour (24-hour diurnal profile and hourly time-series) | `False` |
-| `--format` | `-f` | Report export format: `all`, `table` (no file export), `csv`, `json`, `markdown`, `html`, or `dso` | `all` |
+| `--format` | `-f` | Report export format: `all`, `table` (no file export), `csv`, or `html` | `all` |
 | `--precision` | `-p` | Share percentage precision: `0` (e.g. 53%), `1` (e.g. 52.8%), or `2` (e.g. 52.86%) | From config |
 | `--min-share` | — | Regulatory or bylaw minimum share floor per CUPS (e.g. `0.05` or `5%`) | `None` |
 | `--max-share` | — | Regulatory or bylaw maximum share cap per CUPS (e.g. `0.70` or `70%`) | `None` |

@@ -242,8 +242,8 @@ esd calculate --precision 1
 # Export only the standalone interactive HTML report
 esd calculate --format html
 
-# Export only official regulatory DSO coefficient files (CSV & TXT) under Orden TED/1247/2021
-esd calculate --format dso
+# Export only the monthly and hourly shares CSV files
+esd calculate --format csv
 ```
 
 ---
@@ -254,15 +254,9 @@ Running `esd calculate` generates ready-to-use artifacts in `.output/`:
 
 | File Name | Format | Practical Purpose |
 | :--- | :--- | :--- |
-| `*_esd_dso_8760h.csv` | CSV (`;` delimited) | Official annual 8,760-hour regulatory flat file (`CUPS;Hora;Coeficiente`) for Spanish distribution system operators (i-DE, e-distribución, UFD, E-REDES) under Orden TED/1247/2021, formatted to 6 decimal places (`0,000000`) and strictly summing to `1,000000` per hour. Missing generation gaps are automatically estimated from daytime solar consumption data. |
-| `*_esd_dso_8760h.txt` | TXT (`;` delimited) | Companion submission file formatted identically to the regulatory CSV for utility portals requiring `.txt` uploads. |
 | `*_esd_interactive_report.html` | HTML (Standalone) | Offline interactive executive dashboard with dynamic bilingual ES/EN switcher, 4 primary energy KPI cards, dynamic hourly coefficient prevision (Orden TED/1247/2021), energy trajectory multi-bars, Photovoltaic Solar Efficiency Index graphic, and monthly coefficient matrix heatmap. |
-| `*_esd_coefficients_matrix.csv` | CSV (`;` delimited) | Ready-to-import spreadsheet table formatted for official submission to the electrical utility distributor (DSO). |
-| `*_esd_optimization_summary.md` | Markdown | Executive summary report including the community agreement annex ready for community board review (generates both ES and EN documents when running with `--hourly`). |
-| `*_esd_coefficients.csv` | CSV (`;` delimited) | Detailed breakdown per CUPS: monthly self-consumed kWh, solar surplus, remaining grid demand, solar hours demand (kWh), and solar hours coverage rate (%). Minimum share floor of 1% is guaranteed for every CUPS. |
-| `*_esd_results.json` | JSON | Machine-readable data file for software integrations and community dashboards, including solar hours demand metrics. |
+| `*_esd_monthly_shares.csv` | CSV (`;` delimited) | Monthly allocation breakdown per CUPS: consumption, generation, share percentage ($\beta_i$ %), self-consumed kWh, solar surplus, and remaining grid demand, ordered by month and facility use. |
 | `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Full hourly time-series recording consumption, generation, shares (with 1% floor), and the Solar Efficiency Index (integer 1-100 for generation hours, 0 without generation), ordered by timestamp and use. |
-| `*_esd_hourly_profile_matrix.csv` | CSV (`;` delimited) | 24-hour diurnal table for variable hourly coefficient filing under Spanish regulation (Orden TED/1247/2021) with 1% floor per participating CUPS. |
 
 ---
 
@@ -285,5 +279,5 @@ For developers and autonomous agents navigating the codebase:
 | **Optimization: Models** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Matrix structures, diurnal profiles, and community metrics. |
 | **Optimization: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Linear programming solver, diurnal profile engine, baselines, and Hare-Niemeyer rounding. |
 | **Presentation: Views** | [`src/presentation/views/`](../src/presentation/views) | `render_coefficients_matrix_table`, `render_community_summary` | Rich terminal tables, executive KPI cards with baseline gain badges, two-tone heatmaps, unicode sparklines, 4-step progress stepper, and adaptive 80-column formatting. |
-| **Presentation: Exports** | [`src/presentation/export.py`](../src/presentation/export.py) | `ReportExporter` | Unified report exporter architecture, Markdown summaries, CSV spreadsheets, and JSON serialization. |
+| **Presentation: Exports** | [`src/presentation/export.py`](../src/presentation/export.py) | `ReportExporter` | Unified report exporter architecture for monthly and hourly CSV shares and standalone interactive HTML dashboards. |
 | **Security & Privacy** | [`src/security.py`](../src/security.py) | `check_privacy`, `scan_xlsx_file`, `scan_git_history` | GDPR enforcement, cups.json signature tracking, Excel workbook scanning, and synthetic CUPS verification harness. |

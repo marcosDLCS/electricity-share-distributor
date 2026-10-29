@@ -15,7 +15,7 @@ It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/da
 - **⏱️ Time-Series Alignment & Normalization:** Aligns disparate timestamps, accounting for daylight saving time (DST) transitions, missing intervals, and Spanish electricity meter conventions.
 - **🧮 Optimal $\beta_i$ Allocation Engine:** Formulates and solves linear programming (LP) models to find monthly distribution coefficients ($\sum \beta_i \le 1.0$ or $100\%$) that maximize collective self-consumption and minimize unused solar surplus spilled to the grid.
 - **📊 Rich Terminal UI:** Renders clear tabular views, summary metrics, and visual share bars formatted for 80-column terminals.
-- **📝 Multi-Format Reporting:** Generates timestamped export reports in Markdown, CSV, and JSON into `.output/`.
+- **📝 Multi-Format Reporting:** Generates timestamped interactive HTML dashboards, monthly shares CSV, and hourly shares CSV in `.output/`.
 - **⚙️ Persistent Configuration:** Maintains language preferences (`en`/`es`), geographical coordinates, and directory paths in `.esd_config.json`.
 
 ---
@@ -30,7 +30,7 @@ The codebase is organized into focused, modular layers with clean separation of 
 - **Ingestion & Alignment (`src/ingestion/`):** DATADIS CSV loader, solar inverter Excel loader, Open-Meteo weather downloader/loader, `DataDoctor` pre-flight auditor, and DST-aware `TimeSeriesAligner`.
 - **Curation & Reconciliation (`src/curation/`):** Primary CUPS fake-zero load reconciliation, metadata enrichment, weather integration (temperature, cloud cover), and canonical long-format CSV curation.
 - **Optimization Core (`src/optimization/`):** RD 244/2019 linear programming solver (`scipy.optimize.linprog`), baseline comparisons, Hare-Niemeyer exact rounding, and multi-year calendar prevision engine.
-- **Presentation & Reporting (`src/presentation/`):** Rich 80-column terminal tables, modular views (`src/presentation/views/`), two-tone heatmaps, KPI cards, and unified `ReportExporter` multi-format reporting (CSV, JSON, Markdown).
+- **Presentation & Reporting (`src/presentation/`):** Rich 80-column terminal tables, modular views (`src/presentation/views/`), two-tone heatmaps, KPI cards, and unified `ReportExporter` multi-format reporting (CSV shares and interactive HTML).
 - **Security & Versioning (`src/security.py`, `src/version.py`):** GDPR CUPS privacy audit harness and automated CalVer release manager.
 
 ---

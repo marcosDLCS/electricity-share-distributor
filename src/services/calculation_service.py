@@ -117,12 +117,15 @@ class CalculationService:
         if constraints.is_active:
             constraints.validate_feasibility(aligned.cups_list)
 
+        fmt_clean = request.export_format.lower().strip()
+        should_compute_hourly = request.compute_hourly or fmt_clean in ("all", "csv")
+
         opt_result = DistributionOptimizer.optimize_dataset(
             aligned,
             strategy=request.strategy,
             include_baselines=True,
             precision=request.precision,
-            compute_hourly=request.compute_hourly,
+            compute_hourly=should_compute_hourly,
             constraints=constraints,
         )
 
@@ -130,7 +133,6 @@ class CalculationService:
             progress_callback(4, t("status_step_4", lang=request.lang))
 
         exported_paths: list[Path] = []
-        fmt_clean = request.export_format.lower().strip()
         if fmt_clean not in ("table", "none"):
             exporter = ReportExporter(output_dir=request.output_dir)
             exported_paths = exporter.export_all(
@@ -140,8 +142,6 @@ class CalculationService:
                 lang=request.lang,
                 precision=request.precision,
                 aligned_dataset=aligned,
-                consumption_dir=request.consumption_dir,
-                year=request.year,
             )
 
         return CalculationResult(

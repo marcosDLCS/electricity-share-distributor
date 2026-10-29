@@ -38,7 +38,7 @@ def test_structured_namespaces_access() -> None:
     # Test clean prefix aliases
     assert t("cli.calculate_desc", lang="en") == t("cmd_calculate_desc", lang="en")
     assert t("doctor.lbl_healthy", lang="en") == t("doc_lbl_healthy", lang="en")
-    assert t("export.report_title", lang="en") == t("md_report_title", lang="en")
+    assert t("export.success_title", lang="en") == t("export_success_title", lang="en")
 
 
 def test_i18n_namespace_enum() -> None:

@@ -227,16 +227,18 @@ def test_cli_calculate_export_formats(tmp_path) -> None:
     )
     assert res.exit_code == 0
     csv_files = list(out_dir.glob("*.csv"))
+    html_files = list(out_dir.glob("*.html"))
     json_files = list(out_dir.glob("*.json"))
     md_files = list(out_dir.glob("*.md"))
-    # Three CSVs exported: detailed metrics, consolidated matrix, and regulatory DSO 8760h file
-    assert len(csv_files) == 3
-    assert len(json_files) == 1
-    assert len(md_files) == 1
+    # Two CSVs exported (monthly_shares and hourly_shares) plus one interactive HTML report
+    assert len(csv_files) == 2
+    assert len(html_files) == 1
+    assert len(json_files) == 0
+    assert len(md_files) == 0
     csv_names = [f.name for f in csv_files]
-    assert any("_esd_coefficients.csv" in n for n in csv_names)
-    assert any("_esd_coefficients_matrix.csv" in n for n in csv_names)
-    assert any("_esd_dso_8760h.csv" in n for n in csv_names)
+    assert any("_esd_monthly_shares.csv" in n for n in csv_names)
+    assert any("_esd_hourly_shares.csv" in n for n in csv_names)
+    assert html_files[0].name.endswith("_esd_interactive_report.html")
 
 
 def test_cli_calculate_missing_directory(tmp_path) -> None:
@@ -440,7 +442,7 @@ def test_cli_calculate_view_hourly() -> None:
 
 
 def test_cli_calculate_hourly_export_csv(tmp_path: Path) -> None:
-    """Ensure calculate --hourly exports hourly CSV files."""
+    """Ensure calculate --hourly exports monthly and hourly shares CSV files."""
     result = runner.invoke(
         app,
         [
@@ -459,8 +461,8 @@ def test_cli_calculate_hourly_export_csv(tmp_path: Path) -> None:
     assert result.exit_code == 0
     exported_files = list(tmp_path.glob("*.csv"))
     file_names = [f.name for f in exported_files]
+    assert any("_esd_monthly_shares.csv" in n for n in file_names)
     assert any("_esd_hourly_shares.csv" in n for n in file_names)
-    assert any("_esd_hourly_profile_matrix.csv" in n for n in file_names)
 
 
 def test_cli_calculate_dynamic_defaults_from_config(tmp_path: Path, monkeypatch) -> None:

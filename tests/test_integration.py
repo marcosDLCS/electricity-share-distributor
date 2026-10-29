@@ -143,7 +143,7 @@ def test_synthetic_community_optimization(tmp_path: Path) -> None:
         # self_consumed + surplus == allocated_gen (approx)
         assert abs((c.self_consumed_kwh + c.surplus_kwh) - c.generation_allocated_kwh) < 1e-2
 
-    # 4. Multi-format export (3 CSVs, 1 JSON, 1 Markdown, 1 HTML, 1 TXT)
+    # 4. Export deliverables (monthly shares CSV, hourly shares CSV, and interactive HTML)
     out_dir = tmp_path / "output"
     exporter = ReportExporter(output_dir=out_dir)
     exported = exporter.export_all(
@@ -152,12 +152,12 @@ def test_synthetic_community_optimization(tmp_path: Path) -> None:
         formats="all",
         lang="en",
         aligned_dataset=aligned,
-        year=2026,
     )
-    assert len(exported) == 7
+    assert len(exported) == 3
     for p in exported:
         assert p.exists()
         assert p.stat().st_size > 0
     names = [p.name for p in exported]
-    assert any("_esd_dso_8760h.csv" in n for n in names)
-    assert any("_esd_dso_8760h.txt" in n for n in names)
+    assert any("_esd_monthly_shares.csv" in n for n in names)
+    assert any("_esd_hourly_shares.csv" in n for n in names)
+    assert any("_esd_interactive_report.html" in n for n in names)

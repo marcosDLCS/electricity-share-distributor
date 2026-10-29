@@ -530,7 +530,7 @@ def calculate_command(
         "all",
         "--format",
         "-f",
-        help="Export format: 'all', 'table' (no file export), 'csv', 'json', 'markdown', 'html', or 'dso'.",
+        help="Export format: 'all', 'table' (no file export), 'csv', or 'html'.",
     ),
     precision: int | None = typer.Option(
         None,
@@ -597,7 +597,8 @@ def calculate_command(
     parsed_max_share = _parse_share(max_share, "--max-share")
 
     view_mode = view.lower().strip()
-    is_hourly = hourly or (view_mode == "hourly")
+    fmt_clean = export_format.lower().strip()
+    is_hourly = hourly or (view_mode == "hourly") or (fmt_clean in ("all", "csv"))
 
     try:
         req = CalculationRequest(
