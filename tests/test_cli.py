@@ -610,8 +610,8 @@ def test_cli_curate_short_flag_u_and_o(tmp_path: Path, monkeypatch: pytest.Monke
     def mock_curation_execute(req: CurationRequest) -> MagicMock:
         captured_requests.append(req)
         mock_res = MagicMock()
-        mock_res.csv_path = req.curated_dir / "curated.csv"
-        mock_res.excel_path = req.curated_dir / "curated.xlsx"
+        mock_res.csv_path = req.curated_dir / "esd.csv"
+        mock_res.excel_path = req.curated_dir / "esd.xlsx"
         return mock_res
 
     monkeypatch.setattr(CurationService, "execute", mock_curation_execute)

@@ -68,10 +68,15 @@ class CalculationService:
         )
 
         curated_csv = (
-            request.curated_dir / "curated.csv"
-            if request.curated_dir.is_dir()
+            request.curated_dir / "esd.csv"
+            if request.curated_dir.is_dir() or request.curated_dir.suffix.lower() != ".csv"
             else request.curated_dir
         )
+        if not curated_csv.exists() and request.curated_dir.is_dir() and request.is_custom_curated:
+            legacy_csv = request.curated_dir / "curated.csv"
+            if legacy_csv.exists():
+                curated_csv = legacy_csv
+
         needs_curation = (
             request.force_curate
             or not curated_csv.exists()

@@ -65,19 +65,17 @@ graph LR
 2. **En el Contador de la Distribuidora (DATADIS):** El contador de la calle solo mide la electricidad que entra desde la red exterior. Al cubrirse el consumo internamente con energía solar, el contador de red no detecta paso de corriente y anota **0,0 kWh**.
 3. **La Trampa:** Si optimizamos basándonos solo en los datos de la distribuidora, ¡la instalación principal de la comunidad parecería completamente inactiva durante el día! El algoritmo cometería el grave error de quitarle cuota solar al mayor consumidor del edificio para dársela a suministros pequeños (como el alumbrado de accesos) que no tienen capacidad de aprovecharla.
 
-### Cómo Reconcilia la Realidad `esd curate`
-El motor de curado ([`src/curation/`](../src/curation)) combina dos fuentes de datos independientes para recuperar el consumo físico real:
+### Cómo Reconcilia la Realidad `esd curate` (Pipeline de Datos en 3 Etapas)
+El motor de curado ([`src/curation/`](../src/curation)) aplica un pipeline de datos en 3 etapas basado en modelos de dominio canónicos desacoplados de los formatos de origen:
 
-1. **Datos de Red (DATADIS):** Consumo horario importado de la red para cada contador comunitario.
-2. **Datos del Inversor Solar:** El analizador de energía (*smart meter*) del inversor mide tanto la producción solar como la *demanda eléctrica total real* del equipo conectado a él.
-3. **Nombres de Servicios ([`.input/cups/cups.json`](../.input/cups/cups.json)):** Asocia los códigos técnicos CUPS de 20 caracteres con descripciones legibles (ej. `"Aerotermia"`, `"Piscina"`, `"Garaje"`, `"Alumbrado"`), e indica cuál es el punto de conexión principal (`"primary": true`).
+1. **Etapa 1 — Agregación de Generación (`generation.csv` y `generation.xlsx`):** Consolida todos los archivos Excel del inversor solar en `.input/generation/` en un único `GenerationDataset` canónico (`timestamp;year;month;day;hour;day_of_week;is_weekend;generation;consumption;self_consumption;exported_energy;imported_energy`).
+2. **Etapa 2 — Agregación de Consumo (`consumption.csv` y `consumption.xlsx`):** Consolida todos los archivos CSV de DATADIS en `.input/consumption/` de los distintos CUPS en un único `ConsumptionDataset` canónico (`timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption`), enriquecido con los nombres de servicio de [`.input/cups/cups.json`](../.input/cups/cups.json).
+3. **Etapa 3 — Construcción del Archivo Maestro ESD (`esd.csv` y `esd.xlsx`):** Alinea las series agregadas de generación y consumo en intervalos horarios comunes, reemplaza los falsos ceros del contador principal por el consumo físico real medido por el inversor, calcula los balances energéticos colectivos e integra el contexto meteorológico horario.
 
-Cuando el contador de la calle marca cero (o un valor artificialmente bajo) mientras el inversor certifica que la instalación estuvo funcionando, `esd curate` **reemplaza el falso cero por el consumo físico real de la máquina**.
+### El Resultado Curado (`.curated/esd.csv` y `.curated/esd.xlsx`)
+Junto con `.curated/generation.csv`/`.xlsx` y `.curated/consumption.csv`/`.xlsx`, el proceso genera el conjunto de datos maestro en dos formatos complementarios (`.curated/esd.csv` y `.curated/esd.xlsx`), que actúa como fuente única de verdad para el resto de los cálculos:
 
-### El Resultado Curado (`.curated/curated.csv` y `.curated/curated.xlsx`)
-El proceso genera dos formatos complementarios en la carpeta `.curated/`: una tabla CSV estandarizada y un libro de Excel con formato enriquecido (`curated.xlsx`):
-
-#### 1. Archivo CSV Estandarizado (`curated.csv`)
+#### 1. Archivo Maestro CSV Estandarizado (`esd.csv`)
 Estructurado con delimitador `;`, coma `,` para decimales y sin separadores de miles, agrupando las dimensiones analíticas por afinidad:
 1. **Coordenadas temporales:** `timestamp`, `year`, `month`, `day`, `hour`, `day_of_week`, `is_weekend`
 2. **Consumidor individual:** `cups_id`, `use`, `consumption`
@@ -90,7 +88,7 @@ timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption;com
 2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000002BB;Garaje;1,2;9,7;12,5;0,0;0,0;0,0;0,0;21,4;12
 ```
 
-#### 2. Libro de Excel Estilizado (`curated.xlsx`)
+#### 2. Libros de Excel Estilizados (`esd.xlsx`, `generation.xlsx`, `consumption.xlsx`)
 Creado junto al CSV con formato profesional para análisis interactivo:
 - **Cabeceras Coloreadas por Grupos Semánticos:** Las columnas similares comparten el mismo color armónico (Azul Pizarra para Tiempo, Verde Petróleo para CUPS, Terracota Cálido para Demanda, Verde Esmeralda para Generación Solar y Balance, y Amatista Real para Clima).
 - **Patrón Cebra Agrupado por Horas:** Todas las filas de una misma hora comparten el mismo fondo, alternando hora a hora entre blanco puro y un tinte neutro suave (`#F4F6F9`) para agrupar visualmente los suministros de cada intervalo.
@@ -195,14 +193,14 @@ esd doctor -C .input/cups/cups.json -w .input/weather --verbose
 ```
 
 ### Paso 2: Curado Automático o Manual (`esd curate`)
-Reconcilia los falsos ceros del contador principal y genera `.curated/curated.csv` y el archivo Excel estilizado `.curated/curated.xlsx`:
+Agrega la generación (`generation.csv` / `generation.xlsx`) y el consumo (`consumption.csv` / `consumption.xlsx`), reconcilia los falsos ceros del contador principal y genera el archivo maestro `.curated/esd.csv` y el libro Excel estilizado `.curated/esd.xlsx`:
 ```bash
 esd curate
 # O filtrar a un mes específico y nombre de salida personalizado:
 esd curate --year 2026 --month 5 --name datos_comunitarios
 ```
 > [!TIP]
-> **Curado Automático:** ¡Ni siquiera es necesario ejecutar `esd curate` manualmente! Al ejecutar `esd calculate`, la herramienta detecta si `.curated/curated.csv` existe y, si no está presente, lanza el curado de forma automática. También puede pasar `--force-curate` a `esd calculate` para forzar la re-ejecución del curado.
+> **Curado Automático:** ¡Ni siquiera es necesario ejecutar `esd curate` manualmente! Al ejecutar `esd calculate`, la herramienta detecta si `.curated/esd.csv` existe y, si no está presente, lanza el pipeline de curado de 3 etapas de forma automática. También puede pasar `--force-curate` a `esd calculate` para forzar la re-ejecución del curado.
 
 ### Paso 3: Descarga de Datos Meteorológicos Horarios (`esd weather`)
 Descarga datos meteorológicos históricos horarios (temperatura, nubosidad, códigos meteorológicos OMM) de Open-Meteo en `.input/weather/{YYYY}_{lat}_{lon}_weather.csv`. El año es el único parámetro obligatorio: si no se proporcionan coordenadas en la CLI, `esd weather` inspecciona automáticamente `cups.json`, deduplica las ubicaciones repetidas entre servicios de un mismo edificio y descarga cada coordenada única una sola vez:
@@ -275,7 +273,7 @@ Para desarrolladores y agentes autónomos que naveguen por la base de código:
 | **Ingesta: Producción** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `HuaweiGenerationLoader` | Procesamiento de informes `.xlsx` del inversor solar (producción y demanda). |
 | **Ingesta: Meteorología** | [`src/ingestion/weather.py`](../src/ingestion/weather.py) | `OpenMeteoWeatherDownloader`, `WeatherLoader` | Descargador API Open-Meteo Archive, códigos OMM e ingesta de CSV meteorológicos. |
 | **Ingesta: Auditoría** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Diagnóstico de huecos, salud meteorológica, identificación de usos de CUPS, contadores inactivos y solapamientos. |
-| **Curado y Reconciliación** | [`src/curation/`](../src/curation) | `DataCurator`, `CuratedDataset` | Reconciliación de falsos ceros, cruce de metadatos de CUPS y exportación CSV. |
+| **Curado y Reconciliación** | [`src/curation/`](../src/curation) | `DataCurator`, `GenerationDataset`, `ConsumptionDataset`, `CuratedDataset` | Agregación canónica en 3 etapas (`generation`, `consumption`), reconciliación de falsos ceros y exportación maestra `esd.csv`/`esd.xlsx`. |
 | **Optimización: Modelos** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Estructuras matriciales, perfiles horarios diarios y métricas comunitarias. |
 | **Optimización: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Programación lineal (HiGHS), perfil horario, comparativas y redondeo Hare-Niemeyer. |
 | **Presentación: Vistas** | [`src/presentation/views/`](../src/presentation/views) | `render_coefficients_matrix_table`, `render_community_summary` | Tablas Rich en consola, tarjetas KPI con insignias de ganancia base, mapas de calor bitono, minigráficos unicode, barra de progreso en 4 pasos y formato adaptativo de 80 columnas. |

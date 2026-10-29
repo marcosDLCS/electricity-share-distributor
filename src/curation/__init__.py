@@ -1,4 +1,4 @@
-"""Curation and reconciliation module for collective PV installations."""
+"""Curation, aggregation, and reconciliation module for collective PV installations."""
 
 from src.curation.curator import (
     DataCurator,
@@ -6,16 +6,33 @@ from src.curation.curator import (
     format_energy_value,
 )
 from src.curation.models import (
+    CONSUMPTION_COLUMNS,
+    ESD_COLUMNS,
+    GENERATION_COLUMNS,
+    ConsumptionDataset,
+    ConsumptionRecord,
+    ConsumptionSummary,
     CupsConfig,
     CuratedCupsReading,
     CuratedDataset,
     CuratedHourRecord,
     CuratedSummary,
     CurationError,
+    EsdDataset,
+    GenerationDataset,
+    GenerationRecord,
+    GenerationSummary,
     SupplyPoint,
+    extract_temporal_features,
 )
 
 __all__ = [
+    "CONSUMPTION_COLUMNS",
+    "ESD_COLUMNS",
+    "GENERATION_COLUMNS",
+    "ConsumptionDataset",
+    "ConsumptionRecord",
+    "ConsumptionSummary",
     "CupsConfig",
     "CuratedCupsReading",
     "CuratedDataset",
@@ -23,7 +40,12 @@ __all__ = [
     "CuratedSummary",
     "CurationError",
     "DataCurator",
+    "EsdDataset",
+    "GenerationDataset",
+    "GenerationRecord",
+    "GenerationSummary",
     "SupplyPoint",
     "dataframe_to_aligned_dataset",
+    "extract_temporal_features",
     "format_energy_value",
 ]

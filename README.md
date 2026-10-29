@@ -3,7 +3,7 @@
 > Optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic self-consumption (*autoconsumo colectivo*) across shared community services in Spain under **Real Decreto 244/2019**.
 
 [![Python](https://img.shields.io/badge/Python-3.14+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.10.072-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.10.073-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-SciPy%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -176,25 +176,25 @@ esd calculate [OPTIONS]
 | `--precision` | `-p` | Share percentage precision: `0` (e.g. 53%), `1` (e.g. 52.8%), or `2` (e.g. 52.86%) | From config |
 | `--min-share` | — | Regulatory or bylaw minimum share floor per CUPS (e.g. `0.05` or `5%`) | `None` |
 | `--max-share` | — | Regulatory or bylaw maximum share cap per CUPS (e.g. `0.70` or `70%`) | `None` |
-| `--force-curate` | — | Force re-running curation before calculating, even if curated CSV exists | `False` |
+| `--force-curate` | — | Force re-running curation before calculating, even if master `esd.csv` exists | `False` |
 | `--consumption-dir` | `-c` | Folder containing DATADIS hourly consumption CSV files | From config |
 | `--generation-dir` | `-g` | Folder containing solar inverter generation Excel files | From config |
-| `--curated-dir` | `-u` | Folder containing curated time-series CSV file | From config |
+| `--curated-dir` | `-u` | Folder containing curated time-series CSV/Excel files (`generation`, `consumption`, `esd`) | From config |
 | `--cups-file` | `-C` | Path to `cups.json` specifying CUPS uses and primary flags | From config |
 | `--output-dir` | `-o` | Custom report destination directory | From config |
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |
 
 ### `esd curate`
-Reconciles fake-zero loads from the primary meter (connected behind the solar inverter) using solar inverter generation demand readings, enriches time-series with CUPS functional metadata and weather indicators (temperature, cloud cover), and produces canonical `.curated/curated.csv` and `.curated/curated.xlsx` datasets:
+Executes the 3-stage canonical data pipeline: (1) aggregates split solar generation files into `.curated/generation.csv` and `.curated/generation.xlsx` (`GenerationDataset`), (2) aggregates split CUPS consumption files into `.curated/consumption.csv` and `.curated/consumption.xlsx` (`ConsumptionDataset`), and (3) reconciles fake-zero loads on the primary meter, enriches with CUPS metadata and weather indicators (temperature, cloud cover), and produces the master `.curated/esd.csv` and `.curated/esd.xlsx` datasets:
 
 ```bash
-# Curate entire historical dataset
+# Curate entire historical dataset (generates generation.*, consumption.*, and esd.* in .curated/)
 esd curate
 
 # Filter curation to a specific year and month
 esd curate --year 2026 --month 5
 
-# Customize output filename and CSV delimiter
+# Customize master output filename and CSV delimiter
 esd curate --name community_data --delimiter ";"
 ```
 
@@ -205,7 +205,7 @@ esd curate --name community_data --delimiter ";"
 | `--curated-dir` | `-u`, `-o` | Folder where curated CSV and Excel files will be written | `.curated` |
 | `--cups-file` | `-C` | Path to `cups.json` specifying CUPS uses and primary flags | `.input/cups/cups.json` |
 | `--weather-dir` | `-w` | Folder containing Open-Meteo hourly weather CSV files | `.input/weather` |
-| `--name` | `-n` | Base filename for curated output files (without extension) | `curated` |
+| `--name` | `-n` | Base filename for master curated output files (without extension) | `esd` |
 | `--delimiter` | `-d` | Delimiter character for curated CSV output (`;` or `,`) | `;` |
 | `--year` | `-y` | Optional calendar year filter (e.g. 2026) | `None` (all) |
 | `--month` | `-m` | Optional calendar month filter (1–12) | `None` (all) |

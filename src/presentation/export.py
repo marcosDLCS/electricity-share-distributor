@@ -1,4 +1,4 @@
-"""Report exporters (CSV, HTML) and unified ReportExporter architecture."""
+"""Report exporters (CSV, Excel, HTML) and unified ReportExporter architecture."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from src.ingestion.schema import AlignedDataset, IngestionSummary
 from src.optimization.models import OptimizationResult
 
 if TYPE_CHECKING:
-    from src.curation.models import CuratedDataset
+    from src.curation.models import ConsumptionDataset, CuratedDataset, GenerationDataset
 
 FORMULA_INJECTION_PREFIXES: Final[tuple[str, ...]] = ("=", "+", "-", "@", "\t", "\r")
 
@@ -44,7 +44,7 @@ class ReportExporter:
     """Unified exporter for calculation shares, interactive HTML reports, and curated datasets.
 
     Encapsulates output directory management, timestamp formatting, delimiter conventions (';' or ','),
-    decimal formatting, and artifact generation across CSV and HTML formats.
+    decimal formatting, and artifact generation across CSV, Excel, and HTML formats.
     """
 
     def __init__(
@@ -62,20 +62,20 @@ class ReportExporter:
         self.timestamp = timestamp or get_export_timestamp()
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def export_curated_dataset(
+    def _export_dataframe_csv(
         self,
-        dataset: CuratedDataset,
-        curated_dir: Path | str | None = None,
-        base_name: str = "curated",
+        df: pd.DataFrame,
+        target_dir: Path | str | None,
+        base_name: str,
     ) -> Path:
-        """Export curated dataset to a clean CSV file."""
-        target_dir = Path(curated_dir) if curated_dir is not None else self.output_dir
-        target_dir.mkdir(parents=True, exist_ok=True)
-        csv_file = target_dir / f"{base_name}.csv"
-        df = dataset.to_dataframe()
-        if "use" in df.columns:
-            df["use"] = df["use"].apply(sanitize_formula_injection)
-        df.to_csv(
+        """Write a canonical DataFrame to CSV with formula injection sanitization."""
+        out_dir = Path(target_dir) if target_dir is not None else self.output_dir
+        out_dir.mkdir(parents=True, exist_ok=True)
+        csv_file = out_dir / f"{base_name}.csv"
+        df_out = df.copy()
+        if "use" in df_out.columns:
+            df_out["use"] = df_out["use"].apply(sanitize_formula_injection)
+        df_out.to_csv(
             csv_file,
             index=False,
             sep=self.delimiter,
@@ -84,13 +84,14 @@ class ReportExporter:
         )
         return csv_file
 
-    def export_curated_excel(
+    def _export_styled_dataframe_excel(
         self,
-        dataset: CuratedDataset,
-        curated_dir: Path | str | None = None,
-        base_name: str = "curated",
+        df: pd.DataFrame,
+        target_dir: Path | str | None,
+        base_name: str,
+        sheet_title: str,
     ) -> Path:
-        """Export curated dataset to a beautifully styled Excel (.xlsx) file.
+        """Export a canonical time-series DataFrame to a styled Excel (.xlsx) workbook.
 
         Features:
         - Harmonious header group colors for similar semantic columns.
@@ -103,17 +104,17 @@ class ReportExporter:
         from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
         from openpyxl.utils import get_column_letter
 
-        target_dir = Path(curated_dir) if curated_dir is not None else self.output_dir
-        target_dir.mkdir(parents=True, exist_ok=True)
-        excel_file = target_dir / f"{base_name}.xlsx"
+        out_dir = Path(target_dir) if target_dir is not None else self.output_dir
+        out_dir.mkdir(parents=True, exist_ok=True)
+        excel_file = out_dir / f"{base_name}.xlsx"
 
-        df = dataset.to_dataframe()
-        if "use" in df.columns:
-            df["use"] = df["use"].apply(sanitize_formula_injection)
+        df_out = df.copy()
+        if "use" in df_out.columns:
+            df_out["use"] = df_out["use"].apply(sanitize_formula_injection)
 
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.title = "Curated Data"
+        ws.title = sheet_title
         if ws.views.sheetView:
             ws.views.sheetView[0].showGridLines = True
 
@@ -162,7 +163,7 @@ class ReportExporter:
             "cloud_cover": 13,
         }
 
-        headers = list(df.columns)
+        headers = list(df_out.columns)
         ws.append(headers)
 
         header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
@@ -183,7 +184,7 @@ class ReportExporter:
 
         current_hour_key: Any = None
         hour_toggle = 0
-        rows_data = df.to_dict(orient="records")
+        rows_data = df_out.to_dict(orient="records")
 
         center_col_indices = {
             col_idx
@@ -238,8 +239,88 @@ class ReportExporter:
         ws.auto_filter.ref = ws.dimensions
 
         wb.save(excel_file)
-
         return excel_file
+
+    def export_generation_dataset(
+        self,
+        dataset: GenerationDataset,
+        curated_dir: Path | str | None = None,
+        base_name: str = "generation",
+    ) -> Path:
+        """Export aggregated canonical generation dataset to a clean CSV file."""
+        return self._export_dataframe_csv(
+            df=dataset.to_dataframe(),
+            target_dir=curated_dir,
+            base_name=base_name,
+        )
+
+    def export_generation_excel(
+        self,
+        dataset: GenerationDataset,
+        curated_dir: Path | str | None = None,
+        base_name: str = "generation",
+    ) -> Path:
+        """Export aggregated canonical generation dataset to a styled Excel (.xlsx) file."""
+        return self._export_styled_dataframe_excel(
+            df=dataset.to_dataframe(),
+            target_dir=curated_dir,
+            base_name=base_name,
+            sheet_title="Generation Data",
+        )
+
+    def export_consumption_dataset(
+        self,
+        dataset: ConsumptionDataset,
+        curated_dir: Path | str | None = None,
+        base_name: str = "consumption",
+    ) -> Path:
+        """Export aggregated canonical consumption dataset to a clean CSV file."""
+        return self._export_dataframe_csv(
+            df=dataset.to_dataframe(),
+            target_dir=curated_dir,
+            base_name=base_name,
+        )
+
+    def export_consumption_excel(
+        self,
+        dataset: ConsumptionDataset,
+        curated_dir: Path | str | None = None,
+        base_name: str = "consumption",
+    ) -> Path:
+        """Export aggregated canonical consumption dataset to a styled Excel (.xlsx) file."""
+        return self._export_styled_dataframe_excel(
+            df=dataset.to_dataframe(),
+            target_dir=curated_dir,
+            base_name=base_name,
+            sheet_title="Consumption Data",
+        )
+
+    def export_curated_dataset(
+        self,
+        dataset: CuratedDataset,
+        curated_dir: Path | str | None = None,
+        base_name: str = "esd",
+    ) -> Path:
+        """Export master ESD curated dataset to a clean CSV file."""
+        return self._export_dataframe_csv(
+            df=dataset.to_dataframe(),
+            target_dir=curated_dir,
+            base_name=base_name,
+        )
+
+    def export_curated_excel(
+        self,
+        dataset: CuratedDataset,
+        curated_dir: Path | str | None = None,
+        base_name: str = "esd",
+    ) -> Path:
+        """Export master ESD curated dataset to a beautifully styled Excel (.xlsx) file."""
+        return self._export_styled_dataframe_excel(
+            df=dataset.to_dataframe(),
+            target_dir=curated_dir,
+            base_name=base_name,
+            sheet_title="ESD Data",
+        )
 
     def export_monthly_shares_csv(
         self,

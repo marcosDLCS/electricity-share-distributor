@@ -65,19 +65,17 @@ graph LR
 2. **At the Utility Meter (DATADIS):** The utility meter only records electricity drawn from the street grid. Because solar power satisfies the demand on-site, the utility meter records **0.0 kWh**.
 3. **The Trap:** If you optimize based solely on utility data, the community's primary facility looks completely inactive during the day! The algorithm would mistakenly strip solar shares away from the building's biggest consumer and reassign them to small meters (like staircase lighting) that cannot use the power.
 
-### How `esd curate` Reconciles the Physical Reality
-The curation engine ([`src/curation/`](../src/curation)) reconciles two separate data streams to recover true physical consumption:
+### How `esd curate` Reconciles the Physical Reality (3-Stage Data Pipeline)
+The curation engine ([`src/curation/`](../src/curation)) applies a 3-stage Medallion data pipeline using canonical domain models decoupled from vendor formats:
 
-1. **Utility Data (DATADIS):** Hourly consumption imported from the grid for each community meter.
-2. **Solar Inverter Data:** The inverter's smart power sensor measures both solar production and the *total actual electrical demand* of the primary facility connected behind it.
-3. **CUPS Descriptions ([`.input/cups/cups.json`](../.input/cups/cups.json)):** Maps 20-character CUPS codes to human-friendly facility names (e.g., `"Aerotermia"`, `"Piscina"`, `"Garaje"`, `"Alumbrado"`), and marks which one is the `"primary": true` connection point.
+1. **Stage 1 — Aggregate Generation (`generation.csv` & `generation.xlsx`):** Consolidates all solar inverter Excel files in `.input/generation/` into a single canonical `GenerationDataset` (`timestamp;year;month;day;hour;day_of_week;is_weekend;generation;consumption;self_consumption;exported_energy;imported_energy`).
+2. **Stage 2 — Aggregate Consumption (`consumption.csv` & `consumption.xlsx`):** Consolidates all DATADIS CSV files in `.input/consumption/` across participating CUPS into a single canonical `ConsumptionDataset` (`timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption`), enriched with facility descriptions from [`.input/cups/cups.json`](../.input/cups/cups.json).
+3. **Stage 3 — Build Master ESD Dataset (`esd.csv` & `esd.xlsx`):** Aligns the aggregated generation and consumption datasets on common hourly intervals, replaces primary meter fake zeros with the inverter's physical load consumption, computes collective energy balances, and integrates hourly weather context.
 
-Whenever the utility meter reports zero (or artificially low power) while the inverter confirms that the equipment was actively running, `esd curate` **replaces the fake zero with the real load consumption**.
+### The Curated Result (`.curated/esd.csv` and `.curated/esd.xlsx`)
+Alongside `.curated/generation.csv`/`.xlsx` and `.curated/consumption.csv`/`.xlsx`, the pipeline produces the master analytical dataset in two sibling formats (`.curated/esd.csv` and `.curated/esd.xlsx`), which serves as the single source of truth for all calculations:
 
-### The Curated Result (`.curated/curated.csv` and `.curated/curated.xlsx`)
-The output produces two complementary sibling formats in the `.curated/` folder: a standardized CSV and a beautifully styled Excel workbook (`curated.xlsx`):
-
-#### 1. Standardized CSV (`curated.csv`)
+#### 1. Standardized Master CSV (`esd.csv`)
 Formatted using `;` as delimiter and `,` for decimals without thousands separators, grouping related analytical dimensions:
 1. **Temporal coordinates:** `timestamp`, `year`, `month`, `day`, `hour`, `day_of_week`, `is_weekend`
 2. **Individual consumer:** `cups_id`, `use`, `consumption`
@@ -90,7 +88,7 @@ timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption;com
 2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000002BB;Garaje;1,2;9,7;12,5;0,0;0,0;0,0;21,4;12
 ```
 
-#### 2. Styled Excel Workbook (`curated.xlsx`)
+#### 2. Styled Excel Workbooks (`esd.xlsx`, `generation.xlsx`, `consumption.xlsx`)
 Created alongside the CSV with executive styling for interactive analysis:
 - **Semantic Group Header Colors:** Similar columns share identical harmonious header colors (Steel Slate Blue for Time coordinates, Deep Petrol Teal for CUPS identification, Warm Terracotta for Demand/Consumption, Solar Emerald for Solar Generation & Balance, and Royal Amethyst for Weather).
 - **Hour-Grouped Zebra Pattern:** Rows belonging to the same hour block share the same background, alternating hour-by-hour between pure white and a soft neutral tint (`#F4F6F9`) so all supply points in each interval are visually grouped.
@@ -195,14 +193,14 @@ esd doctor -C .input/cups/cups.json -w .input/weather --verbose
 ```
 
 ### Step 2: Automatic or Manual Curation (`esd curate`)
-Reconciles the fake zeros from the primary meter and outputs `.curated/curated.csv` and styled `.curated/curated.xlsx`:
+Aggregates generation (`generation.csv` / `generation.xlsx`) and consumption (`consumption.csv` / `consumption.xlsx`), reconciles fake zeros from the primary meter, and outputs the master `.curated/esd.csv` and styled `.curated/esd.xlsx`:
 ```bash
 esd curate
-# Or filter to a specific month and custom output name:
+# Or filter to a specific month and custom master output name:
 esd curate --year 2026 --month 5 --name community_curated
 ```
 > [!TIP]
-> **Automatic Curation:** You do not even need to run `esd curate` manually! When you run `esd calculate`, the tool checks if `.curated/curated.csv` exists. If it's missing, it automatically curates the data first. You can also pass `--force-curate` to `esd calculate` to force re-curating existing files.
+> **Automatic Curation:** You do not even need to run `esd curate` manually! When you run `esd calculate`, the tool checks if `.curated/esd.csv` exists. If it's missing, it automatically runs the 3-stage curation pipeline first. You can also pass `--force-curate` to `esd calculate` to force re-curating existing files.
 
 ### Step 3: Fetch Hourly Weather Data (`esd weather`)
 Download historical hourly weather (temperature, cloud cover, WMO weather codes) from Open-Meteo into `.input/weather/{YYYY}_{lat}_{lon}_weather.csv`. Year is the only mandatory parameter: if coordinates are not provided on the CLI, `esd weather` automatically inspects `cups.json`, deduplicates repeated locations across facilities in the same building, and downloads each unique coordinate once:
@@ -275,7 +273,7 @@ For developers and autonomous agents navigating the codebase:
 | **Ingestion: Generation** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `HuaweiGenerationLoader` | Solar inverter `.xlsx` report parsing (solar production and load demand). |
 | **Ingestion: Weather** | [`src/ingestion/weather.py`](../src/ingestion/weather.py) | `OpenMeteoWeatherDownloader`, `WeatherLoader` | Open-Meteo Archive API downloader, WMO weather codes, and weather CSV ingestion. |
 | **Ingestion: Audit** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Pre-flight gap detection, weather health audit, CUPS use enrichment, inactive meter alerts, and date overlap verification. |
-| **Curation & Reconciliation** | [`src/curation/`](../src/curation) | `DataCurator`, `CuratedDataset` | Fake-zero reconciliation, CUPS metadata lookup, and curated CSV export. |
+| **Curation & Reconciliation** | [`src/curation/`](../src/curation) | `DataCurator`, `GenerationDataset`, `ConsumptionDataset`, `CuratedDataset` | 3-stage canonical aggregation (`generation`, `consumption`), fake-zero reconciliation, and master `esd.csv`/`esd.xlsx` export. |
 | **Optimization: Models** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Matrix structures, diurnal profiles, and community metrics. |
 | **Optimization: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Linear programming solver, diurnal profile engine, baselines, and Hare-Niemeyer rounding. |
 | **Presentation: Views** | [`src/presentation/views/`](../src/presentation/views) | `render_coefficients_matrix_table`, `render_community_summary` | Rich terminal tables, executive KPI cards with baseline gain badges, two-tone heatmaps, unicode sparklines, 4-step progress stepper, and adaptive 80-column formatting. |

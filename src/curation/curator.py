@@ -1,4 +1,4 @@
-"""Engine and logic for curating, reconciling, and exporting time-series datasets."""
+"""Engine and logic for aggregating, curating, reconciling, and exporting time-series datasets."""
 
 from __future__ import annotations
 
@@ -16,11 +16,14 @@ from src.config import (
     resolve_cups_config_path,
 )
 from src.curation.models import (
+    ConsumptionDataset,
     CuratedCupsReading,
     CuratedDataset,
     CuratedHourRecord,
     CuratedSummary,
     CurationError,
+    GenerationDataset,
+    GenerationRecord,
 )
 from src.domain.exceptions import EsdError
 from src.domain.models import SupplyPoint, parse_share_fraction
@@ -47,10 +50,10 @@ def dataframe_to_aligned_dataset(
     primary_cups: str | None = None,
     cups_config_path: Path | str | None = None,
 ) -> AlignedDataset:
-    """Convert a curated DataFrame into an AlignedDataset for calculation.
+    """Convert a curated ESD DataFrame into an AlignedDataset for calculation.
 
     Args:
-        df: Curated DataFrame containing timestamp, cups_id, consumption, and generation.
+        df: Curated ESD DataFrame containing timestamp, cups_id, consumption, and generation.
         year: Optional calendar year filter.
         month: Optional calendar month filter (1-12).
         primary_cups: Optional pre-resolved primary CUPS identifier.
@@ -219,7 +222,7 @@ def format_energy_value(val: float) -> float | int:
 
 
 class DataCurator:
-    """Coordinates ingestion, CUPS configuration lookup, primary meter reconciliation, and export."""
+    """Coordinates multi-stage aggregation, CUPS metadata enrichment, primary meter reconciliation, and export."""
 
     def __init__(
         self,
@@ -348,84 +351,292 @@ class DataCurator:
 
         return None
 
-    def curate(
+    @staticmethod
+    def _filter_df_by_period(
+        df: pd.DataFrame,
+        year: int | None = None,
+        month: int | None = None,
+    ) -> pd.DataFrame:
+        """Filter a DataFrame with a 'timestamp' column by optional calendar year and/or month."""
+        if df.empty or (year is None and month is None):
+            return df
+        ts_col = df["timestamp"].astype(str)
+        if year is not None:
+            prefix = f"{year:04d}-{month:02d}" if month is not None else f"{year:04d}"
+            return df[ts_col.str.startswith(prefix)].reset_index(drop=True)
+        m_str = f"-{month:02d}-"
+        return df[ts_col.str.contains(m_str)].reset_index(drop=True)
+
+    def aggregate_generation(
         self,
         year: int | None = None,
         month: int | None = None,
-    ) -> CuratedDataset:
-        """Execute full time-series reconciliation across consumption and PV generation.
-
-        Reconciliation algorithm:
-        1. Ingest DATADIS consumption and Huawei FusionSolar generation datasets.
-        2. Align datasets on common hourly timestamps, respecting any year/month filters.
-        3. For each participating CUPS:
-           - Retrieve the human-readable 'use' from cups.json config.
-           - If marked as 'primary' and the solar generation file records an active consumption
-             reading ('Consumo (kWh)'), reconcile by adopting the Huawei consumption to correct
-             the fake-zero readings caused by direct behind-the-meter PV self-consumption.
-           - Otherwise, use the standard DATADIS consumption reading.
-        4. Calculate hourly community totals, solar surplus, and residual grid demand.
-        5. Return structured CuratedDataset with full metadata and summary metrics.
+    ) -> GenerationDataset:
+        """Stage 1: Ingest raw solar inverter files and aggregate into canonical GenerationDataset.
 
         Args:
             year: Optional calendar year filter.
             month: Optional calendar month filter (1-12).
 
         Returns:
+            GenerationDataset decoupled from vendor-specific column names.
+
+        Raises:
+            CurationError: If raw generation ingestion fails.
+        """
+        try:
+            g_loader = HuaweiGenerationLoader(self.generation_dir)
+            g_files_count = len(g_loader.discover_files())
+            g_df = self._filter_df_by_period(g_loader.load_all(), year=year, month=month)
+            return GenerationDataset.from_dataframe(g_df, source_files_count=g_files_count)
+        except Exception as err:
+            raise CurationError(f"Generation aggregation failed: {err}") from err
+
+    @classmethod
+    def export_generation(
+        cls,
+        dataset: GenerationDataset,
+        curated_dir: Path | str,
+        base_name: str = "generation",
+        delimiter: str = ";",
+    ) -> tuple[Path, Path]:
+        """Export canonical GenerationDataset to CSV and styled Excel (.xlsx) in curated_dir."""
+        from src.presentation.export import ReportExporter
+
+        exporter = ReportExporter(
+            output_dir=curated_dir,
+            delimiter=delimiter,
+            decimal_char="," if delimiter == ";" else ".",
+        )
+        csv_path = exporter.export_generation_dataset(
+            dataset=dataset,
+            curated_dir=curated_dir,
+            base_name=base_name,
+        )
+        excel_path = exporter.export_generation_excel(
+            dataset=dataset,
+            curated_dir=curated_dir,
+            base_name=base_name,
+        )
+        return csv_path, excel_path
+
+    @classmethod
+    def load_generation_dataset(
+        cls,
+        generation_path: Path | str,
+        delimiter: str | None = None,
+    ) -> GenerationDataset:
+        """Load canonical generation.csv from disk into a GenerationDataset instance."""
+        path = Path(generation_path)
+        if path.is_dir():
+            path = path / "generation.csv"
+        if not path.exists() or not path.is_file():
+            raise CurationError(f"Aggregated generation file '{path}' does not exist.")
+
+        sep = delimiter
+        if sep is None:
+            first_line = (
+                path.read_text(encoding="utf-8").splitlines()[0] if path.stat().st_size > 0 else ""
+            )
+            sep = ";" if ";" in first_line else ","
+        decimal_char = "," if sep == ";" else "."
+        try:
+            df = pd.read_csv(path, sep=sep, decimal=decimal_char, dtype={"timestamp": str})
+        except Exception as err:
+            raise CurationError(f"Failed to read generation CSV '{path}': {err}") from err
+
+        return GenerationDataset.from_dataframe(df)
+
+    def aggregate_consumption(
+        self,
+        cups_configs: dict[str, SupplyPoint] | None = None,
+        year: int | None = None,
+        month: int | None = None,
+    ) -> ConsumptionDataset:
+        """Stage 2: Ingest raw DSO/DATADIS files and aggregate into canonical ConsumptionDataset.
+
+        Args:
+            cups_configs: Optional pre-loaded SupplyPoint metadata mapping.
+            year: Optional calendar year filter.
+            month: Optional calendar month filter (1-12).
+
+        Returns:
+            ConsumptionDataset decoupled from source DSO column names.
+
+        Raises:
+            CurationError: If raw consumption ingestion fails.
+        """
+        configs = cups_configs if cups_configs is not None else self.load_cups_config()
+        cups_uses = {cid: cfg.use for cid, cfg in configs.items()}
+        try:
+            c_loader = DatadisConsumptionLoader(self.consumption_dir)
+            c_files_count = len(c_loader.discover_files())
+            c_df = self._filter_df_by_period(c_loader.load_all(), year=year, month=month)
+            return ConsumptionDataset.from_dataframe(
+                c_df,
+                source_files_count=c_files_count,
+                cups_uses=cups_uses,
+            )
+        except Exception as err:
+            raise CurationError(f"Consumption aggregation failed: {err}") from err
+
+    @classmethod
+    def export_consumption(
+        cls,
+        dataset: ConsumptionDataset,
+        curated_dir: Path | str,
+        base_name: str = "consumption",
+        delimiter: str = ";",
+    ) -> tuple[Path, Path]:
+        """Export canonical ConsumptionDataset to CSV and styled Excel (.xlsx) in curated_dir."""
+        from src.presentation.export import ReportExporter
+
+        exporter = ReportExporter(
+            output_dir=curated_dir,
+            delimiter=delimiter,
+            decimal_char="," if delimiter == ";" else ".",
+        )
+        csv_path = exporter.export_consumption_dataset(
+            dataset=dataset,
+            curated_dir=curated_dir,
+            base_name=base_name,
+        )
+        excel_path = exporter.export_consumption_excel(
+            dataset=dataset,
+            curated_dir=curated_dir,
+            base_name=base_name,
+        )
+        return csv_path, excel_path
+
+    @classmethod
+    def load_consumption_dataset(
+        cls,
+        consumption_path: Path | str,
+        delimiter: str | None = None,
+        cups_config_path: Path | str | None = None,
+    ) -> ConsumptionDataset:
+        """Load canonical consumption.csv from disk into a ConsumptionDataset instance."""
+        path = Path(consumption_path)
+        if path.is_dir():
+            path = path / "consumption.csv"
+        if not path.exists() or not path.is_file():
+            raise CurationError(f"Aggregated consumption file '{path}' does not exist.")
+
+        sep = delimiter
+        if sep is None:
+            first_line = (
+                path.read_text(encoding="utf-8").splitlines()[0] if path.stat().st_size > 0 else ""
+            )
+            sep = ";" if ";" in first_line else ","
+        decimal_char = "," if sep == ";" else "."
+        try:
+            df = pd.read_csv(
+                path,
+                sep=sep,
+                decimal=decimal_char,
+                dtype={"cups_id": str, "timestamp": str},
+            )
+        except Exception as err:
+            raise CurationError(f"Failed to read consumption CSV '{path}': {err}") from err
+
+        cups_uses: dict[str, str] = {}
+        try:
+            cfg = cls(cups_config_path=cups_config_path).load_cups_config()
+            cups_uses = {cid: c.use for cid, c in cfg.items()}
+        except Exception:
+            pass
+
+        return ConsumptionDataset.from_dataframe(df, cups_uses=cups_uses)
+
+    def curate(
+        self,
+        year: int | None = None,
+        month: int | None = None,
+        generation_dataset: GenerationDataset | None = None,
+        consumption_dataset: ConsumptionDataset | None = None,
+    ) -> CuratedDataset:
+        """Stage 3: Build master ESD CuratedDataset from aggregated GenerationDataset and ConsumptionDataset.
+
+        Pipeline algorithm:
+        1. Obtain canonical aggregated GenerationDataset and ConsumptionDataset.
+        2. Align datasets on common hourly timestamps, respecting any year/month filters.
+        3. For each participating CUPS:
+           - Retrieve the human-readable 'use' from cups.json config.
+           - If marked as 'primary' and the canonical generation dataset records an active plant
+             consumption reading, reconcile by adopting the inverter consumption to correct
+             fake-zero readings caused by direct behind-the-meter PV self-consumption.
+           - Otherwise, use the canonical aggregated consumption reading.
+        4. Calculate hourly community totals, solar surplus, and residual grid demand, and enrich
+           with Open-Meteo hourly weather context (temperature, cloud_cover).
+        5. Return structured CuratedDataset (master ESD dataset) with full metadata and summary metrics.
+
+        Args:
+            year: Optional calendar year filter.
+            month: Optional calendar month filter (1-12).
+            generation_dataset: Optional pre-aggregated canonical GenerationDataset.
+            consumption_dataset: Optional pre-aggregated canonical ConsumptionDataset.
+
+        Returns:
             CuratedDataset containing aligned hourly records and summary metrics.
 
         Raises:
-            CurationError: If ingestion or alignment fails.
+            CurationError: If aggregation or alignment fails.
         """
+        cups_configs = self.load_cups_config()
+
         try:
-            c_loader = DatadisConsumptionLoader(self.consumption_dir)
-            g_loader = HuaweiGenerationLoader(self.generation_dir)
+            gen_ds = (
+                generation_dataset
+                if generation_dataset is not None
+                else self.aggregate_generation()
+            )
+            cons_ds = (
+                consumption_dataset
+                if consumption_dataset is not None
+                else self.aggregate_consumption(cups_configs=cups_configs)
+            )
 
-            c_df = c_loader.load_all()
-            g_df = g_loader.load_all()
-
-            c_files_count = len(c_loader.discover_files())
-            g_files_count = len(g_loader.discover_files())
+            c_df = pd.DataFrame(
+                [
+                    {
+                        "cups": r.cups_id,
+                        "timestamp": r.timestamp,
+                        "consumption_kwh": float(r.consumption),
+                    }
+                    for r in cons_ds.records
+                ],
+                columns=["cups", "timestamp", "consumption_kwh"],
+            )
+            g_df = pd.DataFrame(
+                [
+                    {
+                        "timestamp": r.timestamp,
+                        "generation_kwh": float(r.generation),
+                    }
+                    for r in gen_ds.records
+                ],
+                columns=["timestamp", "generation_kwh"],
+            )
 
             aligner = TimeSeriesAligner(
                 c_df,
                 g_df,
-                consumption_files_loaded=c_files_count,
-                generation_files_loaded=g_files_count,
+                consumption_files_loaded=cons_ds.summary.source_files_count,
+                generation_files_loaded=gen_ds.summary.source_files_count,
             )
             aligned = aligner.align(year=year, month=month)
+        except CurationError:
+            raise
         except Exception as err:
             raise CurationError(f"Curation pre-flight ingestion failed: {err}") from err
 
-        cups_configs = self.load_cups_config()
         primary_cups: str | None = next(
             (c.cups for c in cups_configs.values() if c.primary),
             None,
         )
 
-        # Index Huawei generation DataFrame by timestamp for fast lookup
-        g_has_cons = "consumption_kwh" in g_df.columns
-        g_cons_series: pd.Series[float] = (
-            g_df.set_index("timestamp")["consumption_kwh"] if g_has_cons else pd.Series(dtype=float)
-        )
-        g_has_self_cons = "self_consumption_kwh" in g_df.columns
-        g_self_cons_series: pd.Series[float] = (
-            g_df.set_index("timestamp")["self_consumption_kwh"]
-            if g_has_self_cons
-            else pd.Series(dtype=float)
-        )
-        g_has_exp = "exported_energy_kwh" in g_df.columns
-        g_exp_series: pd.Series[float] = (
-            g_df.set_index("timestamp")["exported_energy_kwh"]
-            if g_has_exp
-            else pd.Series(dtype=float)
-        )
-        g_has_imp = "imported_energy_kwh" in g_df.columns
-        g_imp_series: pd.Series[float] = (
-            g_df.set_index("timestamp")["imported_energy_kwh"]
-            if g_has_imp
-            else pd.Series(dtype=float)
-        )
+        # Index canonical GenerationRecord by timestamp for O(1) lookup
+        gen_record_map: dict[str, GenerationRecord] = {r.timestamp: r for r in gen_ds.records}
 
         # Determine all calendar years present in the aligned dataset
         years_present = sorted({int(str(ts)[:4]) for ts in aligned.data.index})
@@ -494,45 +705,15 @@ class DataCurator:
             gen_val = float(aligned.data.loc[ts, "generation_kwh"])
             total_gen_kwh += gen_val
 
-            # Huawei meter consumption reading for this interval if present
-            hw_cons_val: float | None = None
-            if g_has_cons and ts_str in g_cons_series.index:
-                val = g_cons_series.loc[ts_str]
-                if pd.notna(val):
-                    try:
-                        hw_cons_val = float(val)
-                    except ValueError, TypeError:
-                        hw_cons_val = None
-
-            # Huawei meter self-consumption reading for this interval if present
-            hw_sc_val = 0.0
-            if g_has_self_cons and ts_str in g_self_cons_series.index:
-                sc_raw = g_self_cons_series.loc[ts_str]
-                if pd.notna(sc_raw):
-                    try:
-                        hw_sc_val = max(0.0, float(sc_raw))
-                    except ValueError, TypeError:
-                        hw_sc_val = 0.0
-
-            # Huawei meter export reading for this interval if present
-            hw_exp_val = 0.0
-            if g_has_exp and ts_str in g_exp_series.index:
-                exp_raw = g_exp_series.loc[ts_str]
-                if pd.notna(exp_raw):
-                    try:
-                        hw_exp_val = max(0.0, float(exp_raw))
-                    except ValueError, TypeError:
-                        hw_exp_val = 0.0
-
-            # Huawei meter import reading for this interval if present
-            hw_imp_val = 0.0
-            if g_has_imp and ts_str in g_imp_series.index:
-                imp_raw = g_imp_series.loc[ts_str]
-                if pd.notna(imp_raw):
-                    try:
-                        hw_imp_val = max(0.0, float(imp_raw))
-                    except ValueError, TypeError:
-                        hw_imp_val = 0.0
+            g_rec = gen_record_map.get(ts_str)
+            hw_cons_val: float | None = (
+                float(g_rec.consumption)
+                if g_rec is not None and g_rec.consumption is not None
+                else None
+            )
+            hw_sc_val: float = max(0.0, float(g_rec.self_consumption)) if g_rec is not None else 0.0
+            hw_exp_val: float = max(0.0, float(g_rec.exported_energy)) if g_rec is not None else 0.0
+            hw_imp_val: float = max(0.0, float(g_rec.imported_energy)) if g_rec is not None else 0.0
 
             cups_readings: list[CuratedCupsReading] = []
             hour_cons_sum = 0.0
@@ -544,7 +725,7 @@ class DataCurator:
                 is_reconciled = False
                 final_cons = datadis_cons
 
-                # For primary CUPS: use the plain raw solar inverter consumption reading directly when present
+                # For primary CUPS: use the canonical inverter consumption reading directly when present
                 if cfg.primary and hw_cons_val is not None:
                     final_cons = hw_cons_val
                     if (hw_cons_val - datadis_cons) > 0.001:
@@ -554,7 +735,7 @@ class DataCurator:
                         reconciled_hours_set.add(ts_str)
                         cups_reconciled_counts[cups_id] += 1
 
-                # Self-consumed electricity: primary CUPS receives the Huawei reading, others receive 0.0
+                # Self-consumed electricity: primary CUPS receives inverter reading, others receive 0.0
                 c_self_cons = hw_sc_val if cfg.primary else 0.0
                 c_exp = hw_exp_val if cfg.primary else 0.0
                 c_imp = hw_imp_val if cfg.primary else 0.0
@@ -628,14 +809,14 @@ class DataCurator:
         cls,
         dataset: CuratedDataset,
         curated_dir: Path | str,
-        base_name: str = "curated",
+        base_name: str = "esd",
     ) -> Path:
-        """Export curated dataset to a styled Excel (.xlsx) file.
+        """Export master ESD curated dataset to a styled Excel (.xlsx) file.
 
         Args:
             dataset: The CuratedDataset to export.
             curated_dir: Directory where the Excel file should be written.
-            base_name: File basename without extension (e.g. 'curated').
+            base_name: File basename without extension (defaults to 'esd').
 
         Returns:
             Path to the generated Excel file.
@@ -654,15 +835,15 @@ class DataCurator:
         cls,
         dataset: CuratedDataset,
         curated_dir: Path | str,
-        base_name: str = "curated",
+        base_name: str = "esd",
         delimiter: str = ";",
     ) -> Path:
-        """Export curated dataset to a clean CSV file and sibling styled Excel (.xlsx) file.
+        """Export master ESD curated dataset to a clean CSV file and sibling styled Excel (.xlsx) file.
 
         Args:
             dataset: The CuratedDataset to export.
             curated_dir: Directory where the CSV and Excel files should be written.
-            base_name: File basename without extension (e.g. 'curated').
+            base_name: File basename without extension (defaults to 'esd').
             delimiter: CSV delimiter character (defaults to ';').
 
         Returns:
@@ -690,18 +871,23 @@ class DataCurator:
     def ensure_curated(
         self,
         force: bool = False,
-        base_name: str = "curated",
+        base_name: str = "esd",
         delimiter: str = ";",
     ) -> Path:
-        """Ensure that curated CSV and sibling Excel files exist, generating them if missing or forced.
+        """Ensure aggregated generation, consumption, and master ESD CSV/Excel files exist.
+
+        Executes the full 3-stage pipeline if missing or forced:
+        1. Aggregate generation -> generation.csv + generation.xlsx
+        2. Aggregate consumption -> consumption.csv + consumption.xlsx
+        3. Curate master ESD dataset -> esd.csv + esd.xlsx
 
         Args:
-            force: If True, re-runs curation even if the curated CSV already exists.
-            base_name: Base filename (defaults to 'curated').
+            force: If True, re-runs full aggregation and curation even if files already exist.
+            base_name: Base filename for master dataset (defaults to 'esd').
             delimiter: CSV separator (defaults to ';').
 
         Returns:
-            Path to the verified curated CSV file.
+            Path to the verified master ESD CSV file.
         """
         target_dir = self.curated_dir
         if target_dir.is_file():
@@ -710,12 +896,21 @@ class DataCurator:
         target_dir.mkdir(parents=True, exist_ok=True)
         csv_path = target_dir / f"{base_name}.csv"
         xlsx_path = target_dir / f"{base_name}.xlsx"
+        gen_csv = target_dir / "generation.csv"
+        gen_xlsx = target_dir / "generation.xlsx"
+        cons_csv = target_dir / "consumption.csv"
+        cons_xlsx = target_dir / "consumption.xlsx"
+
         if (
             not force
             and csv_path.exists()
             and csv_path.stat().st_size > 0
             and xlsx_path.exists()
             and xlsx_path.stat().st_size > 0
+            and gen_csv.exists()
+            and gen_xlsx.exists()
+            and cons_csv.exists()
+            and cons_xlsx.exists()
         ):
             try:
                 first_line = csv_path.read_text(encoding="utf-8").splitlines()[0]
@@ -737,7 +932,17 @@ class DataCurator:
             except Exception:
                 pass
 
-        dataset = self.curate()
+        cups_configs = self.load_cups_config()
+        gen_dataset = self.aggregate_generation()
+        self.export_generation(gen_dataset, curated_dir=target_dir, delimiter=delimiter)
+
+        cons_dataset = self.aggregate_consumption(cups_configs=cups_configs)
+        self.export_consumption(cons_dataset, curated_dir=target_dir, delimiter=delimiter)
+
+        dataset = self.curate(
+            generation_dataset=gen_dataset,
+            consumption_dataset=cons_dataset,
+        )
         return self.export_csv(
             dataset,
             curated_dir=target_dir,
@@ -754,10 +959,10 @@ class DataCurator:
         delimiter: str | None = None,
         cups_config_path: Path | str | None = None,
     ) -> AlignedDataset:
-        """Load curated CSV file and reconstruct an AlignedDataset for calculation.
+        """Load master ESD curated CSV file and reconstruct an AlignedDataset for calculation.
 
         Args:
-            curated_path: Path to curated CSV file or directory containing it.
+            curated_path: Path to esd.csv file or directory containing it.
             year: Optional calendar year filter.
             month: Optional calendar month filter (1-12).
             delimiter: Optional CSV delimiter character. If None, auto-detected.
@@ -771,13 +976,20 @@ class DataCurator:
         """
         path = Path(curated_path)
         if path.is_dir():
-            candidate = path / "curated.csv"
-            if candidate.exists():
-                path = candidate
+            esd_candidate = path / "esd.csv"
+            legacy_candidate = path / "curated.csv"
+            if esd_candidate.exists():
+                path = esd_candidate
+            elif legacy_candidate.exists():
+                path = legacy_candidate
             else:
-                csvs = sorted(path.glob("*.csv"))
+                csvs = [
+                    f
+                    for f in sorted(path.glob("*.csv"))
+                    if f.name not in ("generation.csv", "consumption.csv")
+                ]
                 if not csvs:
-                    raise CurationError(f"No curated CSV files found in directory '{path}'.")
+                    raise CurationError(f"No curated ESD CSV files found in directory '{path}'.")
                 path = csvs[0]
 
         if not path.exists() or not path.is_file():

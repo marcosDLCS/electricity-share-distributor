@@ -410,8 +410,13 @@ def test_cli_curate_spanish_lang(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert "RECONCILIACIÓN" in result.output
-    assert (curated_dir / "curated.csv").exists()
-    assert not (curated_dir / "curated.json").exists()
+    assert (curated_dir / "esd.csv").exists()
+    assert (curated_dir / "esd.xlsx").exists()
+    assert (curated_dir / "generation.csv").exists()
+    assert (curated_dir / "generation.xlsx").exists()
+    assert (curated_dir / "consumption.csv").exists()
+    assert (curated_dir / "consumption.xlsx").exists()
+    assert not (curated_dir / "esd.json").exists()
 
 
 def test_dataframe_to_aligned_dataset() -> None:
@@ -558,13 +563,18 @@ def test_cli_calculate_auto_curates_when_missing(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 0
-    # Verified: curated.csv was generated on the fly!
-    assert (curated_dir / "curated.csv").exists()
+    # Verified: generation.csv, consumption.csv, and esd.csv were generated on the fly!
+    assert (curated_dir / "esd.csv").exists()
+    assert (curated_dir / "esd.xlsx").exists()
+    assert (curated_dir / "generation.csv").exists()
+    assert (curated_dir / "generation.xlsx").exists()
+    assert (curated_dir / "consumption.csv").exists()
+    assert (curated_dir / "consumption.xlsx").exists()
     assert "COLLECTIVE SELF-CONSUMPTION COMMUNITY SUMMARY" in result.output
 
 
 def test_cli_calculate_uses_existing_curated(tmp_path: Path) -> None:
-    """Verify that calculate directly loads an existing curated.csv."""
+    """Verify that calculate directly loads an existing esd.csv."""
     curated_dir = tmp_path / "curated"
     curated_dir.mkdir()
 
@@ -573,7 +583,7 @@ def test_cli_calculate_uses_existing_curated(tmp_path: Path) -> None:
         "timestamp,generation,cups_id,use,consumption,primary,reconciled",
         f"2026-05-01 12:00:00,10,{pri_cups},Aerotermia,5,True,True",
     ]
-    (curated_dir / "curated.csv").write_text("\n".join(lines), encoding="utf-8")
+    (curated_dir / "esd.csv").write_text("\n".join(lines), encoding="utf-8")
 
     runner = CliRunner()
     result = runner.invoke(
@@ -618,9 +628,9 @@ def test_curated_data_loads_primary_cups_and_hourly_assigns_100_percent_night(
         rows.append(f"{ts},{gen},{pri_cups},Aerotermia,2.0,True,False")
         rows.append(f"{ts},{gen},{sec_cups},Piso 1,1.5,False,False")
 
-    (curated_dir / "curated.csv").write_text("\n".join(rows), encoding="utf-8")
+    (curated_dir / "esd.csv").write_text("\n".join(rows), encoding="utf-8")
 
-    aligned = DataCurator.load_aligned_dataset(curated_dir / "curated.csv")
+    aligned = DataCurator.load_aligned_dataset(curated_dir / "esd.csv")
     assert aligned.primary_cups == pri_cups
 
     runner = CliRunner()
@@ -1343,3 +1353,116 @@ def test_curation_exports_styled_excel(tmp_path: Path) -> None:
 
     # Adjacent hours have alternating zebra fill
     assert fill_row2 != fill_row4
+
+
+def test_generation_dataset_canonical_model_and_aggregation(tmp_path: Path) -> None:
+    """Verify multiple generation files are aggregated into canonical GenerationDataset (generation.csv + generation.xlsx)."""
+    gen_dir = tmp_path / "generation"
+    curated_dir = tmp_path / "curated"
+    gen_dir.mkdir()
+    curated_dir.mkdir()
+
+    # Create two separate generation Excel files for Day 1 and Day 2
+    create_mock_huawei_excel(gen_dir / "gen_part1.xlsx", num_days=1, solar_gen=10.0, solar_cons=6.0)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Informe de plantas_MOCK_PLANT_2"])
+    ws.append(
+        [
+            "Período estadístico",
+            "Rendimiento FV (kWh)",
+            "Consumo (kWh)",
+            "Autoconsumo (kWh)",
+            "Energía exportada (kWh)",
+            "Importación (kWh)",
+        ]
+    )
+    for h in range(24):
+        ts = f"2026-05-02 {h:02d}:00:00"
+        is_solar = 8 <= h <= 17
+        ws.append(
+            [
+                ts,
+                14.0 if is_solar else 0.0,
+                9.0 if is_solar else 2.0,
+                7.0 if is_solar else 0.0,
+                7.0 if is_solar else 0.0,
+                2.0,
+            ]
+        )
+    wb.save(gen_dir / "gen_part2.xlsx")
+
+    curator = DataCurator(generation_dir=gen_dir, curated_dir=curated_dir)
+    gen_dataset = curator.aggregate_generation()
+
+    assert gen_dataset.summary.total_hours == 48
+    assert gen_dataset.summary.source_files_count == 2
+    assert gen_dataset.summary.has_plant_consumption is True
+    assert gen_dataset.summary.start_time == "2026-05-01 00:00:00"
+    assert gen_dataset.summary.end_time == "2026-05-02 23:00:00"
+
+    gen_csv, gen_xlsx = curator.export_generation(gen_dataset, curated_dir=curated_dir)
+    assert gen_csv.exists() and gen_csv.name == "generation.csv"
+    assert gen_xlsx.exists() and gen_xlsx.name == "generation.xlsx"
+
+    header = gen_csv.read_text(encoding="utf-8").splitlines()[0]
+    expected_gen_header = (
+        "timestamp;year;month;day;hour;day_of_week;is_weekend;"
+        "generation;consumption;self_consumption;exported_energy;imported_energy"
+    )
+    assert header == expected_gen_header
+
+    reloaded = curator.load_generation_dataset(gen_csv)
+    assert reloaded.summary.total_hours == 48
+    assert reloaded.summary.total_generation_kwh == gen_dataset.summary.total_generation_kwh
+
+
+def test_consumption_dataset_canonical_model_and_aggregation(tmp_path: Path) -> None:
+    """Verify multiple consumption files are aggregated into canonical ConsumptionDataset (consumption.csv + consumption.xlsx)."""
+    cons_dir = tmp_path / "consumption"
+    curated_dir = tmp_path / "curated"
+    cons_dir.mkdir()
+    curated_dir.mkdir()
+
+    c1 = "ES0021000000000001AA"
+    c2 = "ES0021000000000002BB"
+    create_mock_datadis_csv(cons_dir / f"{c1}.csv", c1, solar_cons_val=3.5, night_cons_val=1.5)
+    create_mock_datadis_csv(cons_dir / f"{c2}.csv", c2, solar_cons_val=2.0, night_cons_val=1.0)
+
+    cups_file = tmp_path / "cups.json"
+    cups_file.write_text(
+        json.dumps(
+            [
+                {"cups": c1, "use": "Aerotermia", "primary": True},
+                {"cups": c2, "use": "Garaje", "primary": False},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    curator = DataCurator(
+        consumption_dir=cons_dir,
+        cups_config_path=cups_file,
+        curated_dir=curated_dir,
+    )
+    cons_dataset = curator.aggregate_consumption()
+
+    assert cons_dataset.summary.total_records == 48
+    assert cons_dataset.summary.total_hours == 24
+    assert cons_dataset.summary.cups_count == 2
+    assert cons_dataset.summary.source_files_count == 2
+
+    cons_csv, cons_xlsx = curator.export_consumption(cons_dataset, curated_dir=curated_dir)
+    assert cons_csv.exists() and cons_csv.name == "consumption.csv"
+    assert cons_xlsx.exists() and cons_xlsx.name == "consumption.xlsx"
+
+    header = cons_csv.read_text(encoding="utf-8").splitlines()[0]
+    expected_cons_header = (
+        "timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption"
+    )
+    assert header == expected_cons_header
+
+    reloaded = curator.load_consumption_dataset(cons_csv, cups_config_path=cups_file)
+    assert reloaded.summary.total_records == 48
+    assert reloaded.summary.cups_count == 2
+    assert reloaded.summary.total_consumption_kwh == cons_dataset.summary.total_consumption_kwh

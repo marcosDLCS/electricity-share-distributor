@@ -287,10 +287,10 @@ def curate_command(
         help="Path to directory where curated CSV files will be written. Defaults to configured path.",
     ),
     name: str = typer.Option(
-        "curated",
+        "esd",
         "--name",
         "-n",
-        help="Base filename for generated curated export (e.g. 'curated' produces curated.csv).",
+        help="Base filename for generated master curated export (e.g. 'esd' produces esd.csv and esd.xlsx).",
     ),
     delimiter: str = typer.Option(
         ";",
@@ -358,6 +358,10 @@ def curate_command(
             csv_path=cur_result.csv_path,
             excel_path=cur_result.excel_path,
             lang=active_lang,
+            generation_csv_path=cur_result.generation_csv_path,
+            generation_excel_path=cur_result.generation_excel_path,
+            consumption_csv_path=cur_result.consumption_csv_path,
+            consumption_excel_path=cur_result.consumption_excel_path,
         )
 
     except typer.Exit, typer.Abort:

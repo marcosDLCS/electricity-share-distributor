@@ -23,6 +23,10 @@ def render_curate_summary(
     csv_path: Path,
     excel_path: Path | None = None,
     lang: str = "en",
+    generation_csv_path: Path | None = None,
+    generation_excel_path: Path | None = None,
+    consumption_csv_path: Path | None = None,
+    consumption_excel_path: Path | None = None,
 ) -> None:
     """Render a comprehensive, 80-column rich summary of curated data reconciliation."""
     s = dataset.summary
@@ -101,18 +105,21 @@ def render_curate_summary(
     console.print()
 
     # 3. Export Artifacts Panel
-    csv_size = f"{csv_path.stat().st_size / 1024:.1f} KB" if csv_path.exists() else "—"
-
     export_text = Text()
-    export_text.append("📊 CSV:   ", style="bold green")
-    export_text.append(f"{csv_path} ", style="white")
-    export_text.append(f"({csv_size})\n", style="dim")
 
-    if excel_path and excel_path.exists():
-        excel_size = f"{excel_path.stat().st_size / 1024:.1f} KB"
-        export_text.append("📑 Excel: ", style="bold green")
-        export_text.append(f"{excel_path} ", style="white")
-        export_text.append(f"({excel_size})\n", style="dim")
+    def _append_artifact(label: str, path: Path | None, always_show: bool = False) -> None:
+        if path and (path.exists() or always_show):
+            size_str = f"{path.stat().st_size / 1024:.1f} KB" if path.exists() else "—"
+            export_text.append(f"{label:<18}", style="bold green")
+            export_text.append(f"{path} ", style="white")
+            export_text.append(f"({size_str})\n", style="dim")
+
+    _append_artifact("☀️ Gen CSV:", generation_csv_path)
+    _append_artifact("☀️ Gen Excel:", generation_excel_path)
+    _append_artifact("📥 Cons CSV:", consumption_csv_path)
+    _append_artifact("📥 Cons Excel:", consumption_excel_path)
+    _append_artifact("📊 ESD CSV:", csv_path, always_show=True)
+    _append_artifact("📑 ESD Excel:", excel_path)
 
     console.print(
         Panel(

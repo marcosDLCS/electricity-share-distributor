@@ -51,6 +51,17 @@ def test_curation_service_execution(tmp_path: Path) -> None:
     res = CurationService.execute(req)
     assert res.dataset is not None
     assert res.csv_path.exists()
+    assert res.csv_path.name == "esd.csv"
+    assert res.excel_path is not None and res.excel_path.exists()
+    assert res.excel_path.name == "esd.xlsx"
+    assert res.generation_csv_path is not None and res.generation_csv_path.exists()
+    assert res.generation_csv_path.name == "generation.csv"
+    assert res.generation_excel_path is not None and res.generation_excel_path.exists()
+    assert res.generation_excel_path.name == "generation.xlsx"
+    assert res.consumption_csv_path is not None and res.consumption_csv_path.exists()
+    assert res.consumption_csv_path.name == "consumption.csv"
+    assert res.consumption_excel_path is not None and res.consumption_excel_path.exists()
+    assert res.consumption_excel_path.name == "consumption.xlsx"
     assert res.dataset.summary.total_hours > 0
 
 
