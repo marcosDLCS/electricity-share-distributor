@@ -345,3 +345,35 @@ def test_consumption_loader_single_digit_spanish_dates(tmp_path: Path) -> None:
         file_p.write_text("\n".join(lines), encoding="utf-8")
         parsed = loader.parse_file(file_p)
         assert parsed["timestamp"].iloc[0] == expected_ts
+
+
+def test_generation_loader_sanitizes_corrupted_partial_outage_hours(tmp_path: Path) -> None:
+    """Verify corrupted hours where reported PV generation < exported energy are sanitized."""
+    xlsx_file = tmp_path / "Informe_planta_partial_outage.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Informe de plantas_TEST", "", "", "", "", ""])
+    ws.append(
+        [
+            "Período estadístico",
+            "Rendimiento FV (kWh)",
+            "Consumo (kWh)",
+            "Autoconsumo (kWh)",
+            "Energía exportada (kWh)",
+            "Importación (kWh)",
+        ]
+    )
+    # Hour 15:00: partial reconnect where FV (27.84) < Exported (49.74) and Consumo was clamped to 0.0
+    ws.append(["2026-09-01 15:00:00", 27.84, 0.0, 0.0, 49.74, 0.0])
+    # Hour 16:00: normal full hour where FV (56.33) >= Exported (38.69) and Consumo is 17.64
+    ws.append(["2026-09-01 16:00:00", 56.33, 17.64, 17.64, 38.69, 0.0])
+    wb.save(xlsx_file)
+
+    df = HuaweiGenerationLoader.parse_file(xlsx_file)
+    assert len(df) == 2
+    # Corrupted hour 15:00 has generation zeroed and consumption set to NaN
+    assert df["generation_kwh"].iloc[0] == 0.0
+    assert df["consumption_kwh"].isna().iloc[0]
+    # Valid hour 16:00 is preserved intact
+    assert df["generation_kwh"].iloc[1] == 56.33
+    assert df["consumption_kwh"].iloc[1] == 17.64

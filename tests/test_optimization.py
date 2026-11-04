@@ -1084,3 +1084,80 @@ def test_fortnight_optimization_24_periods_and_self_consumption() -> None:
     assert np.isclose(
         opt_result.fortnight_share_self_consumption_rate, (19.8 / 20.0) * 100.0, atol=0.5
     )
+
+
+def test_fortnight_outage_resilience_fallback_to_full_month() -> None:
+    """Verify fortnight with <5 active solar days due to inverter outage falls back to full-month betas."""
+    c1 = "ES0021000000000001AA"
+    c2 = "ES0021000000000002BB"
+    cups_list = [c1, c2]
+
+    dates = pd.date_range("2026-09-01 00:00:00", "2026-09-30 23:00:00", freq="h")
+    timestamps = dates.strftime("%Y-%m-%d %H:%M:%S").tolist()
+
+    c1_vals: list[float] = []
+    c2_vals: list[float] = []
+    gen_vals: list[float] = []
+
+    for dt in dates:
+        if dt.day == 1 and dt.hour == 12:
+            # Single anomalous day in Q1 where C1 had 1 kWh and C2 had 9 kWh
+            c1_vals.append(1.0)
+            c2_vals.append(9.0)
+            gen_vals.append(10.0)
+        elif 2 <= dt.day <= 20:
+            # Inverter telemetry outage for days 2-20 (generation = 0.0)
+            c1_vals.append(8.0)
+            c2_vals.append(2.0)
+            gen_vals.append(0.0)
+        elif dt.day >= 21 and 10 <= dt.hour <= 15:
+            # Normal solar telemetry in Q2 (10 days): C1 consumes 8 kWh, C2 consumes 2 kWh
+            c1_vals.append(8.0)
+            c2_vals.append(2.0)
+            gen_vals.append(10.0)
+        else:
+            c1_vals.append(2.0)
+            c2_vals.append(1.0)
+            gen_vals.append(0.0)
+
+    df = pd.DataFrame(
+        {
+            c1: c1_vals,
+            c2: c2_vals,
+            "generation_kwh": gen_vals,
+        },
+        index=timestamps,
+    )
+    dataset = AlignedDataset(
+        data=df,
+        cups_list=cups_list,
+        metadata=IngestionSummary(
+            cups_count=2,
+            cups_list=cups_list,
+            consumption_files_loaded=2,
+            generation_files_loaded=1,
+            start_time=timestamps[0],
+            end_time=timestamps[-1],
+            total_hours=len(timestamps),
+        ),
+        monthly_groups={"2026-09": df},
+        cups_uses={c1: "Aerotermia", c2: "Piscina"},
+        primary_cups=c1,
+    )
+
+    opt_result = DistributionOptimizer.optimize_dataset(
+        dataset,
+        strategy=OptimizationStrategy.OPTIMAL,
+    )
+    f_09_1 = next(f for f in opt_result.fortnight_results if f.month == "09-1")
+    f_09_2 = next(f for f in opt_result.fortnight_results if f.month == "09-2")
+    m_09 = next(m for m in opt_result.monthly_results if m.month == "09")
+
+    c1_f1 = next(c for c in f_09_1.cups_metrics if c.cups == c1)
+    c1_f2 = next(c for c in f_09_2.cups_metrics if c.cups == c1)
+    c1_m = next(c for c in m_09.cups_metrics if c.cups == c1)
+
+    # Without fallback, 09-1 would have assigned ~10% to C1; with fallback it matches full-month ~79%
+    assert c1_f1.beta == c1_m.beta
+    assert c1_f1.beta >= 0.75
+    assert c1_f2.beta >= 0.75

@@ -809,8 +809,13 @@ class DataCurator:
                 is_reconciled = False
                 final_cons = datadis_cons
 
-                # For primary CUPS: use the canonical inverter consumption reading directly when present
-                if cfg.primary and hw_cons_val is not None:
+                # For primary CUPS: use the canonical inverter consumption reading directly when present,
+                # unless the inverter reading is a zero-dropout while the fiscal meter recorded grid demand.
+                if (
+                    cfg.primary
+                    and hw_cons_val is not None
+                    and (hw_cons_val > 0.0 or datadis_cons <= 0.0)
+                ):
                     final_cons = hw_cons_val
                     if (hw_cons_val - datadis_cons) > 0.001:
                         is_reconciled = True

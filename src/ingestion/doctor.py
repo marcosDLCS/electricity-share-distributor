@@ -344,6 +344,22 @@ class DataDoctor:
             if status != "error":
                 status = "warning"
 
+        # Prolonged inverter telemetry outage check (>=48 consecutive zero-generation hours)
+        if source_type == "generation" and len(df) >= 48:
+            ordered = df.sort_values("timestamp")
+            gen_series = pd.to_numeric(ordered[value_col], errors="coerce").fillna(0.0)
+            is_zero = gen_series <= 0.0
+            run_ids = (~is_zero).cumsum()
+            zero_runs = is_zero.groupby(run_ids).sum()
+            long_outages = zero_runs[zero_runs >= 48]
+            if not long_outages.empty:
+                outage_hours = int(long_outages.sum())
+                notes.append(
+                    f"{len(long_outages)} inverter telemetry outage(s) detected (>=48h zero generation, {outage_hours}h total)."
+                )
+                if status != "error":
+                    status = "warning"
+
         # Timestamps analysis
         ts_clean = df["timestamp"].astype(str)
         dup_count = int(ts_clean.duplicated().sum())

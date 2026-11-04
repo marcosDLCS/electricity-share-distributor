@@ -31,6 +31,30 @@ from src.optimization.models import (
 class DistributionOptimizer:
     """Computes optimal and baseline electricity distribution coefficients (beta_i)."""
 
+    MIN_FORTNIGHT_SOLAR_DAYS: int = 5
+
+    @staticmethod
+    def _count_calendar_days(dfs: list[pd.DataFrame]) -> int:
+        """Count distinct calendar dates across DataFrames."""
+        dates: set[object] = set()
+        for df in dfs:
+            if not df.empty:
+                dates.update(pd.to_datetime(df.index).date)
+        return len(dates)
+
+    @staticmethod
+    def _count_active_solar_days(dfs: list[pd.DataFrame]) -> int:
+        """Count distinct calendar dates across DataFrames with active solar generation."""
+        active_dates: set[object] = set()
+        for df in dfs:
+            if df.empty or "generation_kwh" not in df.columns:
+                continue
+            sun_mask = df["generation_kwh"].values > 1e-4
+            if np.any(sun_mask):
+                sun_dates = pd.to_datetime(df.index[sun_mask]).date
+                active_dates.update(sun_dates)
+        return len(active_dates)
+
     @staticmethod
     def _solve_optimal_betas(
         consumption: np.ndarray,
@@ -322,19 +346,23 @@ class DistributionOptimizer:
         precision: int = 0,
         cups_uses: dict[str, str] | None = None,
         constraints: BylawConstraints | None = None,
+        override_betas: np.ndarray | None = None,
     ) -> CommunityMonthlyMetrics:
         """Evaluate and compute self-consumption metrics for a single month."""
         consumption = df_month[cups_list].values
         generation = df_month["generation_kwh"].values
 
-        betas = cls.calculate_betas(
-            consumption,
-            generation,
-            strategy=strategy,
-            precision=precision,
-            cups_list=cups_list,
-            constraints=constraints,
-        )
+        if override_betas is not None and len(override_betas) == len(cups_list):
+            betas = override_betas
+        else:
+            betas = cls.calculate_betas(
+                consumption,
+                generation,
+                strategy=strategy,
+                precision=precision,
+                cups_list=cups_list,
+                constraints=constraints,
+            )
 
         # Vectorized hourly energy balance:
         # allocated_gen shape: (T, N)
@@ -582,23 +610,31 @@ class DistributionOptimizer:
 
         for m in range(1, 13):
             m_str = f"{m:02d}"
+            month_dfs: list[pd.DataFrame] = []
+            for ym, group_df in aligned_dataset.monthly_groups.items():
+                try:
+                    parts = ym.split("-")
+                    y_val, m_val = int(parts[0]), int(parts[1])
+                    if m_val == m:
+                        if require_full_month and not cls.is_complete_month(group_df, y_val, m):
+                            continue
+                        if not group_df.empty:
+                            month_dfs.append(group_df)
+                except ValueError, IndexError:
+                    continue
+
+            month_solar_days = cls._count_active_solar_days(month_dfs)
+            month_fallback_betas: np.ndarray | None = None
+
             for f in (1, 2):
                 period_str = f"{m_str}-{f}"
                 fortnight_dfs: list[pd.DataFrame] = []
 
-                for ym, group_df in aligned_dataset.monthly_groups.items():
-                    try:
-                        parts = ym.split("-")
-                        y_val, m_val = int(parts[0]), int(parts[1])
-                        if m_val == m:
-                            if require_full_month and not cls.is_complete_month(group_df, y_val, m):
-                                continue
-                            ts_days = pd.to_datetime(group_df.index).day
-                            f_df = group_df[ts_days <= 15] if f == 1 else group_df[ts_days >= 16]
-                            if not f_df.empty:
-                                fortnight_dfs.append(f_df)
-                    except ValueError, IndexError:
-                        continue
+                for group_df in month_dfs:
+                    ts_days = pd.to_datetime(group_df.index).day
+                    f_df = group_df[ts_days <= 15] if f == 1 else group_df[ts_days >= 16]
+                    if not f_df.empty:
+                        fortnight_dfs.append(f_df)
 
                 if not fortnight_dfs:
                     fortnight_results.append(
@@ -621,7 +657,32 @@ class DistributionOptimizer:
                             solar_hours_count=0,
                         )
                     )
-                elif len(fortnight_dfs) == 1:
+                    continue
+
+                # Resilient fallback: if a multi-day fortnight has fewer than MIN_FORTNIGHT_SOLAR_DAYS
+                # active solar days (e.g. due to an inverter telemetry outage) and the full
+                # calendar month has broader solar coverage, derive betas from the full month.
+                override_betas: np.ndarray | None = None
+                fortnight_total_days = cls._count_calendar_days(fortnight_dfs)
+                fortnight_solar_days = cls._count_active_solar_days(fortnight_dfs)
+                if (
+                    fortnight_total_days >= cls.MIN_FORTNIGHT_SOLAR_DAYS
+                    and fortnight_solar_days < cls.MIN_FORTNIGHT_SOLAR_DAYS
+                    and month_solar_days > fortnight_solar_days
+                ):
+                    if month_fallback_betas is None:
+                        pooled_month_df = pd.concat(month_dfs)
+                        month_fallback_betas = cls.calculate_betas(
+                            pooled_month_df[cups_list].values,
+                            pooled_month_df["generation_kwh"].values,
+                            strategy=strategy,
+                            precision=precision,
+                            cups_list=cups_list,
+                            constraints=constraints,
+                        )
+                    override_betas = month_fallback_betas
+
+                if len(fortnight_dfs) == 1:
                     res = cls.evaluate_month(
                         fortnight_dfs[0],
                         cups_list=cups_list,
@@ -630,6 +691,7 @@ class DistributionOptimizer:
                         precision=precision,
                         cups_uses=effective_uses,
                         constraints=constraints,
+                        override_betas=override_betas,
                     )
                     res.has_data = True
                     fortnight_results.append(res)
@@ -644,6 +706,7 @@ class DistributionOptimizer:
                         precision=precision,
                         cups_uses=effective_uses,
                         constraints=constraints,
+                        override_betas=override_betas,
                     )
                     res.total_generation_kwh /= k
                     res.total_consumption_kwh /= k

@@ -275,3 +275,39 @@ def test_cli_doctor_custom_flags(tmp_path: Path) -> None:
     )
     assert res.exit_code == 0
     assert "ESD DATA DOCTOR DIAGNOSTIC REPORT" in res.output
+
+
+def test_doctor_detects_prolonged_inverter_telemetry_outage(tmp_path: Path) -> None:
+    """Verify DataDoctor flags a warning when generation has >=48 consecutive zero-generation hours."""
+    c_dir = tmp_path / "consumption"
+    g_dir = tmp_path / "generation"
+    c_dir.mkdir()
+    g_dir.mkdir()
+
+    dates = pd.date_range("2026-09-01 00:00:00", "2026-09-04 23:00:00", freq="h")
+    c_rows = []
+    for dt in dates:
+        datadis_hour = f"{dt.hour + 1:02d}:00"
+        c_rows.append(
+            f"ES0021000000000001AA;{dt.strftime('%Y/%m/%d')};{datadis_hour};1,000;IBERDROLA;R"
+        )
+    (c_dir / "cups.csv").write_text(
+        "CUPS;Fecha;Hora;Consumo_kWh;Metodo;Tipo\n" + "\n".join(c_rows),
+        encoding="utf-8",
+    )
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Informe de plantas", "", ""])
+    ws.append(["Período estadístico", "Rendimiento FV (kWh)", "Rendimiento del inversor (kWh)"])
+    for dt in dates:
+        # Day 1 has solar at 12:00, Days 2-4 (72 hours) are completely offline (None)
+        gen_val = 25.0 if (dt.day == 1 and dt.hour == 12) else None
+        ws.append([dt.strftime("%Y-%m-%d %H:%M:%S"), gen_val, gen_val])
+    wb.save(g_dir / "gen.xlsx")
+
+    doc = DataDoctor(consumption_dir=c_dir, generation_dir=g_dir, weather_dir=None)
+    report = doc.diagnose()
+    assert report.generation_result is not None
+    assert report.generation_result.status == "warning"
+    assert any("inverter telemetry outage" in n for n in report.generation_result.notes)

@@ -103,8 +103,12 @@ Para el suministro principal de la instalación, `esd` adopta siempre el mayor c
 
 `esd` incorpora varias reglas prácticas para que los resultados sean fiables y aptos para su presentación oficial ante la distribuidora:
 
-### 1. Detección Inteligente de Falsos Ceros y Adopción del Mayor Consumo Real
-En el suministro principal, el contador del inversor mide la carga física real de la maquinaria. En horas con radiación solar, el autoconsumo detrás del contador provoca que la lectura de red de la distribuidora (DATADIS) marque cero o valores artificialmente bajos. Para capturar el consumo completo y proteger frente a caídas temporales de sensores, `esd` adopta siempre $\max(C_{\text{DATADIS}}, C_{\text{inversor}})$, recuperando el consumo oculto y contabilizando los kWh reales.
+### 1. Detección de Falsos Ceros y Resiliencia ante Caídas de Telemetría
+En el suministro principal, el contador del inversor mide la carga física real de la maquinaria. En horas con radiación solar, el autoconsumo detrás del contador provoca que la lectura de red de la distribuidora (DATADIS) marque cero o valores artificialmente bajos. Para capturar el consumo completo y proteger los cálculos frente a caídas de comunicación del inversor:
+- **Saneamiento de Caídas Parciales:** Si el sensor de producción FV del inversor pierde conexión a mitad de hora mientras el contador de red sigue registrando exportación ($G_{\text{FV}} < E_{\text{exportada}}$), la generación parcial corrupta y el falso cero de consumo del inversor se sanean automáticamente para no distorsionar la programación lineal.
+- **Protección contra Ceros por Caída de Sensor:** Al reconciliar el suministro principal, `esd` nunca sobrescribe una lectura fiscal positiva de DATADIS con una lectura cero del inversor provocada por una caída de telemetría.
+- **Respaldo Mensual en Quincenas con Apagón de Telemetría (`MIN_FORTNIGHT_SOLAR_DAYS = 5`):** Si una quincena (`01-1`..`12-2`) cuenta con menos de 5 días solares activos debido a una desconexión prolongada del inversor, `esd` adopta automáticamente los coeficientes óptimos $\beta_i$ del mes completo en lugar de sobreajustar el reparto a un único día parcial.
+- **Auditoría Previa de Apagones (`esd doctor`):** Emite una advertencia diagnóstica automática cuando la serie de generación presenta $\ge 48$ horas consecutivas con producción solar cero.
 
 ### 2. Calendario Previsional de Futuro (Enero a Diciembre)
 Las comunidades no firman acuerdos para repartir energía en el pasado; necesitan un acuerdo para el **año operativo que entra**. Por ello, `esd` siempre estructura sus propuestas como una matriz anual limpia de enero a diciembre.

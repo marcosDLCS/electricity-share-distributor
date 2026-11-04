@@ -129,31 +129,59 @@ class HuaweiGenerationLoader:
         timestamps = clean_df[ts_col].astype(str).str.replace(" DST", "", regex=False).str.strip()
 
         # Parse generation values
-        gen_values = pd.to_numeric(clean_df[gen_col], errors="coerce").fillna(0.0)
+        gen_values = pd.to_numeric(
+            clean_df[gen_col].astype(str).str.replace(",", "."), errors="coerce"
+        ).fillna(0.0)
+
+        cons_values = (
+            pd.to_numeric(clean_df[cons_col].astype(str).str.replace(",", "."), errors="coerce")
+            if cons_col
+            else None
+        )
+        self_cons_values = (
+            pd.to_numeric(
+                clean_df[self_cons_col].astype(str).str.replace(",", "."), errors="coerce"
+            ).fillna(0.0)
+            if self_cons_col
+            else None
+        )
+        exp_values = (
+            pd.to_numeric(
+                clean_df[exp_col].astype(str).str.replace(",", "."), errors="coerce"
+            ).fillna(0.0)
+            if exp_col
+            else None
+        )
+        imp_values = (
+            pd.to_numeric(
+                clean_df[imp_col].astype(str).str.replace(",", "."), errors="coerce"
+            ).fillna(0.0)
+            if imp_col
+            else None
+        )
+
+        # Sanitize corrupted partial-outage telemetry hours where reported PV generation
+        # is physically less than exported energy (inverter yield dropout mid-hour).
+        if exp_values is not None:
+            corrupted_mask = (gen_values + 1e-4) < exp_values
+            if corrupted_mask.any():
+                gen_values = gen_values.mask(corrupted_mask, 0.0)
+                if cons_values is not None:
+                    cons_values = cons_values.mask(corrupted_mask, float("nan"))
+                if self_cons_values is not None:
+                    self_cons_values = self_cons_values.mask(corrupted_mask, 0.0)
 
         data_dict: dict[str, object] = {
             "timestamp": timestamps,
             "generation_kwh": gen_values,
         }
-        if cons_col:
-            cons_values = pd.to_numeric(
-                clean_df[cons_col].astype(str).str.replace(",", "."), errors="coerce"
-            )
+        if cons_values is not None:
             data_dict["consumption_kwh"] = cons_values
-        if self_cons_col:
-            self_cons_values = pd.to_numeric(
-                clean_df[self_cons_col].astype(str).str.replace(",", "."), errors="coerce"
-            ).fillna(0.0)
+        if self_cons_values is not None:
             data_dict["self_consumption_kwh"] = self_cons_values
-        if exp_col:
-            exp_values = pd.to_numeric(
-                clean_df[exp_col].astype(str).str.replace(",", "."), errors="coerce"
-            ).fillna(0.0)
+        if exp_values is not None:
             data_dict["exported_energy_kwh"] = exp_values
-        if imp_col:
-            imp_values = pd.to_numeric(
-                clean_df[imp_col].astype(str).str.replace(",", "."), errors="coerce"
-            ).fillna(0.0)
+        if imp_values is not None:
             data_dict["imported_energy_kwh"] = imp_values
 
         result_df = pd.DataFrame(data_dict)

@@ -103,8 +103,12 @@ For the primary installation point, `esd` always adopts the higher consumption b
 
 `esd` incorporates several practical rules to make community calculations robust and DSO-compliant:
 
-### 1. Behind-the-Meter Fake Zero Detection & Maximum Load Adoption
-For the community supply designated as primary, the solar inverter's smart power meter measures the total actual load demanded by the equipment. During solar generation hours, self-consumption behind the meter causes utility grid import readings (DATADIS) to drop to zero or artificially low levels. To capture the full true facility consumption while preventing measurement dropouts, `esd` always adopts $\max(C_{\text{DATADIS}}, C_{\text{inverter}})$, restoring the true load and recording the exact kWh recovered.
+### 1. Behind-the-Meter Fake Zero Detection & Telemetry Outage Resilience
+For the community supply designated as primary, the solar inverter's smart power meter measures the total actual load demanded by the equipment. During solar generation hours, self-consumption behind the meter causes utility grid import readings (DATADIS) to drop to zero or artificially low levels. To capture the full true facility consumption while protecting against inverter communication dropouts:
+- **Partial-Outage Sanitization:** If the inverter's PV yield sensor drops out mid-hour while the grid meter continues recording export ($G_{\text{FV}} < E_{\text{exported}}$), the corrupted partial-hour generation and false-zero inverter consumption are automatically sanitized so they do not skew linear programming optimization.
+- **Zero-Dropout Guard:** When reconciling the primary supply point, `esd` never overwrites a positive fiscal DATADIS grid reading with a zero inverter reading caused by a sensor dropout.
+- **Fortnight Outage Fallback (`MIN_FORTNIGHT_SOLAR_DAYS = 5`):** If a multi-day calendar fortnight (`01-1`..`12-2`) has fewer than 5 active solar days due to a prolonged inverter logger outage, `esd` automatically falls back to the full calendar month's optimal $\beta_i$ coefficients rather than overfitting to a single partial day.
+- **Pre-Flight Outage Audit (`esd doctor`):** Automatically flags a diagnostic warning whenever generation series contain $\ge 48$ consecutive hours of zero solar production.
 
 ### 2. Forward-Looking Calendar Schedule (January to December)
 Communities don't sign regulatory agreements to distribute energy in the past; they need a distribution schedule for an **upcoming operating year**. `esd` always structures its results as a clean 12-month calendar matrix running from January through December.
