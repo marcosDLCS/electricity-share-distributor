@@ -378,6 +378,91 @@ class ReportExporter:
         df.to_csv(file_path, index=False, sep=self.delimiter, decimal=self.decimal_char)
         return file_path
 
+    def export_fortnight_shares_csv(
+        self,
+        opt_result: OptimizationResult,
+        precision: int | None = None,
+        timestamp: str | None = None,
+    ) -> Path:
+        """Export fortnight (half-month) distribution shares and energy balance per CUPS as CSV."""
+        from src.config import get_precision
+
+        prec = get_precision() if precision is None else precision
+        ts = timestamp or self.timestamp
+        file_path = self.output_dir / f"{ts}_esd_fortnight_shares.csv"
+
+        rows: list[dict[str, object]] = []
+        source_results = (
+            opt_result.fortnight_results
+            if opt_result.fortnight_results
+            else opt_result.monthly_results
+        )
+        for f_res in source_results:
+            if not f_res.has_data:
+                continue
+            raw_period = str(f_res.month)
+            if "-" in raw_period:
+                parts = raw_period.split("-")
+                if len(parts) == 2 and len(parts[0]) == 2:
+                    month_val = parts[0]
+                    try:
+                        fortnight_val: int | str = int(parts[1].lstrip("Ff"))
+                    except ValueError:
+                        fortnight_val = parts[1]
+                elif len(parts) >= 3:
+                    month_val = f"{parts[0]}-{parts[1]}"
+                    try:
+                        fortnight_val = int(parts[2].lstrip("Ff"))
+                    except ValueError:
+                        fortnight_val = parts[2]
+                else:
+                    month_val = raw_period
+                    fortnight_val = 1
+            else:
+                month_val = raw_period
+                fortnight_val = 1
+
+            for c in f_res.cups_metrics:
+                use_val = c.use or opt_result.cups_uses.get(c.cups, "")
+                rows.append(
+                    {
+                        "month": month_val,
+                        "fortnight": fortnight_val,
+                        "cups": c.cups,
+                        "use": sanitize_formula_injection(use_val),
+                        "consumption_kwh": round(c.consumption_kwh, 2),
+                        "generation_kwh": round(f_res.total_generation_kwh, 2),
+                        "share_pct": f"{c.beta * 100:.{prec}f}%".replace(".", self.decimal_char),
+                        "self_consumed_kwh": round(c.self_consumed_kwh, 2),
+                        "surplus_kwh": round(c.surplus_kwh, 2),
+                        "grid_demand_kwh": round(c.grid_demand_kwh, 2),
+                    }
+                )
+
+        columns = [
+            "month",
+            "fortnight",
+            "cups",
+            "use",
+            "consumption_kwh",
+            "generation_kwh",
+            "share_pct",
+            "self_consumed_kwh",
+            "surplus_kwh",
+            "grid_demand_kwh",
+        ]
+        df = pd.DataFrame(rows, columns=columns)
+        if not df.empty:
+            sort_cols = [col for col in ["month", "fortnight", "use", "cups"] if col in df.columns]
+            df = df.sort_values(
+                by=sort_cols,
+                key=lambda col: col.astype(str).str.lower() if col.name in ("use", "cups") else col,
+                ascending=[True] * len(sort_cols),
+            ).reset_index(drop=True)
+
+        df.to_csv(file_path, index=False, sep=self.delimiter, decimal=self.decimal_char)
+        return file_path
+
     def export_hourly_shares_csv(
         self,
         opt_result: OptimizationResult,
@@ -429,6 +514,19 @@ class ReportExporter:
 
         if fmt in ("all", "csv"):
             exported.append(self.export_monthly_shares_csv(opt_result, precision=precision))
+            if not opt_result.fortnight_results and aligned_dataset is not None:
+                from src.optimization.engine import DistributionOptimizer
+                from src.optimization.models import OptimizationStrategy
+
+                opt_result.fortnight_results = DistributionOptimizer._evaluate_calendar_fortnights(
+                    aligned_dataset=aligned_dataset,
+                    cups_list=aligned_dataset.cups_list,
+                    strategy=OptimizationStrategy(opt_result.strategy),
+                    precision=precision or 0,
+                    cups_uses=opt_result.cups_uses,
+                    constraints=opt_result.constraints,
+                )
+            exported.append(self.export_fortnight_shares_csv(opt_result, precision=precision))
             if opt_result.hourly_result is None and aligned_dataset is not None:
                 from src.optimization.engine import DistributionOptimizer
                 from src.optimization.models import OptimizationStrategy

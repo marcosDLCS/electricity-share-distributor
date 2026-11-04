@@ -106,7 +106,10 @@ class DataDoctor:
         try:
             from src.curation.curator import DataCurator
 
-            curator = DataCurator(cups_config_path=self.cups_config_path)
+            curator = DataCurator(
+                consumption_dir=self.consumption_dir,
+                cups_config_path=self.cups_config_path,
+            )
             cups_configs = curator.load_cups_config()
         except Exception:
             cups_configs = {}

@@ -106,11 +106,52 @@ def create_dummy_optimization_result() -> tuple[OptimizationResult, IngestionSum
             }
         )
 
+    f1_c1 = CupsMonthlyMetrics(
+        cups="ES0021000000000001AA",
+        use="Aerotermia",
+        month="05-1",
+        beta=0.6,
+        consumption_kwh=250.0,
+        generation_allocated_kwh=300.0,
+        self_consumed_kwh=240.0,
+        surplus_kwh=60.0,
+        grid_demand_kwh=10.0,
+        self_consumption_rate=80.0,
+        solar_coverage_rate=96.0,
+    )
+    f1_c2 = CupsMonthlyMetrics(
+        cups="ES0021000000000002BB",
+        use="Garaje",
+        month="05-1",
+        beta=0.4,
+        consumption_kwh=150.0,
+        generation_allocated_kwh=200.0,
+        self_consumed_kwh=135.0,
+        surplus_kwh=65.0,
+        grid_demand_kwh=15.0,
+        self_consumption_rate=67.5,
+        solar_coverage_rate=90.0,
+    )
+    f1 = CommunityMonthlyMetrics(
+        month="05-1",
+        strategy=OptimizationStrategy.OPTIMAL,
+        total_generation_kwh=500.0,
+        total_consumption_kwh=400.0,
+        total_self_consumed_kwh=375.0,
+        total_surplus_kwh=125.0,
+        total_grid_demand_kwh=25.0,
+        self_consumption_rate=75.0,
+        solar_coverage_rate=93.75,
+        beta_sum=1.0,
+        cups_metrics=[f1_c1, f1_c2],
+    )
+
     result = OptimizationResult(
         strategy=OptimizationStrategy.OPTIMAL,
         monthly_results=[m1],
         total_summary=m1,
         baselines={},
+        fortnight_results=[f1],
         hourly_result=HourlyOptimizationResult(
             profile_matrix=profile_matrix,
             time_series_df=pd.DataFrame(ts_rows),
@@ -118,6 +159,7 @@ def create_dummy_optimization_result() -> tuple[OptimizationResult, IngestionSum
         cups_uses={"ES0021000000000001AA": "Aerotermia", "ES0021000000000002BB": "Garaje"},
         current_self_consumed_kwh=480.0,
         monthly_share_self_consumed_kwh=750.0,
+        fortnight_share_self_consumed_kwh=780.0,
         hourly_share_self_consumed_kwh=820.0,
     )
 
@@ -173,15 +215,55 @@ def test_export_monthly_shares_csv(tmp_path: Path) -> None:
     assert df.iloc[1]["grid_demand_kwh"] == 30.0
 
 
+def test_export_fortnight_shares_csv(tmp_path: Path) -> None:
+    opt_result, _ = create_dummy_optimization_result()
+    csv_path = ReportExporter(
+        output_dir=tmp_path, timestamp="20260531_120000"
+    ).export_fortnight_shares_csv(opt_result, precision=1)
+    assert csv_path.exists()
+    assert csv_path.name == "20260531_120000_esd_fortnight_shares.csv"
+
+    df = pd.read_csv(csv_path, sep=";", decimal=",", dtype={"month": str, "fortnight": str})
+    assert len(df) == 2
+    expected_cols = [
+        "month",
+        "fortnight",
+        "cups",
+        "use",
+        "consumption_kwh",
+        "generation_kwh",
+        "share_pct",
+        "self_consumed_kwh",
+        "surplus_kwh",
+        "grid_demand_kwh",
+    ]
+    assert list(df.columns) == expected_cols
+    assert df.iloc[0]["month"] == "05"
+    assert df.iloc[0]["fortnight"] == "1"
+    assert df.iloc[0]["use"] == "Aerotermia"
+    assert df.iloc[0]["share_pct"] == "60,0%"
+    assert df.iloc[0]["consumption_kwh"] == 250.0
+    assert df.iloc[0]["generation_kwh"] == 500.0
+    assert df.iloc[0]["self_consumed_kwh"] == 240.0
+    assert df.iloc[0]["surplus_kwh"] == 60.0
+    assert df.iloc[0]["grid_demand_kwh"] == 10.0
+
+    assert df.iloc[1]["month"] == "05"
+    assert df.iloc[1]["fortnight"] == "1"
+    assert df.iloc[1]["use"] == "Garaje"
+    assert df.iloc[1]["share_pct"] == "40,0%"
+
+
 def test_export_all_filtering(tmp_path: Path) -> None:
     opt_result, meta = create_dummy_optimization_result()
 
-    # CSV exports monthly_shares and hourly_shares
+    # CSV exports monthly_shares, fortnight_shares, and hourly_shares
     paths_csv = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="csv")
-    assert len(paths_csv) == 2
+    assert len(paths_csv) == 3
     assert all(p.suffix == ".csv" for p in paths_csv)
     file_names = [p.name for p in paths_csv]
     assert any("_esd_monthly_shares.csv" in n for n in file_names)
+    assert any("_esd_fortnight_shares.csv" in n for n in file_names)
     assert any("_esd_hourly_shares.csv" in n for n in file_names)
 
     # HTML exports interactive_report.html
@@ -189,9 +271,9 @@ def test_export_all_filtering(tmp_path: Path) -> None:
     assert len(paths_html) == 1
     assert paths_html[0].name.endswith("_esd_interactive_report.html")
 
-    # All exports monthly_shares, hourly_shares, and interactive_report
+    # All exports monthly_shares, fortnight_shares, hourly_shares, and interactive_report
     paths_all = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="all")
-    assert len(paths_all) == 3
+    assert len(paths_all) == 4
 
     # None / table
     paths_none = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="table")
@@ -266,11 +348,12 @@ def test_export_hourly_files(tmp_path: Path) -> None:
     assert "Aerotermia" in lines[1]
     assert "Portal 1" in lines[2]
 
-    # export_all with formats='csv' should export 2 CSVs (monthly_shares and hourly_shares)
+    # export_all with formats='csv' should export 3 CSVs (monthly_shares, fortnight_shares, and hourly_shares)
     exported = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="csv")
-    assert len(exported) == 2
+    assert len(exported) == 3
     file_names = [p.name for p in exported]
     assert any("_esd_monthly_shares.csv" in n for n in file_names)
+    assert any("_esd_fortnight_shares.csv" in n for n in file_names)
     assert any("_esd_hourly_shares.csv" in n for n in file_names)
 
 
@@ -314,7 +397,7 @@ def test_export_csvs_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
     csv_paths = ReportExporter(output_dir=tmp_path).export_all(
         opt_result, meta, formats="csv", precision=2
     )
-    assert len(csv_paths) == 2
+    assert len(csv_paths) == 3
 
     for p in csv_paths:
         text = p.read_text(encoding="utf-8")
@@ -356,7 +439,7 @@ def test_report_exporter_class(tmp_path: Path) -> None:
 
     # Test all exports via ReportExporter instance
     exported = exporter.export_all(opt_result, meta, formats="all", precision=1)
-    assert len(exported) == 3
+    assert len(exported) == 4
     for p in exported:
         assert p.exists()
         assert p.parent == out_dir

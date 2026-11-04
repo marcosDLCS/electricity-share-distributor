@@ -96,154 +96,60 @@ def test_cli_init_clears_output(tmp_path) -> None:
     assert not [p for p in out_dir.iterdir() if not p.name.startswith(".")]
 
 
-def test_cli_calculate_default() -> None:
-    result = runner.invoke(app, ["calculate", "--lang", "en", "--format", "none"])
+def test_cli_calculate_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure parameterless 'esd calculate' computes monthly, fortnight, and hourly shares and exports all reports."""
+    from src.config import AppConfig
+
+    out_dir = tmp_path / "out"
+    cfg = AppConfig(output_dir=str(out_dir), language="en", share_precision=0)
+    monkeypatch.setattr("src.cli.load_config", lambda: cfg)
+
+    result = runner.invoke(app, ["calculate"])
     assert result.exit_code == 0
     assert "COLLECTIVE SELF-CONSUMPTION COMMUNITY SUMMARY" in result.output
+    assert "Fortnight Share" in result.output
+    assert "Month-by-Month Community Energy Trajectory" in result.output
+    assert "Distribution Share" in result.output
     assert "CUPS" in result.output
-    assert "Monthly Coefficient Proposals" not in result.output
 
-
-def test_cli_calculate_month_filter() -> None:
-    result = runner.invoke(
-        app, ["calculate", "-y", "2026", "-m", "5", "--format", "none", "--lang", "en"]
-    )
-    assert result.exit_code == 0
-    assert "2026-05" in result.output
-    assert "Monthly Coefficient Proposals" not in result.output
-
-
-def test_cli_calculate_views() -> None:
-    # Test coefficients view
-    result_coeff = runner.invoke(
-        app,
-        [
-            "calculate",
-            "-y",
-            "2026",
-            "-m",
-            "5",
-            "--view",
-            "coefficients",
-            "--format",
-            "none",
-            "--lang",
-            "en",
-        ],
-    )
-    assert result_coeff.exit_code == 0
-    assert "Monthly Coefficient Proposals" in result_coeff.output
-    assert "Beta" in result_coeff.output
-
-    # Test trajectory view
-    result_traj = runner.invoke(
-        app,
-        [
-            "calculate",
-            "-y",
-            "2026",
-            "-m",
-            "5",
-            "--view",
-            "trajectory",
-            "--format",
-            "none",
-            "--lang",
-            "en",
-        ],
-    )
-    assert result_traj.exit_code == 0
-    assert "Month-by-Month Community Energy Trajectory" in result_traj.output
-
-    # Test matrix view
-    result_matrix = runner.invoke(
-        app,
-        [
-            "calculate",
-            "-y",
-            "2026",
-            "-m",
-            "5",
-            "--view",
-            "matrix",
-            "--format",
-            "none",
-            "--lang",
-            "en",
-        ],
-    )
-    assert result_matrix.exit_code == 0
-    assert "Distribution Share" in result_matrix.output
-    assert "TOTAL" in result_matrix.output
-    assert "RD 244/2019" in result_matrix.output
-
-    # Test summary view
-    result_sum = runner.invoke(
-        app,
-        [
-            "calculate",
-            "-y",
-            "2026",
-            "-m",
-            "5",
-            "--view",
-            "summary",
-            "--format",
-            "none",
-            "--lang",
-            "en",
-        ],
-    )
-    assert result_sum.exit_code == 0
-    assert "COLLECTIVE SELF-CONSUMPTION COMMUNITY SUMMARY" in result_sum.output
-    assert "Distribution Share" in result_sum.output
-
-
-def test_cli_calculate_strategies() -> None:
-    for strat in ["optimal", "consumption_share", "equal"]:
-        res = runner.invoke(
-            app, ["calculate", "-y", "2026", "-m", "5", "--strategy", strat, "--format", "none"]
-        )
-        assert res.exit_code == 0
-
-
-def test_cli_calculate_export_formats(tmp_path) -> None:
-    out_dir = tmp_path / "out"
-    res = runner.invoke(
-        app,
-        [
-            "calculate",
-            "-y",
-            "2026",
-            "-m",
-            "5",
-            "--format",
-            "all",
-            "--output-dir",
-            str(out_dir),
-            "--lang",
-            "en",
-        ],
-    )
-    assert res.exit_code == 0
     csv_files = list(out_dir.glob("*.csv"))
     html_files = list(out_dir.glob("*.html"))
-    json_files = list(out_dir.glob("*.json"))
-    md_files = list(out_dir.glob("*.md"))
-    # Two CSVs exported (monthly_shares and hourly_shares) plus one interactive HTML report
-    assert len(csv_files) == 2
+    assert len(csv_files) == 3
     assert len(html_files) == 1
-    assert len(json_files) == 0
-    assert len(md_files) == 0
     csv_names = [f.name for f in csv_files]
     assert any("_esd_monthly_shares.csv" in n for n in csv_names)
+    assert any("_esd_fortnight_shares.csv" in n for n in csv_names)
     assert any("_esd_hourly_shares.csv" in n for n in csv_names)
     assert html_files[0].name.endswith("_esd_interactive_report.html")
 
 
-def test_cli_calculate_missing_directory(tmp_path) -> None:
+def test_cli_calculate_rejects_modifiers() -> None:
+    """Ensure 'esd calculate' does not accept any command-line modifiers."""
+    for flag_args in [
+        ["calculate", "--hourly"],
+        ["calculate", "--view", "summary"],
+        ["calculate", "--format", "csv"],
+        ["calculate", "--strategy", "equal"],
+        ["calculate", "--year", "2026"],
+        ["calculate", "--precision", "2"],
+        ["calculate", "--lang", "es"],
+    ]:
+        res = runner.invoke(app, flag_args)
+        assert res.exit_code != 0
+
+
+def test_cli_calculate_missing_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.config import AppConfig
+
     empty_dir = tmp_path / "nonexistent"
-    res = runner.invoke(app, ["calculate", "--consumption-dir", str(empty_dir)])
+    cfg = AppConfig(
+        consumption_dir=str(empty_dir),
+        generation_dir=str(empty_dir),
+        curated_dir=str(empty_dir),
+        output_dir=str(tmp_path / "out"),
+    )
+    monkeypatch.setattr("src.cli.load_config", lambda: cfg)
+    res = runner.invoke(app, ["calculate"])
     assert res.exit_code != 0
 
 
@@ -278,61 +184,32 @@ def test_cli_config_modify_precision() -> None:
     assert res_reset.exit_code == 0
 
 
-def test_cli_calculate_precision_flag() -> None:
-    res0 = runner.invoke(
-        app,
-        [
-            "calculate",
-            "-y",
-            "2026",
-            "-m",
-            "5",
-            "--precision",
-            "0",
-            "--view",
-            "coefficients",
-            "--format",
-            "none",
-            "--lang",
-            "en",
-        ],
-    )
-    assert res0.exit_code == 0
+def test_cli_cleanup_force(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure cleanup --force removes files from .output, .curated, and .input/weather."""
+    from src.config import AppConfig
 
-    res2 = runner.invoke(
-        app,
-        [
-            "calculate",
-            "-y",
-            "2026",
-            "-m",
-            "5",
-            "--precision",
-            "2",
-            "--view",
-            "coefficients",
-            "--format",
-            "none",
-            "--lang",
-            "en",
-        ],
-    )
-    assert res2.exit_code == 0
-
-    res_inv = runner.invoke(app, ["calculate", "--precision", "9"])
-    assert res_inv.exit_code != 0
-    assert "Invalid share precision" in res_inv.output
-
-
-def test_cli_cleanup_force(tmp_path) -> None:
-    # Create fake files in dummy output dir
     dummy_out = tmp_path / "dummy_out"
+    dummy_cur = tmp_path / "dummy_curated"
+    dummy_wth = tmp_path / "dummy_weather"
     dummy_out.mkdir()
-    (dummy_out / "test.csv").write_text("dummy")
+    dummy_cur.mkdir()
+    dummy_wth.mkdir()
+    (dummy_out / "test_out.csv").write_text("dummy")
+    (dummy_cur / "esd.csv").write_text("dummy")
+    (dummy_wth / "2026_weather.csv").write_text("dummy")
 
-    # Override config or pass custom
+    cfg = AppConfig(
+        output_dir=str(dummy_out),
+        curated_dir=str(dummy_cur),
+        weather_dir=str(dummy_wth),
+    )
+    monkeypatch.setattr("src.cli.load_config", lambda: cfg)
+
     res = runner.invoke(app, ["cleanup", "--force"])
     assert res.exit_code == 0
+    assert not (dummy_out / "test_out.csv").exists()
+    assert not (dummy_cur / "esd.csv").exists()
+    assert not (dummy_wth / "2026_weather.csv").exists()
 
 
 def test_cli_init_interactive_prompts() -> None:
@@ -362,26 +239,18 @@ def test_cli_init_interactive_prompts_defaults() -> None:
     assert get_precision() == 0
 
 
-def test_cli_calculate_spanish() -> None:
-    """Ensure calculate outputs Spanish console view when --lang es is passed."""
-    result = runner.invoke(
-        app,
-        [
-            "calculate",
-            "-y",
-            "2026",
-            "-m",
-            "5",
-            "--lang",
-            "es",
-            "--format",
-            "none",
-            "--view",
-            "summary",
-        ],
-    )
+def test_cli_calculate_spanish(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure calculate outputs Spanish console view when configured language is 'es'."""
+    from src.config import AppConfig
+
+    out_dir = tmp_path / "out_es"
+    cfg = AppConfig(output_dir=str(out_dir), language="es", share_precision=0)
+    monkeypatch.setattr("src.cli.load_config", lambda: cfg)
+
+    result = runner.invoke(app, ["calculate"])
     assert result.exit_code == 0
     assert "RESUMEN DE LA COMUNIDAD DE AUTOCONSUMO COLECTIVO" in result.output
+    assert "Reparto Quincenal" in result.output
     assert "Trayectoria Energética Mensual" in result.output
     assert "Comparativa de Eficiencia según Estrategia de Reparto" not in result.output
     assert "Propuesta de Coeficientes Mensuales" not in result.output
@@ -396,76 +265,9 @@ def test_cli_doctor_spanish() -> None:
     assert "Estado de Datos de Consumo" in result.output
 
 
-def test_cli_calculate_hourly_flag() -> None:
-    """Ensure calculate --hourly performs calculation without dumping the diurnal profile in console."""
-    result = runner.invoke(
-        app,
-        ["calculate", "-y", "2026", "-m", "5", "--hourly", "--format", "none", "--lang", "en"],
-    )
-    assert result.exit_code == 0
-    assert "Diurnal Distribution Share Profile" not in result.output
-    assert "Allocation Strategy Efficiency Comparison" not in result.output
-
-
-def test_cli_calculate_hourly_short_flag() -> None:
-    """Ensure calculate -H performs calculation without dumping the diurnal profile in console."""
-    result = runner.invoke(
-        app,
-        ["calculate", "-y", "2026", "-m", "5", "-H", "--format", "none", "--lang", "en"],
-    )
-    assert result.exit_code == 0
-    assert "Diurnal Distribution Share Profile" not in result.output
-    assert "Allocation Strategy Efficiency Comparison" not in result.output
-
-
-def test_cli_calculate_view_hourly() -> None:
-    """Ensure calculate --view hourly displays only the hourly profile table."""
-    result = runner.invoke(
-        app,
-        [
-            "calculate",
-            "-y",
-            "2026",
-            "-m",
-            "5",
-            "--view",
-            "hourly",
-            "--format",
-            "none",
-            "--lang",
-            "en",
-        ],
-    )
-    assert result.exit_code == 0
-    assert "Diurnal Distribution Share Profile" in result.output
-    assert "COLLECTIVE SELF-CONSUMPTION COMMUNITY SUMMARY" not in result.output
-
-
-def test_cli_calculate_hourly_export_csv(tmp_path: Path) -> None:
-    """Ensure calculate --hourly exports monthly and hourly shares CSV files."""
-    result = runner.invoke(
-        app,
-        [
-            "calculate",
-            "-y",
-            "2026",
-            "-m",
-            "5",
-            "--hourly",
-            "--output-dir",
-            str(tmp_path),
-            "--format",
-            "csv",
-        ],
-    )
-    assert result.exit_code == 0
-    exported_files = list(tmp_path.glob("*.csv"))
-    file_names = [f.name for f in exported_files]
-    assert any("_esd_monthly_shares.csv" in n for n in file_names)
-    assert any("_esd_hourly_shares.csv" in n for n in file_names)
-
-
-def test_cli_calculate_dynamic_defaults_from_config(tmp_path: Path, monkeypatch) -> None:
+def test_cli_calculate_dynamic_defaults_from_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Ensure calculate command dynamically picks up directories from config."""
     from src.config import AppConfig
 
@@ -477,34 +279,43 @@ def test_cli_calculate_dynamic_defaults_from_config(tmp_path: Path, monkeypatch)
     )
     monkeypatch.setattr("src.cli.load_config", lambda: cfg)
 
+    result = runner.invoke(app, ["calculate"])
+    assert result.exit_code == 0
+    exported_csv = list(custom_out.glob("*.csv"))
+    exported_html = list(custom_out.glob("*.html"))
+    assert len(exported_csv) == 3
+    assert len(exported_html) == 1
+
+
+def test_cli_cleanup_with_dir_overrides(tmp_path: Path) -> None:
+    """Ensure cleanup -o, -u, -w cleans all three overridden directories."""
+    out_dir = tmp_path / "clean_out"
+    cur_dir = tmp_path / "clean_cur"
+    wth_dir = tmp_path / "clean_wth"
+    out_dir.mkdir()
+    cur_dir.mkdir()
+    wth_dir.mkdir()
+    (out_dir / "temp_out.csv").write_text("dummy")
+    (cur_dir / "temp_cur.csv").write_text("dummy")
+    (wth_dir / "temp_wth.csv").write_text("dummy")
+
     result = runner.invoke(
         app,
         [
-            "calculate",
-            "-y",
-            "2026",
-            "-m",
-            "5",
-            "--format",
-            "csv",
-            "--lang",
-            "en",
+            "cleanup",
+            "-o",
+            str(out_dir),
+            "-u",
+            str(cur_dir),
+            "-w",
+            str(wth_dir),
+            "--force",
         ],
     )
     assert result.exit_code == 0
-    exported = list(custom_out.glob("*.csv"))
-    assert len(exported) > 0
-
-
-def test_cli_cleanup_with_output_dir_override(tmp_path: Path) -> None:
-    """Ensure cleanup --output-dir cleans the overridden directory."""
-    test_dir = tmp_path / "clean_me"
-    test_dir.mkdir()
-    (test_dir / "temp_file.csv").write_text("dummy")
-
-    result = runner.invoke(app, ["cleanup", "-o", str(test_dir), "--force"])
-    assert result.exit_code == 0
-    assert not (test_dir / "temp_file.csv").exists()
+    assert not (out_dir / "temp_out.csv").exists()
+    assert not (cur_dir / "temp_cur.csv").exists()
+    assert not (wth_dir / "temp_wth.csv").exists()
 
 
 def test_cli_config_invalid_coordinates_localized() -> None:
@@ -526,25 +337,6 @@ def test_cli_config_invalid_coordinates_localized() -> None:
     assert (
         "La longitud debe estar entre -180.0 y 180.0 (valor recibido: -190.0)." in res_es_lon.output
     )
-
-
-def test_cli_calculate_invalid_strategy_and_share_localized() -> None:
-    """Test localized error messages for invalid strategy and share bounds."""
-    res_en_strat = runner.invoke(app, ["calculate", "--strategy", "invalid_strat", "--lang", "en"])
-    assert res_en_strat.exit_code != 0
-    assert "Invalid strategy 'invalid_strat'." in res_en_strat.output
-
-    res_es_strat = runner.invoke(app, ["calculate", "--strategy", "invalid_strat", "--lang", "es"])
-    assert res_es_strat.exit_code != 0
-    assert "Estrategia no válida 'invalid_strat'." in res_es_strat.output
-
-    res_en_share = runner.invoke(app, ["calculate", "--min-share", "150", "--lang", "en"])
-    assert res_en_share.exit_code != 0
-    assert "--min-share must be between 0% and 100%. Got 150.0." in res_en_share.output
-
-    res_es_share = runner.invoke(app, ["calculate", "--max-share", "-5", "--lang", "es"])
-    assert res_es_share.exit_code != 0
-    assert "--max-share debe estar entre 0% y 100%. Valor recibido: -5.0." in res_es_share.output
 
 
 def test_cli_doctor_handles_esd_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -592,7 +384,7 @@ def test_cli_subcommands_unified_esd_error_handling(monkeypatch: pytest.MonkeyPa
     assert "Traceback" not in res_weather.output
 
     monkeypatch.setattr(CalculationService, "execute", mock_calc_execute)
-    res_calc = runner.invoke(app, ["calculate", "-y", "2026", "-m", "5", "--format", "none"])
+    res_calc = runner.invoke(app, ["calculate"])
     assert res_calc.exit_code == 1
     assert "Mock calculation failure" in res_calc.output
     assert "Traceback" not in res_calc.output

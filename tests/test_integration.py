@@ -143,7 +143,7 @@ def test_synthetic_community_optimization(tmp_path: Path) -> None:
         # self_consumed + surplus == allocated_gen (approx)
         assert abs((c.self_consumed_kwh + c.surplus_kwh) - c.generation_allocated_kwh) < 1e-2
 
-    # 4. Export deliverables (monthly shares CSV, hourly shares CSV, and interactive HTML)
+    # 4. Export deliverables (monthly shares CSV, fortnight shares CSV, hourly shares CSV, and interactive HTML)
     out_dir = tmp_path / "output"
     exporter = ReportExporter(output_dir=out_dir)
     exported = exporter.export_all(
@@ -153,11 +153,12 @@ def test_synthetic_community_optimization(tmp_path: Path) -> None:
         lang="en",
         aligned_dataset=aligned,
     )
-    assert len(exported) == 3
+    assert len(exported) == 4
     for p in exported:
         assert p.exists()
         assert p.stat().st_size > 0
     names = [p.name for p in exported]
     assert any("_esd_monthly_shares.csv" in n for n in names)
+    assert any("_esd_fortnight_shares.csv" in n for n in names)
     assert any("_esd_hourly_shares.csv" in n for n in names)
     assert any("_esd_interactive_report.html" in n for n in names)

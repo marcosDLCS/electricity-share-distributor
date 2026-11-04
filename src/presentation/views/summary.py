@@ -131,7 +131,25 @@ def render_community_summary(
             f"[bold green]{mon_gain_str}[/bold green]" if mon_gain_str != "—" else "—",
         )
 
-        # 3. Dynamic Hourly Share (Orden TED/1247/2021)
+        # 3. Fortnight Share (if evaluated)
+        if opt_result.fortnight_share_self_consumed_kwh > 0:
+            fort_kwh = opt_result.fortnight_share_self_consumed_kwh
+            fort_rate = opt_result.fortnight_share_self_consumption_rate
+            fort_gain = fort_kwh - cur_kwh
+            fort_gain_pct = (fort_gain / max(cur_kwh, 1e-6)) * 100.0 if cur_kwh > 0 else 0.0
+            fort_gain_str = (
+                f"+{fort_gain:,.1f} (+{fort_gain_pct:.1f}%)"
+                if fort_gain > 0 and cur_kwh > 0
+                else "—"
+            )
+            prog_table.add_row(
+                t("lbl_sc_fortnight", lang=lang),
+                f"{fort_kwh:,.1f}",
+                f"{fort_rate:.1f}%",
+                f"[bold green]{fort_gain_str}[/bold green]" if fort_gain_str != "—" else "—",
+            )
+
+        # 4. Dynamic Hourly Share (Orden TED/1247/2021)
         hour_gain = hour_kwh - cur_kwh
         hour_gain_pct = (hour_gain / max(cur_kwh, 1e-6)) * 100.0 if cur_kwh > 0 else 0.0
         hour_gain_str = (

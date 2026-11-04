@@ -69,8 +69,8 @@ graph LR
 El motor de curado ([`src/curation/`](../src/curation)) aplica un pipeline de datos en 3 etapas basado en modelos de dominio canónicos desacoplados de los formatos de origen:
 
 1. **Etapa 1 — Agregación de Generación (`generation.csv` y `generation.xlsx`):** Consolida todos los archivos Excel del inversor solar en `.input/generation/` en un único `GenerationDataset` canónico (`timestamp;year;month;day;hour;day_of_week;is_weekend;generation;consumption;self_consumption;exported_energy;imported_energy`).
-2. **Etapa 2 — Agregación de Consumo (`consumption.csv` y `consumption.xlsx`):** Consolida todos los archivos CSV de DATADIS en `.input/consumption/` de los distintos CUPS en un único `ConsumptionDataset` canónico (`timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption`), enriquecido con los nombres de servicio de [`.input/cups/cups.json`](../.input/cups/cups.json).
-3. **Etapa 3 — Construcción del Archivo Maestro ESD (`esd.csv` y `esd.xlsx`):** Alinea las series agregadas de generación y consumo en intervalos horarios comunes, reemplaza los falsos ceros del contador principal por el consumo físico real medido por el inversor, calcula los balances energéticos colectivos e integra el contexto meteorológico horario.
+2. **Etapa 2 — Agregación de Consumo (`consumption.csv` y `consumption.xlsx`):** Consolida los archivos CSV de DATADIS en `.input/consumption/` de los CUPS participantes definidos en [`.input/cups/cups.json`](../.input/cups/cups.json) en un único `ConsumptionDataset` canónico (`timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption`), enriquecido con los nombres de servicio y excluyendo cualquier suministro no presente en `cups.json`.
+3. **Etapa 3 — Construcción del Archivo Maestro ESD (`esd.csv` y `esd.xlsx`):** Alinea las series agregadas de generación y consumo en intervalos horarios comunes para los CUPS presentes en `cups.json`, reemplaza los falsos ceros del contador principal por el consumo físico real medido por el inversor, calcula los balances energéticos colectivos e integra el contexto meteorológico horario.
 
 ### El Resultado Curado (`.curated/esd.csv` y `.curated/esd.xlsx`)
 Junto con `.curated/generation.csv`/`.xlsx` y `.curated/consumption.csv`/`.xlsx`, el proceso genera el conjunto de datos maestro en dos formatos complementarios (`.curated/esd.csv` y `.curated/esd.xlsx`), que actúa como fuente única de verdad para el resto de los cálculos:
@@ -200,7 +200,7 @@ esd curate
 esd curate --year 2026 --month 5 --name datos_comunitarios
 ```
 > [!TIP]
-> **Curado Automático:** ¡Ni siquiera es necesario ejecutar `esd curate` manualmente! Al ejecutar `esd calculate`, la herramienta detecta si `.curated/esd.csv` existe y, si no está presente, lanza el pipeline de curado de 3 etapas de forma automática. También puede pasar `--force-curate` a `esd calculate` para forzar la re-ejecución del curado.
+> **Curado Automático:** ¡Ni siquiera es necesario ejecutar `esd curate` manualmente! Al ejecutar `esd calculate`, la herramienta detecta si `.curated/esd.csv` existe y coincide con los CUPS configurados en `cups.json`; si falta o no coincide, lanza el pipeline de curado de 3 etapas de forma automática.
 
 ### Paso 3: Descarga de Datos Meteorológicos Horarios (`esd weather`)
 Descarga datos meteorológicos históricos horarios (temperatura, nubosidad, códigos meteorológicos OMM) de Open-Meteo en `.input/weather/{YYYY}_{lat}_{lon}_weather.csv`. El año es el único parámetro obligatorio: si no se proporcionan coordenadas en la CLI, `esd weather` inspecciona automáticamente `cups.json`, deduplica las ubicaciones repetidas entre servicios de un mismo edificio y descarga cada coordenada única una sola vez:
@@ -213,35 +213,18 @@ esd weather --year 2024 --latitude 40.4168 --longitude -3.7038
 ```
 
 ### Paso 4: Calcular el Reparto Comunitario Óptimo (`esd calculate`)
-Resuelve el reparto óptimo y presenta tablas claras adaptadas a terminales de 80 columnas:
+Se ejecuta sin modificadores de línea de comandos, evaluando únicamente los CUPS presentes en `cups.json`, calculando siempre el reparto mensual, quincenal (24 quincenas: días 1–15 y días 16–fin de mes) y horario, mostrando las tablas resumen en terminales de 80 columnas y exportando todos los entregables CSV y HTML:
 ```bash
-# Calcular el calendario completo de 12 meses
+# Calcular el reparto mensual, quincenal y horario y exportar todos los informes
 esd calculate
+```
 
-# Aplicar restricciones estatutarias (mínimo 5% y máximo 70% por suministro)
-esd calculate --min-share 5% --max-share 70%
-
-# Elegir modo de vista específico ('summary', 'matrix', 'trajectory', 'hourly', 'coefficients', 'comparison', 'all')
-esd calculate --view matrix
-esd calculate --view comparison
-
-# Sobrescribir directorios de entrada/salida (por defecto usa los configurados en .esd_config.json)
-esd calculate -c .input/consumption -g .input/generation -o .output
-
-# Filtrar para un año y mes específicos
-esd calculate --year 2026 --month 5
-
-# Incluir perfil horario de 24 horas y serie temporal horaria completa
-esd calculate --hourly
-
-# Configurar la precisión decimal de los porcentajes (0 = 53%, 1 = 52.8%, 2 = 52.86%)
-esd calculate --precision 1
-
-# Exportar únicamente el informe interactivo HTML independiente
-esd calculate --format html
-
-# Exportar únicamente los archivos CSV de cuotas mensuales y horarias
-esd calculate --format csv
+### Paso 5: Limpiar Datos Generados (`esd cleanup`)
+Elimina los archivos generados en `.output`, `.curated` y `.input/weather`:
+```bash
+esd cleanup
+# O sin confirmación interactiva:
+esd cleanup --force
 ```
 
 ---
@@ -254,6 +237,7 @@ Al ejecutar `esd calculate`, se generan automáticamente los archivos en `.outpu
 | :--- | :--- | :--- |
 | `*_esd_interactive_report.html` | HTML (Independiente) | Cuadro de mando ejecutivo interactivo offline con selector dinámico bilingüe ES/EN, 4 tarjetas KPI principales, previsión de coeficientes horarios dinámicos (Orden TED/1247/2021), trayectoria energética multibarrita, gráfica de eficiencia solar fotovoltaica y mapa de calor de coeficientes mensuales. |
 | `*_esd_monthly_shares.csv` | CSV (delimitado por `;`) | Desglose mensual de reparto por CUPS: consumo, generación, porcentaje de reparto ($\beta_i$ %), kWh autoconsumidos, excedentes vertidos y demanda remanente de red, ordenado por mes y uso del suministro. |
+| `*_esd_fortnight_shares.csv` | CSV (delimitado por `;`) | Desglose quincenal (`1` del día 1 al 15, `2` del día 16 a fin de mes) de reparto por CUPS: mes, quincena, consumo, generación, porcentaje de reparto ($\beta_i$ %), kWh autoconsumidos, excedentes vertidos y demanda remanente de red. |
 | `*_esd_hourly_shares.csv` | CSV (delimitado por `;`) | Serie temporal horaria con consumo, producción, cuotas (con suelo mínimo del 1%) y el Índice de Eficiencia Solar (entero 1-100 en horas de generación, 0 sin generación), ordenada por fecha y uso. |
 
 ---

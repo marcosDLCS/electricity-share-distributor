@@ -566,6 +566,120 @@ class DistributionOptimizer:
         return monthly_results
 
     @classmethod
+    def _evaluate_calendar_fortnights(
+        cls,
+        aligned_dataset: AlignedDataset,
+        cups_list: list[str],
+        strategy: OptimizationStrategy,
+        precision: int,
+        require_full_month: bool = False,
+        cups_uses: dict[str, str] | None = None,
+        constraints: BylawConstraints | None = None,
+    ) -> list[CommunityMonthlyMetrics]:
+        """Evaluate each calendar fortnight (24 half-month periods: days 1-15 and days 16-end per month)."""
+        fortnight_results: list[CommunityMonthlyMetrics] = []
+        effective_uses = cups_uses or getattr(aligned_dataset, "cups_uses", {}) or {}
+
+        for m in range(1, 13):
+            m_str = f"{m:02d}"
+            for f in (1, 2):
+                period_str = f"{m_str}-{f}"
+                fortnight_dfs: list[pd.DataFrame] = []
+
+                for ym, group_df in aligned_dataset.monthly_groups.items():
+                    try:
+                        parts = ym.split("-")
+                        y_val, m_val = int(parts[0]), int(parts[1])
+                        if m_val == m:
+                            if require_full_month and not cls.is_complete_month(group_df, y_val, m):
+                                continue
+                            ts_days = pd.to_datetime(group_df.index).day
+                            f_df = group_df[ts_days <= 15] if f == 1 else group_df[ts_days >= 16]
+                            if not f_df.empty:
+                                fortnight_dfs.append(f_df)
+                    except ValueError, IndexError:
+                        continue
+
+                if not fortnight_dfs:
+                    fortnight_results.append(
+                        CommunityMonthlyMetrics(
+                            month=period_str,
+                            strategy=strategy.value,
+                            total_consumption_kwh=0.0,
+                            total_generation_kwh=0.0,
+                            total_self_consumed_kwh=0.0,
+                            total_surplus_kwh=0.0,
+                            total_grid_demand_kwh=0.0,
+                            self_consumption_rate=0.0,
+                            solar_coverage_rate=0.0,
+                            beta_sum=0.0,
+                            cups_metrics=[],
+                            has_data=False,
+                            solar_hours_consumption_kwh=0.0,
+                            solar_hours_coverage_rate=0.0,
+                            solar_hours_generation_kwh=0.0,
+                            solar_hours_count=0,
+                        )
+                    )
+                elif len(fortnight_dfs) == 1:
+                    res = cls.evaluate_month(
+                        fortnight_dfs[0],
+                        cups_list=cups_list,
+                        month_name=period_str,
+                        strategy=strategy,
+                        precision=precision,
+                        cups_uses=effective_uses,
+                        constraints=constraints,
+                    )
+                    res.has_data = True
+                    fortnight_results.append(res)
+                else:
+                    k = len(fortnight_dfs)
+                    pooled_df = pd.concat(fortnight_dfs)
+                    res = cls.evaluate_month(
+                        pooled_df,
+                        cups_list=cups_list,
+                        month_name=period_str,
+                        strategy=strategy,
+                        precision=precision,
+                        cups_uses=effective_uses,
+                        constraints=constraints,
+                    )
+                    res.total_generation_kwh /= k
+                    res.total_consumption_kwh /= k
+                    res.total_self_consumed_kwh /= k
+                    res.total_surplus_kwh /= k
+                    res.total_grid_demand_kwh /= k
+                    res.solar_hours_consumption_kwh /= k
+                    res.solar_hours_generation_kwh /= k
+                    res.solar_hours_count = round(res.solar_hours_count / k)
+                    scaled_cups: list[CupsMonthlyMetrics] = []
+                    for cm in res.cups_metrics:
+                        scaled_cups.append(
+                            CupsMonthlyMetrics(
+                                cups=cm.cups,
+                                month=cm.month,
+                                beta=cm.beta,
+                                consumption_kwh=cm.consumption_kwh / k,
+                                generation_allocated_kwh=cm.generation_allocated_kwh / k,
+                                self_consumed_kwh=cm.self_consumed_kwh / k,
+                                surplus_kwh=cm.surplus_kwh / k,
+                                grid_demand_kwh=cm.grid_demand_kwh / k,
+                                self_consumption_rate=cm.self_consumption_rate,
+                                solar_coverage_rate=cm.solar_coverage_rate,
+                                solar_hours_consumption_kwh=cm.solar_hours_consumption_kwh / k,
+                                solar_hours_coverage_rate=cm.solar_hours_coverage_rate,
+                                solar_hours_generation_kwh=cm.solar_hours_generation_kwh / k,
+                                use=cm.use,
+                            )
+                        )
+                    res.cups_metrics = scaled_cups
+                    res.has_data = True
+                    fortnight_results.append(res)
+
+        return fortnight_results
+
+    @classmethod
     def compute_hourly_optimization(
         cls,
         aligned_dataset: AlignedDataset,
@@ -927,7 +1041,7 @@ class DistributionOptimizer:
         include_baselines: bool = True,
         precision: int | None = None,
         require_full_month: bool = False,
-        compute_hourly: bool = False,
+        compute_hourly: bool = True,
         primary_cups: str | None = None,
         constraints: BylawConstraints | None = None,
     ) -> OptimizationResult:
@@ -939,12 +1053,12 @@ class DistributionOptimizer:
             include_baselines: If True, also computes results for baseline strategies.
             precision: Share percentage precision (0, 1, or 2 decimals). If None, uses configured setting.
             require_full_month: If True, skips months that do not have at least one complete month of data. Defaults to False.
-            compute_hourly: If True, computes 24-hour diurnal profile and full hourly time-series balance.
+            compute_hourly: If True, computes 24-hour diurnal profile and full hourly time-series balance. Defaults to True.
             primary_cups: Optional identifier of primary CUPS.
             constraints: Optional regulatory or community bylaw constraints.
 
         Returns:
-            OptimizationResult containing 12-month calendar prevision, total summary, baselines, and optional hourly_result.
+            OptimizationResult containing 12-month calendar prevision, 24-fortnight prevision, total summary, baselines, and hourly_result.
         """
         from src.config import get_precision, validate_share_precision
 
@@ -986,6 +1100,16 @@ class DistributionOptimizer:
             constraints=constraints,
         )
 
+        fortnight_results = cls._evaluate_calendar_fortnights(
+            aligned_dataset=aligned_dataset,
+            cups_list=cups_list,
+            strategy=strategy,
+            precision=active_precision,
+            require_full_month=require_full_month,
+            cups_uses=cups_uses,
+            constraints=constraints,
+        )
+
         total_summary = cls._aggregate_summary(
             monthly_results, cups_list, strategy.value, cups_uses=cups_uses
         )
@@ -1016,7 +1140,12 @@ class DistributionOptimizer:
         # 2. Monthly Share Self-Consumption (RD 244/2019 fixed monthly betas)
         monthly_sc = float(total_summary.total_self_consumed_kwh)
 
-        # 3. Dynamic Hourly Share Self-Consumption (Orden TED/1247/2021)
+        # 3. Fortnight Share Self-Consumption (half-month betas)
+        fortnight_sc = float(
+            sum(f.total_self_consumed_kwh for f in fortnight_results if f.has_data)
+        )
+
+        # 4. Dynamic Hourly Share Self-Consumption (Orden TED/1247/2021)
         hourly_sc = cls.evaluate_hourly_self_consumption(
             aligned_dataset=aligned_dataset,
             strategy=strategy,
@@ -1037,6 +1166,14 @@ class DistributionOptimizer:
                         require_full_month=require_full_month,
                         cups_uses=cups_uses,
                     )
+                    base_fortnight = cls._evaluate_calendar_fortnights(
+                        aligned_dataset=aligned_dataset,
+                        cups_list=cups_list,
+                        strategy=base_strat,
+                        precision=active_precision,
+                        require_full_month=require_full_month,
+                        cups_uses=cups_uses,
+                    )
                     base_summary = cls._aggregate_summary(
                         base_monthly, cups_list, base_strat.value, cups_uses=cups_uses
                     )
@@ -1046,10 +1183,14 @@ class DistributionOptimizer:
                         total_summary=base_summary,
                         baselines={},
                         cups_list=cups_list,
+                        fortnight_results=base_fortnight,
                         cups_uses=cups_uses,
                         primary_cups=effective_primary,
                         current_self_consumed_kwh=current_sc,
                         monthly_share_self_consumed_kwh=float(base_summary.total_self_consumed_kwh),
+                        fortnight_share_self_consumed_kwh=float(
+                            sum(f.total_self_consumed_kwh for f in base_fortnight if f.has_data)
+                        ),
                         hourly_share_self_consumed_kwh=cls.evaluate_hourly_self_consumption(
                             aligned_dataset=aligned_dataset,
                             strategy=base_strat,
@@ -1076,11 +1217,13 @@ class DistributionOptimizer:
             baselines=baselines,
             cups_list=cups_list,
             hourly_result=hourly_result,
+            fortnight_results=fortnight_results,
             cups_uses=cups_uses,
             constraints=constraints,
             primary_cups=effective_primary,
             current_self_consumed_kwh=current_sc,
             monthly_share_self_consumed_kwh=monthly_sc,
+            fortnight_share_self_consumed_kwh=fortnight_sc,
             hourly_share_self_consumed_kwh=hourly_sc,
         )
 

@@ -1021,3 +1021,66 @@ def test_unified_three_way_self_consumption_metrics() -> None:
     # Hierarchy invariant: Current <= Monthly <= Hourly
     assert opt_result.current_self_consumed_kwh <= opt_result.monthly_share_self_consumed_kwh
     assert opt_result.monthly_share_self_consumed_kwh <= opt_result.hourly_share_self_consumed_kwh
+
+
+def test_fortnight_optimization_24_periods_and_self_consumption() -> None:
+    """Verify that optimize_dataset evaluates 24 calendar fortnights ('01-1'..'12-2') and computes fortnight self-consumption."""
+    c1 = "ES0021000000000001AA"
+    c2 = "ES0021000000000002BB"
+    cups_list = [c1, c2]
+
+    # 1st fortnight (May 10, day <= 15): C1 consumes 10, C2 consumes 0
+    # 2nd fortnight (May 20, day >= 16): C1 consumes 0, C2 consumes 10
+    timestamps = ["2026-05-10 12:00:00", "2026-05-20 12:00:00"]
+    df = pd.DataFrame(
+        {
+            c1: [10.0, 0.0],
+            c2: [0.0, 10.0],
+            "generation_kwh": [10.0, 10.0],
+            "self_consumption": [5.0, 0.0],
+        },
+        index=timestamps,
+    )
+    dataset = AlignedDataset(
+        data=df,
+        cups_list=cups_list,
+        metadata=IngestionSummary(
+            cups_count=2,
+            cups_list=cups_list,
+            consumption_files_loaded=2,
+            generation_files_loaded=1,
+            start_time=timestamps[0],
+            end_time=timestamps[-1],
+            total_hours=2,
+        ),
+        monthly_groups={"2026-05": df},
+        cups_uses={c1: "Aerotermia", c2: "Piscina"},
+        primary_cups=c1,
+    )
+
+    opt_result = DistributionOptimizer.optimize_dataset(
+        dataset,
+        strategy=OptimizationStrategy.OPTIMAL,
+    )
+
+    assert len(opt_result.fortnight_results) == 24
+    f_05_1 = next(f for f in opt_result.fortnight_results if f.month == "05-1")
+    f_05_2 = next(f for f in opt_result.fortnight_results if f.month == "05-2")
+    f_01_1 = next(f for f in opt_result.fortnight_results if f.month == "01-1")
+
+    assert f_05_1.has_data is True
+    assert f_05_2.has_data is True
+    assert f_01_1.has_data is False
+
+    # In 05-1, C1 gets ~99% share; in 05-2, C2 gets ~99% share
+    c1_f1 = next(c for c in f_05_1.cups_metrics if c.cups == c1)
+    c2_f2 = next(c for c in f_05_2.cups_metrics if c.cups == c2)
+    assert c1_f1.beta >= 0.98
+    assert c2_f2.beta >= 0.98
+
+    # Fortnight self-consumption (~19.8 kWh) > Monthly self-consumption (10.0 kWh)
+    assert opt_result.fortnight_share_self_consumed_kwh > opt_result.monthly_share_self_consumed_kwh
+    assert np.isclose(opt_result.fortnight_share_self_consumed_kwh, 19.8, atol=0.1)
+    assert np.isclose(
+        opt_result.fortnight_share_self_consumption_rate, (19.8 / 20.0) * 100.0, atol=0.5
+    )

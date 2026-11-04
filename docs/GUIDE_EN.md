@@ -69,8 +69,8 @@ graph LR
 The curation engine ([`src/curation/`](../src/curation)) applies a 3-stage Medallion data pipeline using canonical domain models decoupled from vendor formats:
 
 1. **Stage 1 — Aggregate Generation (`generation.csv` & `generation.xlsx`):** Consolidates all solar inverter Excel files in `.input/generation/` into a single canonical `GenerationDataset` (`timestamp;year;month;day;hour;day_of_week;is_weekend;generation;consumption;self_consumption;exported_energy;imported_energy`).
-2. **Stage 2 — Aggregate Consumption (`consumption.csv` & `consumption.xlsx`):** Consolidates all DATADIS CSV files in `.input/consumption/` across participating CUPS into a single canonical `ConsumptionDataset` (`timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption`), enriched with facility descriptions from [`.input/cups/cups.json`](../.input/cups/cups.json).
-3. **Stage 3 — Build Master ESD Dataset (`esd.csv` & `esd.xlsx`):** Aligns the aggregated generation and consumption datasets on common hourly intervals, replaces primary meter fake zeros with the inverter's physical load consumption, computes collective energy balances, and integrates hourly weather context.
+2. **Stage 2 — Aggregate Consumption (`consumption.csv` & `consumption.xlsx`):** Consolidates DATADIS CSV files in `.input/consumption/` for the participating CUPS defined in [`.input/cups/cups.json`](../.input/cups/cups.json) into a single canonical `ConsumptionDataset` (`timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption`), enriched with facility descriptions and excluding any unconfigured supply points.
+3. **Stage 3 — Build Master ESD Dataset (`esd.csv` & `esd.xlsx`):** Aligns the aggregated generation and consumption datasets on common hourly intervals for the CUPS present in `cups.json`, replaces primary meter fake zeros with the inverter's physical load consumption, computes collective energy balances, and integrates hourly weather context.
 
 ### The Curated Result (`.curated/esd.csv` and `.curated/esd.xlsx`)
 Alongside `.curated/generation.csv`/`.xlsx` and `.curated/consumption.csv`/`.xlsx`, the pipeline produces the master analytical dataset in two sibling formats (`.curated/esd.csv` and `.curated/esd.xlsx`), which serves as the single source of truth for all calculations:
@@ -200,7 +200,7 @@ esd curate
 esd curate --year 2026 --month 5 --name community_curated
 ```
 > [!TIP]
-> **Automatic Curation:** You do not even need to run `esd curate` manually! When you run `esd calculate`, the tool checks if `.curated/esd.csv` exists. If it's missing, it automatically runs the 3-stage curation pipeline first. You can also pass `--force-curate` to `esd calculate` to force re-curating existing files.
+> **Automatic Curation:** You do not even need to run `esd curate` manually! When you run `esd calculate`, the tool checks if `.curated/esd.csv` exists and matches the CUPS configured in `cups.json`. If missing or out of sync, it automatically runs the 3-stage curation pipeline first.
 
 ### Step 3: Fetch Hourly Weather Data (`esd weather`)
 Download historical hourly weather (temperature, cloud cover, WMO weather codes) from Open-Meteo into `.input/weather/{YYYY}_{lat}_{lon}_weather.csv`. Year is the only mandatory parameter: if coordinates are not provided on the CLI, `esd weather` automatically inspects `cups.json`, deduplicates repeated locations across facilities in the same building, and downloads each unique coordinate once:
@@ -213,35 +213,18 @@ esd weather --year 2024 --latitude 40.4168 --longitude -3.7038
 ```
 
 ### Step 4: Calculate Optimal Community Shares (`esd calculate`)
-Solves the optimal distribution schedule and displays clean 80-column terminal tables:
+Runs with zero command-line modifiers, automatically evaluating only the CUPS present in `cups.json`, computing monthly, fortnight (24 half-month periods: days 1–15 and days 16–end of month), and hourly distribution shares, displaying 80-column terminal summary tables, and exporting all CSV and HTML deliverables:
 ```bash
-# Calculate full 12-month calendar schedule
+# Calculate monthly, fortnight, and hourly shares and export all reports
 esd calculate
+```
 
-# Enforce regulatory or bylaw limits (e.g. 5% minimum floor, 70% maximum cap per supply)
-esd calculate --min-share 5% --max-share 70%
-
-# Choose specific terminal view mode ('summary', 'matrix', 'trajectory', 'hourly', 'coefficients', 'comparison', 'all')
-esd calculate --view matrix
-esd calculate --view comparison
-
-# Override input/output directories (dynamically defaults to .esd_config.json)
-esd calculate -c .input/consumption -g .input/generation -o .output
-
-# Filter to a specific year and month
-esd calculate --year 2026 --month 5
-
-# Include 24-hour diurnal profile and hourly time-series
-esd calculate --hourly
-
-# Set share percentage precision (0 = 53%, 1 = 52.8%, 2 = 52.86%)
-esd calculate --precision 1
-
-# Export only the standalone interactive HTML report
-esd calculate --format html
-
-# Export only the monthly and hourly shares CSV files
-esd calculate --format csv
+### Step 5: Clean Up Generated Data (`esd cleanup`)
+Removes generated files from `.output`, `.curated`, and `.input/weather`:
+```bash
+esd cleanup
+# Or skip interactive confirmation:
+esd cleanup --force
 ```
 
 ---
@@ -254,6 +237,7 @@ Running `esd calculate` generates ready-to-use artifacts in `.output/`:
 | :--- | :--- | :--- |
 | `*_esd_interactive_report.html` | HTML (Standalone) | Offline interactive executive dashboard with dynamic bilingual ES/EN switcher, 4 primary energy KPI cards, dynamic hourly coefficient prevision (Orden TED/1247/2021), energy trajectory multi-bars, Photovoltaic Solar Efficiency Index graphic, and monthly coefficient matrix heatmap. |
 | `*_esd_monthly_shares.csv` | CSV (`;` delimited) | Monthly allocation breakdown per CUPS: consumption, generation, share percentage ($\beta_i$ %), self-consumed kWh, solar surplus, and remaining grid demand, ordered by month and facility use. |
+| `*_esd_fortnight_shares.csv` | CSV (`;` delimited) | Fortnight (half-month: `1` for days 1–15, `2` for days 16–end of month) allocation breakdown per CUPS: month, fortnight, consumption, generation, share percentage ($\beta_i$ %), self-consumed kWh, solar surplus, and remaining grid demand. |
 | `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Full hourly time-series recording consumption, generation, shares (with 1% floor), and the Solar Efficiency Index (integer 1-100 for generation hours, 0 without generation), ordered by timestamp and use. |
 
 ---

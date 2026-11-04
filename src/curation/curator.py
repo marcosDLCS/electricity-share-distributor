@@ -104,6 +104,25 @@ def dataframe_to_aligned_dataset(
         if add_col in df_clean.columns:
             df_clean[add_col] = pd.to_numeric(df_clean[add_col], errors="coerce").fillna(0.0)
 
+    # Filter to CUPS present in cups.json if configured and non-empty
+    cups_cfg: dict[str, SupplyPoint] = {}
+    if cups_config_path is not None:
+        try:
+            cups_cfg = DataCurator(cups_config_path=cups_config_path).load_cups_config()
+        except Exception:
+            cups_cfg = {}
+
+    if cups_cfg:
+        allowed_cups = set(cups_cfg.keys())
+        all_cups_before = set(df_clean["cups_id"].astype(str).str.strip().unique())
+        df_clean = df_clean[df_clean["cups_id"].astype(str).str.strip().isin(allowed_cups)].copy()
+        if df_clean.empty:
+            raise AlignmentError("No curated data points match the CUPS present in cups.json.")
+        if "community_demand" in df_clean.columns and all_cups_before != allowed_cups:
+            df_clean["community_demand"] = df_clean.groupby("timestamp")["consumption"].transform(
+                "sum"
+            )
+
     # Apply year / month filters if specified
     if year is not None:
         prefix = f"{year:04d}"
@@ -159,6 +178,9 @@ def dataframe_to_aligned_dataset(
         for cups, use_val in zip(df_clean["cups_id"], df_clean["use"], strict=False):
             if cups and pd.notna(use_val) and str(use_val).strip():
                 cups_uses[str(cups)] = str(use_val).strip()
+    for cid, c_point in cups_cfg.items():
+        if cid in cups_list and c_point.use and cid not in cups_uses:
+            cups_uses[cid] = c_point.use
 
     # Extract primary CUPS if available
     resolved_primary = primary_cups
@@ -172,7 +194,7 @@ def dataframe_to_aligned_dataset(
 
     if not resolved_primary:
         try:
-            cfg = DataCurator(cups_config_path=cups_config_path).load_cups_config()
+            cfg = cups_cfg or DataCurator(cups_config_path=cups_config_path).load_cups_config()
             cand = next((c.cups for c in cfg.values() if c.primary), None)
             if cand and cand in cups_list:
                 resolved_primary = cand
@@ -238,13 +260,37 @@ class DataCurator:
         self.curated_dir = Path(curated_dir)
         self.weather_dir = Path(weather_dir)
 
+    def _resolve_cups_path(self) -> Path | None:
+        """Resolve cups.json path, isolating custom test directories from global workspace config."""
+        if self.cups_config_path is not None:
+            return resolve_cups_config_path(custom_path=self.cups_config_path)
+
+        app_cfg = load_config()
+        default_cons_dirs = {
+            DEFAULT_CONSUMPTION_DIR.resolve(),
+            Path(app_cfg.consumption_dir).resolve(),
+        }
+        if self.consumption_dir.resolve() in default_cons_dirs:
+            return resolve_cups_config_path(config=app_cfg)
+
+        # Custom consumption_dir without explicit cups_config_path: look relative to custom dir
+        parent = self.consumption_dir.resolve().parent
+        for candidate in (
+            parent / "cups" / "cups.json",
+            parent / "cups.json",
+            self.consumption_dir.resolve() / "cups.json",
+        ):
+            if candidate.exists() and candidate.is_file():
+                return candidate
+        return None
+
     def load_cups_config(self) -> dict[str, SupplyPoint]:
         """Discover and parse CUPS configuration file containing uses, primary flags, and coordinates.
 
         Returns:
             Dictionary mapping CUPS string identifiers to SupplyPoint instances.
         """
-        found_path = resolve_cups_config_path(custom_path=self.cups_config_path)
+        found_path = self._resolve_cups_path()
         if not found_path:
             return {}
 
@@ -337,7 +383,7 @@ class DataCurator:
                 return (round(cfg.latitude, 4), round(cfg.longitude, 4))
 
         # 3. Direct extraction from cups configuration file if configs was empty
-        found_path = resolve_cups_config_path(custom_path=self.cups_config_path)
+        found_path = self._resolve_cups_path()
         if found_path:
             coords = extract_coordinates_from_cups_file(found_path)
             if coords:
@@ -472,11 +518,22 @@ class DataCurator:
             c_loader = DatadisConsumptionLoader(self.consumption_dir)
             c_files_count = len(c_loader.discover_files())
             c_df = self._filter_df_by_period(c_loader.load_all(), year=year, month=month)
+            if configs and not c_df.empty and "cups" in c_df.columns:
+                allowed_cups = set(configs.keys())
+                c_df = c_df[c_df["cups"].astype(str).str.strip().isin(allowed_cups)].reset_index(
+                    drop=True
+                )
+                if c_df.empty:
+                    raise CurationError(
+                        "No consumption records found matching the CUPS defined in cups.json."
+                    )
             return ConsumptionDataset.from_dataframe(
                 c_df,
                 source_files_count=c_files_count,
                 cups_uses=cups_uses,
             )
+        except CurationError:
+            raise
         except Exception as err:
             raise CurationError(f"Consumption aggregation failed: {err}") from err
 
@@ -541,7 +598,15 @@ class DataCurator:
 
         cups_uses: dict[str, str] = {}
         try:
-            cfg = cls(cups_config_path=cups_config_path).load_cups_config()
+            cfg = (
+                cls(cups_config_path=cups_config_path).load_cups_config()
+                if cups_config_path is not None
+                else {}
+            )
+            if cfg and not df.empty and "cups_id" in df.columns:
+                df = df[df["cups_id"].astype(str).str.strip().isin(cfg.keys())].reset_index(
+                    drop=True
+                )
             cups_uses = {cid: c.use for cid, c in cfg.items()}
         except Exception:
             pass
@@ -596,6 +661,17 @@ class DataCurator:
                 else self.aggregate_consumption(cups_configs=cups_configs)
             )
 
+            allowed_cups = set(cups_configs.keys()) if cups_configs else None
+            filtered_records = (
+                [r for r in cons_ds.records if str(r.cups_id).strip() in allowed_cups]
+                if allowed_cups is not None
+                else cons_ds.records
+            )
+            if allowed_cups is not None and not filtered_records:
+                raise CurationError(
+                    "No consumption records found matching the CUPS defined in cups.json."
+                )
+
             c_df = pd.DataFrame(
                 [
                     {
@@ -603,7 +679,7 @@ class DataCurator:
                         "timestamp": r.timestamp,
                         "consumption_kwh": float(r.consumption),
                     }
-                    for r in cons_ds.records
+                    for r in filtered_records
                 ],
                 columns=["cups", "timestamp", "consumption_kwh"],
             )
@@ -901,6 +977,8 @@ class DataCurator:
         cons_csv = target_dir / "consumption.csv"
         cons_xlsx = target_dir / "consumption.xlsx"
 
+        cups_configs = self.load_cups_config()
+
         if (
             not force
             and csv_path.exists()
@@ -928,11 +1006,18 @@ class DataCurator:
                     and "primary" not in cols
                     and "reconciled" not in cols
                 ):
-                    return csv_path
+                    if cups_configs:
+                        df_existing = pd.read_csv(
+                            csv_path, sep=sep, usecols=["cups_id"], dtype={"cups_id": str}
+                        )
+                        existing_cups = set(df_existing["cups_id"].astype(str).str.strip().unique())
+                        if existing_cups == set(cups_configs.keys()):
+                            return csv_path
+                    else:
+                        return csv_path
             except Exception:
                 pass
 
-        cups_configs = self.load_cups_config()
         gen_dataset = self.aggregate_generation()
         self.export_generation(gen_dataset, curated_dir=target_dir, delimiter=delimiter)
 
@@ -1014,9 +1099,29 @@ class DataCurator:
         except Exception as err:
             raise CurationError(f"Failed to read curated CSV '{path}': {err}") from err
 
+        effective_cups_path: Path | str | None = cups_config_path
+        if effective_cups_path is None:
+            app_cfg = load_config()
+            default_curated_dirs = {
+                DEFAULT_CURATED_DIR.resolve(),
+                Path(app_cfg.curated_dir).resolve(),
+            }
+            if path.parent.resolve() in default_curated_dirs:
+                effective_cups_path = resolve_cups_config_path(config=app_cfg)
+            else:
+                parent = path.parent.resolve()
+                for candidate in (
+                    parent / "cups.json",
+                    parent.parent / "cups" / "cups.json",
+                    parent.parent / "cups.json",
+                ):
+                    if candidate.exists() and candidate.is_file():
+                        effective_cups_path = candidate
+                        break
+
         return dataframe_to_aligned_dataset(
             df,
             year=year,
             month=month,
-            cups_config_path=cups_config_path,
+            cups_config_path=effective_cups_path,
         )

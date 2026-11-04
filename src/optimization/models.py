@@ -237,11 +237,13 @@ class OptimizationResult:
     baselines: dict[str, OptimizationResult] = field(default_factory=dict)
     cups_list: list[str] = field(default_factory=list)
     hourly_result: HourlyOptimizationResult | None = None
+    fortnight_results: list[CommunityMonthlyMetrics] = field(default_factory=list)
     cups_uses: dict[str, str] = field(default_factory=dict)
     constraints: BylawConstraints | None = None
     primary_cups: str | None = None
     current_self_consumed_kwh: float = 0.0
     monthly_share_self_consumed_kwh: float = 0.0
+    fortnight_share_self_consumed_kwh: float = 0.0
     hourly_share_self_consumed_kwh: float = 0.0
 
     @property
@@ -255,6 +257,12 @@ class OptimizationResult:
         """Percentage of total generation self-consumed under RD 244/2019 fixed monthly shares."""
         tot_gen = self.total_summary.total_generation_kwh
         return (self.monthly_share_self_consumed_kwh / tot_gen * 100.0) if tot_gen > 0 else 0.0
+
+    @property
+    def fortnight_share_self_consumption_rate(self) -> float:
+        """Percentage of total generation self-consumed under fortnight (half-month) shares."""
+        tot_gen = self.total_summary.total_generation_kwh
+        return (self.fortnight_share_self_consumed_kwh / tot_gen * 100.0) if tot_gen > 0 else 0.0
 
     @property
     def hourly_share_self_consumption_rate(self) -> float:

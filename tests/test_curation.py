@@ -524,11 +524,16 @@ def test_data_curator_load_aligned_dataset_semicolon(tmp_path: Path) -> None:
     assert aligned.cups_uses[c1] == "Garaje"
 
 
-def test_cli_calculate_auto_curates_when_missing(tmp_path: Path) -> None:
+def test_cli_calculate_auto_curates_when_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Verify that calculate auto-curates when curated.csv does not exist."""
+    from src.config import AppConfig
+
     cons_dir = tmp_path / "consumption"
     gen_dir = tmp_path / "generation"
     curated_dir = tmp_path / "curated"
+    out_dir = tmp_path / "out"
     cons_dir.mkdir()
     gen_dir.mkdir()
 
@@ -542,25 +547,18 @@ def test_cli_calculate_auto_curates_when_missing(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    runner = CliRunner()
-    result = runner.invoke(
-        app,
-        [
-            "calculate",
-            "--consumption-dir",
-            str(cons_dir),
-            "--generation-dir",
-            str(gen_dir),
-            "--curated-dir",
-            str(curated_dir),
-            "--cups-file",
-            str(cups_file),
-            "--format",
-            "none",
-            "--lang",
-            "en",
-        ],
+    cfg = AppConfig(
+        consumption_dir=str(cons_dir),
+        generation_dir=str(gen_dir),
+        curated_dir=str(curated_dir),
+        output_dir=str(out_dir),
+        cups_config_path=str(cups_file),
+        language="en",
     )
+    monkeypatch.setattr("src.cli.load_config", lambda: cfg)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["calculate"])
 
     assert result.exit_code == 0
     # Verified: generation.csv, consumption.csv, and esd.csv were generated on the fly!
@@ -573,10 +571,15 @@ def test_cli_calculate_auto_curates_when_missing(tmp_path: Path) -> None:
     assert "COLLECTIVE SELF-CONSUMPTION COMMUNITY SUMMARY" in result.output
 
 
-def test_cli_calculate_uses_existing_curated(tmp_path: Path) -> None:
+def test_cli_calculate_uses_existing_curated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Verify that calculate directly loads an existing esd.csv."""
+    from src.config import AppConfig
+
     curated_dir = tmp_path / "curated"
     curated_dir.mkdir()
+    out_dir = tmp_path / "out"
 
     pri_cups = "ES0021000000000001AA"
     lines = [
@@ -585,23 +588,17 @@ def test_cli_calculate_uses_existing_curated(tmp_path: Path) -> None:
     ]
     (curated_dir / "esd.csv").write_text("\n".join(lines), encoding="utf-8")
 
-    runner = CliRunner()
-    result = runner.invoke(
-        app,
-        [
-            "calculate",
-            "--curated-dir",
-            str(curated_dir),
-            "-y",
-            "2026",
-            "-m",
-            "5",
-            "--format",
-            "none",
-            "--lang",
-            "en",
-        ],
+    cfg = AppConfig(
+        consumption_dir=str(tmp_path / "no_cons"),
+        generation_dir=str(tmp_path / "no_gen"),
+        curated_dir=str(curated_dir),
+        output_dir=str(out_dir),
+        language="en",
     )
+    monkeypatch.setattr("src.cli.load_config", lambda: cfg)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["calculate"])
 
     assert result.exit_code == 0
     assert "COLLECTIVE SELF-CONSUMPTION COMMUNITY SUMMARY" in result.output
@@ -610,9 +607,11 @@ def test_cli_calculate_uses_existing_curated(tmp_path: Path) -> None:
 
 
 def test_curated_data_loads_primary_cups_and_hourly_assigns_100_percent_night(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Verify curated data retains primary CUPS and hourly calculation assigns 100% to primary cups at night."""
+    from src.config import AppConfig
+
     curated_dir = tmp_path / "curated"
     curated_dir.mkdir()
     out_dir = tmp_path / "output"
@@ -633,26 +632,17 @@ def test_curated_data_loads_primary_cups_and_hourly_assigns_100_percent_night(
     aligned = DataCurator.load_aligned_dataset(curated_dir / "esd.csv")
     assert aligned.primary_cups == pri_cups
 
-    runner = CliRunner()
-    result = runner.invoke(
-        app,
-        [
-            "calculate",
-            "--curated-dir",
-            str(curated_dir),
-            "--output-dir",
-            str(out_dir),
-            "--hourly",
-            "-y",
-            "2026",
-            "-m",
-            "5",
-            "--format",
-            "csv",
-            "--lang",
-            "en",
-        ],
+    cfg = AppConfig(
+        consumption_dir=str(tmp_path / "no_cons"),
+        generation_dir=str(tmp_path / "no_gen"),
+        curated_dir=str(curated_dir),
+        output_dir=str(out_dir),
+        language="en",
     )
+    monkeypatch.setattr("src.cli.load_config", lambda: cfg)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["calculate"])
 
     assert result.exit_code == 0
     hourly_csvs = list(out_dir.glob("*_esd_hourly_shares.csv"))
@@ -1466,3 +1456,87 @@ def test_consumption_dataset_canonical_model_and_aggregation(tmp_path: Path) -> 
     assert reloaded.summary.total_records == 48
     assert reloaded.summary.cups_count == 2
     assert reloaded.summary.total_consumption_kwh == cons_dataset.summary.total_consumption_kwh
+
+
+def test_curation_and_calculation_filter_cups_to_cups_json(tmp_path: Path) -> None:
+    """Verify that curation and calculation only include CUPS present in cups.json."""
+    cons_dir = tmp_path / "consumption"
+    gen_dir = tmp_path / "generation"
+    curated_dir = tmp_path / "curated"
+    cons_dir.mkdir()
+    gen_dir.mkdir()
+    curated_dir.mkdir()
+
+    c1 = "ES0021000000000001AA"
+    c2 = "ES0021000000000002BB"
+    c3_extra = "ES0021000000000003CC"
+    create_mock_datadis_csv(cons_dir / f"{c1}.csv", c1, solar_cons_val=3.5, night_cons_val=1.5)
+    create_mock_datadis_csv(cons_dir / f"{c2}.csv", c2, solar_cons_val=2.0, night_cons_val=1.0)
+    create_mock_datadis_csv(
+        cons_dir / f"{c3_extra}.csv", c3_extra, solar_cons_val=5.0, night_cons_val=5.0
+    )
+    create_mock_huawei_excel(gen_dir / "gen.xlsx")
+
+    # cups.json only includes c1 and c2 (c3_extra is excluded)
+    cups_file = tmp_path / "cups.json"
+    cups_file.write_text(
+        json.dumps(
+            [
+                {"cups": c1, "use": "Aerotermia", "primary": True},
+                {"cups": c2, "use": "Garaje", "primary": False},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    curator = DataCurator(
+        consumption_dir=cons_dir,
+        generation_dir=gen_dir,
+        cups_config_path=cups_file,
+        curated_dir=curated_dir,
+    )
+
+    # 1. aggregate_consumption excludes c3_extra
+    cons_dataset = curator.aggregate_consumption()
+    assert cons_dataset.summary.cups_count == 2
+    assert all(r.cups_id in (c1, c2) for r in cons_dataset.records)
+
+    # 2. curate excludes c3_extra
+    curated_dataset = curator.curate()
+    assert curated_dataset.summary.cups_count == 2
+    for rec in curated_dataset.records:
+        assert [c.id for c in rec.cups] == [c1, c2]
+
+    # 3. dataframe_to_aligned_dataset filters out extra CUPS if present in a DataFrame
+    df_with_extra = pd.DataFrame(
+        [
+            {
+                "timestamp": "2026-05-01 12:00:00",
+                "generation": 10.0,
+                "cups_id": c1,
+                "use": "Aerotermia",
+                "consumption": 3.0,
+                "community_demand": 14.0,
+            },
+            {
+                "timestamp": "2026-05-01 12:00:00",
+                "generation": 10.0,
+                "cups_id": c2,
+                "use": "Garaje",
+                "consumption": 2.0,
+                "community_demand": 14.0,
+            },
+            {
+                "timestamp": "2026-05-01 12:00:00",
+                "generation": 10.0,
+                "cups_id": c3_extra,
+                "use": "Extra",
+                "consumption": 9.0,
+                "community_demand": 14.0,
+            },
+        ]
+    )
+    aligned = dataframe_to_aligned_dataset(df_with_extra, cups_config_path=cups_file)
+    assert aligned.cups_list == [c1, c2]
+    assert c3_extra not in aligned.data.columns
+    assert float(aligned.data.loc["2026-05-01 12:00:00", "community_demand"]) == 5.0

@@ -31,7 +31,7 @@ class CalculationRequest:
     month: int | None = None
     strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL
     precision: int = 0
-    compute_hourly: bool = False
+    compute_hourly: bool = True
     export_format: str = "all"
     lang: str = "en"
     min_share: float | None = None
@@ -85,6 +85,12 @@ class CalculationService:
 
         if needs_curation:
             curated_csv = curator.ensure_curated(force=True)
+        elif (
+            not request.is_custom_curated
+            and request.consumption_dir.exists()
+            and request.generation_dir.exists()
+        ):
+            curated_csv = curator.ensure_curated(force=False)
 
         if progress_callback:
             progress_callback(2, t("status_step_2", lang=request.lang))
@@ -93,6 +99,7 @@ class CalculationService:
             curated_csv,
             year=request.year,
             month=request.month,
+            cups_config_path=curator._resolve_cups_path(),
         )
 
         if progress_callback:
@@ -123,14 +130,13 @@ class CalculationService:
             constraints.validate_feasibility(aligned.cups_list)
 
         fmt_clean = request.export_format.lower().strip()
-        should_compute_hourly = request.compute_hourly or fmt_clean in ("all", "csv")
 
         opt_result = DistributionOptimizer.optimize_dataset(
             aligned,
             strategy=request.strategy,
             include_baselines=True,
             precision=request.precision,
-            compute_hourly=should_compute_hourly,
+            compute_hourly=True,
             constraints=constraints,
         )
 

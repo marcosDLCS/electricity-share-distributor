@@ -8,12 +8,14 @@ from typing import NoReturn
 import typer
 
 from src.config import (
+    DEFAULT_CONSUMPTION_DIR,
+    DEFAULT_CUPS_CONFIG_PATH,
+    DEFAULT_CURATED_DIR,
     DEFAULT_SHARE_PRECISION,
     DEFAULT_WEATHER_DIR,
     clear_output_directory,
     ensure_directories,
     get_language,
-    get_precision,
     is_initialized,
     load_config,
     mark_initialized,
@@ -25,7 +27,6 @@ from src.config import (
     validate_share_precision,
 )
 from src.domain.exceptions import EsdError
-from src.domain.models import parse_share_fraction
 from src.i18n import t
 from src.optimization import OptimizationStrategy
 from src.presentation.console import console
@@ -38,12 +39,9 @@ from src.presentation.views import (
     render_doctor_report,
     render_export_success,
     render_help,
-    render_hourly_profile_table,
     render_init_success,
-    render_monthly_coefficients_table,
     render_monthly_trajectory_table,
     render_not_initialized_warning,
-    render_strategy_comparison_table,
     render_version,
     render_weather_result,
 )
@@ -236,7 +234,11 @@ def doctor_command(
         target_weather_dir = weather_dir or (
             Path(cfg.weather_dir) if cfg and cfg.weather_dir else DEFAULT_WEATHER_DIR
         )
-        cups_path = resolve_cups_config_path(custom_path=cups_file, config=cfg)
+        cups_path = (
+            resolve_cups_config_path(custom_path=cups_file, config=cfg)
+            if (cups_file is not None or consumption_dir is None)
+            else None
+        )
 
         with console.status(f"[bold cyan]{t('status_doctor', lang=active_lang)}[/bold cyan]"):
             req = DoctorRequest(
@@ -336,7 +338,11 @@ def curate_command(
     target_weather_dir = weather_dir or (
         Path(cfg.weather_dir) if cfg and cfg.weather_dir else DEFAULT_WEATHER_DIR
     )
-    cups_path = resolve_cups_config_path(custom_path=cups_file, config=cfg)
+    cups_path = (
+        resolve_cups_config_path(custom_path=cups_file, config=cfg)
+        if (cups_file is not None or consumption_dir is None)
+        else None
+    )
 
     try:
         with console.status(f"[bold cyan]{t('status_curating', lang=active_lang)}[/bold cyan]"):
@@ -464,145 +470,30 @@ def weather_command(
 
 
 @app.command(name="calculate")
-def calculate_command(
-    consumption_dir: Path | None = typer.Option(
-        None,
-        "--consumption-dir",
-        "-c",
-        help="Path to folder containing DATADIS hourly consumption CSV files. Defaults to configured path.",
-    ),
-    generation_dir: Path | None = typer.Option(
-        None,
-        "--generation-dir",
-        "-g",
-        help="Path to folder containing Huawei FusionSolar generation Excel files. Defaults to configured path.",
-    ),
-    output_dir: Path | None = typer.Option(
-        None,
-        "--output-dir",
-        "-o",
-        help="Path to folder where summary reports and exports will be written. Defaults to configured path.",
-    ),
-    curated_dir: Path | None = typer.Option(
-        None,
-        "--curated-dir",
-        "-u",
-        help="Path to folder containing curated time-series CSV file. Defaults to configured path.",
-    ),
-    cups_file: Path | None = typer.Option(
-        None,
-        "--cups-file",
-        "-C",
-        help="Path to cups.json configuration file specifying CUPS uses and primary flags. Defaults to configured path.",
-    ),
-    force_curate: bool = typer.Option(
-        False,
-        "--force-curate",
-        help="Force re-running curation before calculating, even if curated CSV exists.",
-    ),
-    year: int | None = typer.Option(
-        None,
-        "--year",
-        "-y",
-        help="Optional calendar year filter (e.g. 2026).",
-    ),
-    month: int | None = typer.Option(
-        None,
-        "--month",
-        "-m",
-        help="Optional month filter (1-12).",
-    ),
-    strategy: str = typer.Option(
-        "optimal",
-        "--strategy",
-        "-s",
-        help="Allocation strategy: 'optimal' (RD 244/2019 LP), 'consumption_share', or 'equal'.",
-    ),
-    view: str = typer.Option(
-        "summary",
-        "--view",
-        "-v",
-        help="Display view mode: 'summary' (overview + matrix), 'matrix' (CUPS/months share matrix), 'trajectory', 'hourly', 'coefficients', 'comparison', or 'all'.",
-    ),
-    hourly: bool = typer.Option(
-        False,
-        "--hourly",
-        "-H",
-        help="Calculate and export distribution shares per hour (24-hour diurnal profile and hourly time-series).",
-    ),
-    export_format: str = typer.Option(
-        "all",
-        "--format",
-        "-f",
-        help="Export format: 'all', 'table' (no file export), 'csv', or 'html'.",
-    ),
-    precision: int | None = typer.Option(
-        None,
-        "--precision",
-        "-p",
-        help="Share percentage precision: 0 (e.g. 53%), 1 (e.g. 52.8%), or 2 (e.g. 52.86%).",
-    ),
-    min_share: float | None = typer.Option(
-        None,
-        "--min-share",
-        help="Regulatory or bylaw minimum share floor per CUPS (e.g. 0.05 or 5%).",
-    ),
-    max_share: float | None = typer.Option(
-        None,
-        "--max-share",
-        help="Regulatory or bylaw maximum share cap per CUPS (e.g. 0.70 or 70%).",
-    ),
-    lang: str | None = typer.Option(
-        None,
-        "--lang",
-        "-l",
-        help="Language override for outputs ('en' or 'es').",
-    ),
-) -> None:
+def calculate_command() -> None:
     """Calculate optimal electricity distribution coefficients (beta_i) for collective PV installation."""
-    active_lang = normalize_language_code(lang) if lang else get_language()
-
-    try:
-        active_precision = (
-            get_precision() if precision is None else validate_share_precision(precision)
-        )
-    except ValueError as err:
-        _handle_cli_error(err)
+    cfg = load_config()
+    active_lang = cfg.language
+    active_precision = cfg.share_precision
 
     if not is_initialized():
         render_not_initialized_warning(lang=active_lang)
 
-    cfg = load_config()
-    target_consumption_dir = consumption_dir or Path(cfg.consumption_dir)
-    target_generation_dir = generation_dir or Path(cfg.generation_dir)
-    target_output_dir = output_dir or Path(cfg.output_dir)
-    target_curated_dir = curated_dir or Path(cfg.curated_dir)
-    cups_path = resolve_cups_config_path(custom_path=cups_file, config=cfg)
+    target_consumption_dir = Path(cfg.consumption_dir)
+    target_generation_dir = Path(cfg.generation_dir)
+    target_output_dir = Path(cfg.output_dir)
+    target_curated_dir = Path(cfg.curated_dir)
 
-    # Normalize strategy
-    strat_key = strategy.lower().strip()
-    try:
-        opt_strat = OptimizationStrategy(strat_key)
-    except ValueError:
-        valid_strats = ", ".join(f"'{s.value}'" for s in OptimizationStrategy)
-        _handle_cli_error(
-            t("err_invalid_strategy", lang=active_lang, strategy=strategy, options=valid_strats)
-        )
-
-    def _parse_share(val: float | None, name: str) -> float | None:
-        if val is None:
-            return None
-        try:
-            return parse_share_fraction(val)
-        except ValueError, TypeError:
-            _handle_cli_error(t("err_share_range", lang=active_lang, name=name, val=val))
-
-    parsed_min_share = _parse_share(min_share, "--min-share")
-    parsed_max_share = _parse_share(max_share, "--max-share")
-
-    view_mode = view.lower().strip()
-    fmt_clean = export_format.lower().strip()
-    is_hourly = hourly or (view_mode == "hourly") or (fmt_clean in ("all", "csv"))
+    is_default_dirs = (
+        target_consumption_dir == DEFAULT_CONSUMPTION_DIR
+        and target_curated_dir == DEFAULT_CURATED_DIR
+    )
+    if cfg.cups_config_path != str(DEFAULT_CUPS_CONFIG_PATH):
+        cups_path = resolve_cups_config_path(custom_path=cfg.cups_config_path, config=cfg)
+    elif is_default_dirs:
+        cups_path = resolve_cups_config_path(custom_path=None, config=cfg)
+    else:
+        cups_path = None
 
     try:
         req = CalculationRequest(
@@ -611,18 +502,18 @@ def calculate_command(
             curated_dir=target_curated_dir,
             output_dir=target_output_dir,
             cups_config_path=cups_path,
-            force_curate=force_curate,
-            is_custom_input=(consumption_dir is not None or generation_dir is not None),
-            is_custom_curated=(curated_dir is not None),
-            year=year,
-            month=month,
-            strategy=opt_strat,
+            force_curate=False,
+            is_custom_input=False,
+            is_custom_curated=False,
+            year=None,
+            month=None,
+            strategy=OptimizationStrategy.OPTIMAL,
             precision=active_precision,
-            compute_hourly=is_hourly,
-            export_format=export_format,
+            compute_hourly=True,
+            export_format="all",
             lang=active_lang,
-            min_share=parsed_min_share,
-            max_share=parsed_max_share,
+            min_share=None,
+            max_share=None,
         )
 
         with console.status(
@@ -640,33 +531,11 @@ def calculate_command(
         metadata = calc_result.metadata
 
         # Presentation Views
-        if view_mode in ("summary", "all"):
-            render_community_summary(
-                metadata, opt_result.total_summary, lang=active_lang, opt_result=opt_result
-            )
-            render_monthly_trajectory_table(opt_result, lang=active_lang)
-            render_coefficients_matrix_table(
-                opt_result, lang=active_lang, precision=active_precision
-            )
-        elif view_mode == "hourly":
-            if opt_result.hourly_result is not None:
-                render_hourly_profile_table(
-                    opt_result.hourly_result, lang=active_lang, precision=active_precision
-                )
-        elif view_mode == "matrix":
-            render_coefficients_matrix_table(
-                opt_result, lang=active_lang, precision=active_precision
-            )
-        elif view_mode == "trajectory":
-            render_monthly_trajectory_table(opt_result, lang=active_lang)
-        elif view_mode == "coefficients":
-            for m in opt_result.monthly_results:
-                if m.has_data:
-                    render_monthly_coefficients_table(
-                        m, lang=active_lang, precision=active_precision
-                    )
-        elif view_mode == "comparison":
-            render_strategy_comparison_table(opt_result, lang=active_lang)
+        render_community_summary(
+            metadata, opt_result.total_summary, lang=active_lang, opt_result=opt_result
+        )
+        render_monthly_trajectory_table(opt_result, lang=active_lang)
+        render_coefficients_matrix_table(opt_result, lang=active_lang, precision=active_precision)
 
         # File Exports Feedback
         if calc_result.exported_paths:
@@ -801,7 +670,19 @@ def cleanup_command(
         None,
         "--output-dir",
         "-o",
-        help="Directory to clean up. Defaults to configured output directory.",
+        help="Output directory to clean up. Defaults to configured output directory.",
+    ),
+    curated_dir: Path | None = typer.Option(
+        None,
+        "--curated-dir",
+        "-u",
+        help="Curated directory to clean up. Defaults to configured curated directory.",
+    ),
+    weather_dir: Path | None = typer.Option(
+        None,
+        "--weather-dir",
+        "-w",
+        help="Weather directory to clean up. Defaults to configured weather directory.",
     ),
     force: bool = typer.Option(
         False,
@@ -816,25 +697,36 @@ def cleanup_command(
         help="Language override for messages ('en' or 'es').",
     ),
 ) -> None:
-    """Clean up generated reports and files from the output directory."""
+    """Clean up generated files from .output, .curated, and .input/weather directories."""
     try:
         active_lang = normalize_language_code(lang) if lang else get_language()
         cfg = load_config()
         out_dir = output_dir or Path(cfg.output_dir)
+        cur_dir = curated_dir or Path(cfg.curated_dir)
+        wth_dir = weather_dir or (
+            Path(cfg.weather_dir) if cfg and cfg.weather_dir else DEFAULT_WEATHER_DIR
+        )
 
-        if not out_dir.exists():
-            render_cleanup_result(count=0, output_dir=str(out_dir), lang=active_lang)
-            return
+        target_dirs = [out_dir, cur_dir, wth_dir]
+        dirs_display = ", ".join(str(d) for d in target_dirs)
 
-        files = [f for f in out_dir.iterdir() if f.is_file() and not f.name.startswith(".")]
+        files: list[Path] = []
+        for d in target_dirs:
+            if d.exists() and d.is_dir():
+                files.extend(f for f in d.iterdir() if f.is_file() and not f.name.startswith("."))
 
         if not files:
-            render_cleanup_result(count=0, output_dir=str(out_dir), lang=active_lang)
+            render_cleanup_result(count=0, output_dir=dirs_display, lang=active_lang)
             return
 
         if not force:
             confirm = typer.confirm(
-                t("prompt_cleanup_confirm", lang=active_lang, count=len(files), dir=str(out_dir)),
+                t(
+                    "prompt_cleanup_confirm",
+                    lang=active_lang,
+                    count=len(files),
+                    dir=dirs_display,
+                ),
                 default=False,
             )
             if not confirm:
@@ -849,7 +741,7 @@ def cleanup_command(
             except Exception as err:
                 console.print(f"[red]Error deleting {f.name}: {err}[/red]")
 
-        render_cleanup_result(count=count, output_dir=str(out_dir), lang=active_lang)
+        render_cleanup_result(count=count, output_dir=dirs_display, lang=active_lang)
     except typer.Exit, typer.Abort:
         raise
     except EsdError as err:
