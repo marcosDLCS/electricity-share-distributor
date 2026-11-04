@@ -483,6 +483,7 @@ def calculate_command() -> None:
     target_generation_dir = Path(cfg.generation_dir)
     target_output_dir = Path(cfg.output_dir)
     target_curated_dir = Path(cfg.curated_dir)
+    target_weather_dir = Path(cfg.weather_dir) if cfg and cfg.weather_dir else DEFAULT_WEATHER_DIR
 
     is_default_dirs = (
         target_consumption_dir == DEFAULT_CONSUMPTION_DIR
@@ -501,6 +502,7 @@ def calculate_command() -> None:
             generation_dir=target_generation_dir,
             curated_dir=target_curated_dir,
             output_dir=target_output_dir,
+            weather_dir=target_weather_dir,
             cups_config_path=cups_path,
             force_curate=False,
             is_custom_input=False,

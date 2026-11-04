@@ -254,16 +254,62 @@ def test_export_fortnight_shares_csv(tmp_path: Path) -> None:
     assert df.iloc[1]["share_pct"] == "40,0%"
 
 
+def test_export_monthly_shares_lite_csv(tmp_path: Path) -> None:
+    opt_result, _ = create_dummy_optimization_result()
+    csv_path = ReportExporter(
+        output_dir=tmp_path, timestamp="20260531_120000"
+    ).export_monthly_shares_lite_csv(opt_result, precision=1)
+    assert csv_path.exists()
+    assert csv_path.name == "20260531_120000_esd_monthly_shares_lite.csv"
+
+    df = pd.read_csv(csv_path, sep=";", decimal=",", dtype=str).fillna("")
+    assert len(df) == 2
+    expected_cols = ["cups", "use", *[f"{m:02d}" for m in range(1, 13)]]
+    assert list(df.columns) == expected_cols
+    assert df.iloc[0]["cups"] == "ES0021000000000001AA"
+    assert df.iloc[0]["use"] == "Aerotermia"
+    assert df.iloc[0]["05"] == "60,0%"
+    assert df.iloc[0]["01"] == ""
+
+    assert df.iloc[1]["cups"] == "ES0021000000000002BB"
+    assert df.iloc[1]["use"] == "Garaje"
+    assert df.iloc[1]["05"] == "40,0%"
+
+
+def test_export_fortnight_shares_lite_csv(tmp_path: Path) -> None:
+    opt_result, _ = create_dummy_optimization_result()
+    csv_path = ReportExporter(
+        output_dir=tmp_path, timestamp="20260531_120000"
+    ).export_fortnight_shares_lite_csv(opt_result, precision=1)
+    assert csv_path.exists()
+    assert csv_path.name == "20260531_120000_esd_fortnight_shares_lite.csv"
+
+    df = pd.read_csv(csv_path, sep=";", decimal=",", dtype=str).fillna("")
+    assert len(df) == 2
+    expected_cols = ["cups", "use", *[f"{m:02d}-{f}" for m in range(1, 13) for f in (1, 2)]]
+    assert list(df.columns) == expected_cols
+    assert df.iloc[0]["cups"] == "ES0021000000000001AA"
+    assert df.iloc[0]["use"] == "Aerotermia"
+    assert df.iloc[0]["05-1"] == "60,0%"
+    assert df.iloc[0]["05-2"] == ""
+
+    assert df.iloc[1]["cups"] == "ES0021000000000002BB"
+    assert df.iloc[1]["use"] == "Garaje"
+    assert df.iloc[1]["05-1"] == "40,0%"
+
+
 def test_export_all_filtering(tmp_path: Path) -> None:
     opt_result, meta = create_dummy_optimization_result()
 
-    # CSV exports monthly_shares, fortnight_shares, and hourly_shares
+    # CSV exports monthly_shares, monthly_shares_lite, fortnight_shares, fortnight_shares_lite, and hourly_shares
     paths_csv = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="csv")
-    assert len(paths_csv) == 3
+    assert len(paths_csv) == 5
     assert all(p.suffix == ".csv" for p in paths_csv)
     file_names = [p.name for p in paths_csv]
     assert any("_esd_monthly_shares.csv" in n for n in file_names)
+    assert any("_esd_monthly_shares_lite.csv" in n for n in file_names)
     assert any("_esd_fortnight_shares.csv" in n for n in file_names)
+    assert any("_esd_fortnight_shares_lite.csv" in n for n in file_names)
     assert any("_esd_hourly_shares.csv" in n for n in file_names)
 
     # HTML exports interactive_report.html
@@ -271,9 +317,9 @@ def test_export_all_filtering(tmp_path: Path) -> None:
     assert len(paths_html) == 1
     assert paths_html[0].name.endswith("_esd_interactive_report.html")
 
-    # All exports monthly_shares, fortnight_shares, hourly_shares, and interactive_report
+    # All exports 5 CSVs + interactive_report.html
     paths_all = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="all")
-    assert len(paths_all) == 4
+    assert len(paths_all) == 6
 
     # None / table
     paths_none = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="table")
@@ -348,12 +394,14 @@ def test_export_hourly_files(tmp_path: Path) -> None:
     assert "Aerotermia" in lines[1]
     assert "Portal 1" in lines[2]
 
-    # export_all with formats='csv' should export 3 CSVs (monthly_shares, fortnight_shares, and hourly_shares)
+    # export_all with formats='csv' should export 5 CSVs
     exported = ReportExporter(output_dir=tmp_path).export_all(opt_result, meta, formats="csv")
-    assert len(exported) == 3
+    assert len(exported) == 5
     file_names = [p.name for p in exported]
     assert any("_esd_monthly_shares.csv" in n for n in file_names)
+    assert any("_esd_monthly_shares_lite.csv" in n for n in file_names)
     assert any("_esd_fortnight_shares.csv" in n for n in file_names)
+    assert any("_esd_fortnight_shares_lite.csv" in n for n in file_names)
     assert any("_esd_hourly_shares.csv" in n for n in file_names)
 
 
@@ -397,7 +445,7 @@ def test_export_csvs_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
     csv_paths = ReportExporter(output_dir=tmp_path).export_all(
         opt_result, meta, formats="csv", precision=2
     )
-    assert len(csv_paths) == 3
+    assert len(csv_paths) == 5
 
     for p in csv_paths:
         text = p.read_text(encoding="utf-8")
@@ -439,7 +487,7 @@ def test_report_exporter_class(tmp_path: Path) -> None:
 
     # Test all exports via ReportExporter instance
     exported = exporter.export_all(opt_result, meta, formats="all", precision=1)
-    assert len(exported) == 4
+    assert len(exported) == 6
     for p in exported:
         assert p.exists()
         assert p.parent == out_dir

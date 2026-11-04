@@ -378,6 +378,65 @@ class ReportExporter:
         df.to_csv(file_path, index=False, sep=self.delimiter, decimal=self.decimal_char)
         return file_path
 
+    def export_monthly_shares_lite_csv(
+        self,
+        opt_result: OptimizationResult,
+        precision: int | None = None,
+        timestamp: str | None = None,
+    ) -> Path:
+        """Export lite monthly distribution shares matrix (CUPS in Y, Months 01..12 in X) as CSV."""
+        from src.config import get_precision
+
+        prec = get_precision() if precision is None else precision
+        ts = timestamp or self.timestamp
+        file_path = self.output_dir / f"{ts}_esd_monthly_shares_lite.csv"
+
+        calendar_months = [f"{m:02d}" for m in range(1, 13)]
+        cups_set: list[str] = list(opt_result.cups_list)
+        if not cups_set:
+            seen: set[str] = set()
+            for m in opt_result.monthly_results:
+                for cm in m.cups_metrics:
+                    if cm.cups not in seen:
+                        seen.add(cm.cups)
+                        cups_set.append(cm.cups)
+
+        uses_map: dict[str, str] = dict(opt_result.cups_uses)
+        share_lookup: dict[tuple[str, str], str] = {}
+        for m in opt_result.monthly_results:
+            if not m.has_data:
+                continue
+            m_key = m.month[-2:] if len(m.month) >= 2 else f"{int(m.month):02d}"
+            for cm in m.cups_metrics:
+                if cm.use and not uses_map.get(cm.cups):
+                    uses_map[cm.cups] = cm.use
+                share_lookup[(cm.cups, m_key)] = f"{cm.beta * 100:.{prec}f}%".replace(
+                    ".", self.decimal_char
+                )
+
+        rows: list[dict[str, object]] = []
+        for cups_id in cups_set:
+            use_val = uses_map.get(cups_id, "")
+            row: dict[str, object] = {
+                "cups": cups_id,
+                "use": sanitize_formula_injection(use_val),
+            }
+            for m_str in calendar_months:
+                row[m_str] = share_lookup.get((cups_id, m_str), "")
+            rows.append(row)
+
+        columns = ["cups", "use", *calendar_months]
+        df = pd.DataFrame(rows, columns=columns)
+        if not df.empty:
+            df = df.sort_values(
+                by=["use", "cups"],
+                key=lambda col: col.astype(str).str.lower(),
+                ascending=[True, True],
+            ).reset_index(drop=True)
+
+        df.to_csv(file_path, index=False, sep=self.delimiter, decimal=self.decimal_char)
+        return file_path
+
     def export_fortnight_shares_csv(
         self,
         opt_result: OptimizationResult,
@@ -463,6 +522,84 @@ class ReportExporter:
         df.to_csv(file_path, index=False, sep=self.delimiter, decimal=self.decimal_char)
         return file_path
 
+    def export_fortnight_shares_lite_csv(
+        self,
+        opt_result: OptimizationResult,
+        precision: int | None = None,
+        timestamp: str | None = None,
+    ) -> Path:
+        """Export lite fortnight distribution shares matrix (CUPS in Y, Fortnights 01-1..12-2 in X) as CSV."""
+        from src.config import get_precision
+
+        prec = get_precision() if precision is None else precision
+        ts = timestamp or self.timestamp
+        file_path = self.output_dir / f"{ts}_esd_fortnight_shares_lite.csv"
+
+        calendar_fortnights = [f"{m:02d}-{f}" for m in range(1, 13) for f in (1, 2)]
+        source_results = (
+            opt_result.fortnight_results
+            if opt_result.fortnight_results
+            else opt_result.monthly_results
+        )
+
+        cups_set: list[str] = list(opt_result.cups_list)
+        if not cups_set:
+            seen: set[str] = set()
+            for f_res in source_results:
+                for cm in f_res.cups_metrics:
+                    if cm.cups not in seen:
+                        seen.add(cm.cups)
+                        cups_set.append(cm.cups)
+
+        uses_map: dict[str, str] = dict(opt_result.cups_uses)
+        share_lookup: dict[tuple[str, str], str] = {}
+        for f_res in source_results:
+            if not f_res.has_data:
+                continue
+            raw_period = str(f_res.month)
+            if "-" in raw_period:
+                parts = raw_period.split("-")
+                if len(parts) == 2 and len(parts[0]) == 2:
+                    f_keys = [f"{parts[0]}-{parts[1].lstrip('Ff')}"]
+                elif len(parts) >= 3:
+                    f_keys = [f"{parts[1]}-{parts[2].lstrip('Ff')}"]
+                else:
+                    m_two = raw_period[-2:] if len(raw_period) >= 2 else f"{int(raw_period):02d}"
+                    f_keys = [f"{m_two}-1", f"{m_two}-2"]
+            else:
+                m_two = raw_period[-2:] if len(raw_period) >= 2 else f"{int(raw_period):02d}"
+                f_keys = [f"{m_two}-1", f"{m_two}-2"]
+
+            for cm in f_res.cups_metrics:
+                if cm.use and not uses_map.get(cm.cups):
+                    uses_map[cm.cups] = cm.use
+                formatted_pct = f"{cm.beta * 100:.{prec}f}%".replace(".", self.decimal_char)
+                for fk in f_keys:
+                    share_lookup[(cm.cups, fk)] = formatted_pct
+
+        rows: list[dict[str, object]] = []
+        for cups_id in cups_set:
+            use_val = uses_map.get(cups_id, "")
+            row: dict[str, object] = {
+                "cups": cups_id,
+                "use": sanitize_formula_injection(use_val),
+            }
+            for f_str in calendar_fortnights:
+                row[f_str] = share_lookup.get((cups_id, f_str), "")
+            rows.append(row)
+
+        columns = ["cups", "use", *calendar_fortnights]
+        df = pd.DataFrame(rows, columns=columns)
+        if not df.empty:
+            df = df.sort_values(
+                by=["use", "cups"],
+                key=lambda col: col.astype(str).str.lower(),
+                ascending=[True, True],
+            ).reset_index(drop=True)
+
+        df.to_csv(file_path, index=False, sep=self.delimiter, decimal=self.decimal_char)
+        return file_path
+
     def export_hourly_shares_csv(
         self,
         opt_result: OptimizationResult,
@@ -514,6 +651,7 @@ class ReportExporter:
 
         if fmt in ("all", "csv"):
             exported.append(self.export_monthly_shares_csv(opt_result, precision=precision))
+            exported.append(self.export_monthly_shares_lite_csv(opt_result, precision=precision))
             if not opt_result.fortnight_results and aligned_dataset is not None:
                 from src.optimization.engine import DistributionOptimizer
                 from src.optimization.models import OptimizationStrategy
@@ -527,6 +665,7 @@ class ReportExporter:
                     constraints=opt_result.constraints,
                 )
             exported.append(self.export_fortnight_shares_csv(opt_result, precision=precision))
+            exported.append(self.export_fortnight_shares_lite_csv(opt_result, precision=precision))
             if opt_result.hourly_result is None and aligned_dataset is not None:
                 from src.optimization.engine import DistributionOptimizer
                 from src.optimization.models import OptimizationStrategy

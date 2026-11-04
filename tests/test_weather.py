@@ -615,3 +615,26 @@ def test_downloader_oversized_payload_protection(tmp_path: Path) -> None:
             match=r"response exceeded maximum allowable size of 10485760 bytes \(10 MB\)",
         ):
             downloader.download_year(year=2024, latitude=40.4168, longitude=-3.7038)
+
+
+def test_downloader_curl_fallback_when_ssl_missing(tmp_path: Path) -> None:
+    """Downloader falls back to curl when urllib raises URLError for unknown url type: https."""
+    downloader = OpenMeteoWeatherDownloader(weather_dir=tmp_path)
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.stdout = _mock_open_meteo_response(hours_count=24)
+    mock_proc.stderr = b""
+
+    with (
+        patch(
+            "urllib.request.urlopen",
+            side_effect=urllib.error.URLError("unknown url type: https"),
+        ),
+        patch("subprocess.run", return_value=mock_proc) as mock_run,
+    ):
+        out_file, df, res = downloader.download_year(year=2024, latitude=40.4168, longitude=-3.7038)
+
+    assert mock_run.called
+    assert out_file.exists()
+    assert len(df) == 24
+    assert res.total_hours == 24

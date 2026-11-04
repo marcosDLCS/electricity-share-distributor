@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -271,6 +272,41 @@ class OpenMeteoWeatherDownloader:
 
         return start_date, end_date
 
+    @classmethod
+    def _fetch_via_curl(cls, url: str, timeout_seconds: int) -> bytes:
+        """Fallback HTTPS fetcher using system curl when Python's ssl module is unavailable."""
+        cls.validate_url(url)
+        try:
+            proc = subprocess.run(
+                [
+                    "curl",
+                    "-sS",
+                    "-f",
+                    "--max-time",
+                    str(timeout_seconds),
+                    "-A",
+                    "esd/1.0 (electricity-share-distributor)",
+                    url,
+                ],
+                capture_output=True,
+                check=False,
+                timeout=timeout_seconds + 5,
+            )
+        except subprocess.TimeoutExpired as err:
+            raise IngestionError(
+                f"Connection to Open-Meteo timed out after {timeout_seconds} seconds."
+            ) from err
+        except Exception as err:
+            raise IngestionError(f"Failed to connect to Open-Meteo API: {err}") from err
+
+        if proc.returncode != 0:
+            err_msg = proc.stderr.decode("utf-8", errors="replace").strip() or (
+                f"curl exited with code {proc.returncode}"
+            )
+            raise IngestionError(f"Failed to connect to Open-Meteo API: {err_msg}")
+
+        return proc.stdout
+
     def download_year(
         self,
         year: int,
@@ -336,7 +372,21 @@ class OpenMeteoWeatherDownloader:
                 reason = error_body or str(err)
             raise IngestionError(f"Open-Meteo API HTTP Error {err.code}: {reason}") from err
         except urllib.error.URLError as err:
-            raise IngestionError(f"Failed to connect to Open-Meteo API: {err.reason}") from err
+            if "unknown url type: https" in str(err.reason).lower():
+                raw_bytes = self._fetch_via_curl(url, timeout_seconds)
+                if len(raw_bytes) > self.MAX_RESPONSE_BYTES:
+                    raise IngestionError(
+                        f"Open-Meteo API response exceeded maximum allowable size of "
+                        f"{self.MAX_RESPONSE_BYTES} bytes (10 MB)."
+                    ) from err
+                try:
+                    data = json.loads(raw_bytes.decode("utf-8"))
+                except Exception as parse_err:
+                    raise IngestionError(
+                        f"Unexpected error retrieving Open-Meteo data: {parse_err}"
+                    ) from parse_err
+            else:
+                raise IngestionError(f"Failed to connect to Open-Meteo API: {err.reason}") from err
         except TimeoutError as err:
             raise IngestionError(
                 f"Connection to Open-Meteo timed out after {timeout_seconds} seconds."

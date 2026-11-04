@@ -153,12 +153,14 @@ def test_synthetic_community_optimization(tmp_path: Path) -> None:
         lang="en",
         aligned_dataset=aligned,
     )
-    assert len(exported) == 4
+    assert len(exported) == 6
     for p in exported:
         assert p.exists()
         assert p.stat().st_size > 0
     names = [p.name for p in exported]
     assert any("_esd_monthly_shares.csv" in n for n in names)
+    assert any("_esd_monthly_shares_lite.csv" in n for n in names)
     assert any("_esd_fortnight_shares.csv" in n for n in names)
+    assert any("_esd_fortnight_shares_lite.csv" in n for n in names)
     assert any("_esd_hourly_shares.csv" in n for n in names)
     assert any("_esd_interactive_report.html" in n for n in names)

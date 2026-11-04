@@ -392,7 +392,15 @@ class DataCurator:
         # 4. Fallback to persistent configuration if custom cups config not specified
         if not self.cups_config_path:
             app_cfg = load_config()
-            if app_cfg.latitude is not None and app_cfg.longitude is not None:
+            default_cons_dirs = {
+                DEFAULT_CONSUMPTION_DIR.resolve(),
+                Path(app_cfg.consumption_dir).resolve(),
+            }
+            if (
+                self.consumption_dir.resolve() in default_cons_dirs
+                and app_cfg.latitude is not None
+                and app_cfg.longitude is not None
+            ):
                 return (round(app_cfg.latitude, 4), round(app_cfg.longitude, 4))
 
         return None
@@ -1006,14 +1014,41 @@ class DataCurator:
                     and "primary" not in cols
                     and "reconciled" not in cols
                 ):
+                    df_existing = pd.read_csv(
+                        csv_path,
+                        sep=sep,
+                        usecols=["cups_id", "year", "temperature"],
+                        dtype={"cups_id": str, "year": int, "temperature": str},
+                    )
+                    cups_match = True
                     if cups_configs:
-                        df_existing = pd.read_csv(
-                            csv_path, sep=sep, usecols=["cups_id"], dtype={"cups_id": str}
-                        )
                         existing_cups = set(df_existing["cups_id"].astype(str).str.strip().unique())
-                        if existing_cups == set(cups_configs.keys()):
-                            return csv_path
-                    else:
+                        cups_match = existing_cups == set(cups_configs.keys())
+
+                    weather_ok = True
+                    default_coords = self.get_default_location(cups_configs)
+                    if default_coords is not None and not df_existing.empty:
+                        years_in_csv = sorted(df_existing["year"].dropna().unique().tolist())
+                        w_loader = WeatherLoader(self.weather_dir)
+                        for yr in years_in_csv:
+                            try:
+                                w_loader.load_year(
+                                    year=int(yr),
+                                    latitude=default_coords[0],
+                                    longitude=default_coords[1],
+                                )
+                            except Exception:
+                                weather_ok = False
+                                break
+                        if weather_ok:
+                            temp_clean = df_existing["temperature"].dropna().astype(str).str.strip()
+                            temp_clean = temp_clean[
+                                (temp_clean != "") & (temp_clean.str.lower() != "nan")
+                            ]
+                            if temp_clean.empty:
+                                weather_ok = False
+
+                    if cups_match and weather_ok:
                         return csv_path
             except Exception:
                 pass

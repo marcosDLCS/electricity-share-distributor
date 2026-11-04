@@ -114,11 +114,13 @@ def test_cli_calculate_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
     csv_files = list(out_dir.glob("*.csv"))
     html_files = list(out_dir.glob("*.html"))
-    assert len(csv_files) == 3
+    assert len(csv_files) == 5
     assert len(html_files) == 1
     csv_names = [f.name for f in csv_files]
     assert any("_esd_monthly_shares.csv" in n for n in csv_names)
+    assert any("_esd_monthly_shares_lite.csv" in n for n in csv_names)
     assert any("_esd_fortnight_shares.csv" in n for n in csv_names)
+    assert any("_esd_fortnight_shares_lite.csv" in n for n in csv_names)
     assert any("_esd_hourly_shares.csv" in n for n in csv_names)
     assert html_files[0].name.endswith("_esd_interactive_report.html")
 
@@ -283,7 +285,7 @@ def test_cli_calculate_dynamic_defaults_from_config(
     assert result.exit_code == 0
     exported_csv = list(custom_out.glob("*.csv"))
     exported_html = list(custom_out.glob("*.html"))
-    assert len(exported_csv) == 3
+    assert len(exported_csv) == 5
     assert len(exported_html) == 1
 
 

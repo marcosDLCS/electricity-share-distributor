@@ -237,7 +237,9 @@ Al ejecutar `esd calculate`, se generan automáticamente los archivos en `.outpu
 | :--- | :--- | :--- |
 | `*_esd_interactive_report.html` | HTML (Independiente) | Cuadro de mando ejecutivo interactivo offline con selector dinámico bilingüe ES/EN, 4 tarjetas KPI principales, previsión de coeficientes horarios dinámicos (Orden TED/1247/2021), trayectoria energética multibarrita, gráfica de eficiencia solar fotovoltaica y mapa de calor de coeficientes mensuales. |
 | `*_esd_monthly_shares.csv` | CSV (delimitado por `;`) | Desglose mensual de reparto por CUPS: consumo, generación, porcentaje de reparto ($\beta_i$ %), kWh autoconsumidos, excedentes vertidos y demanda remanente de red, ordenado por mes y uso del suministro. |
+| `*_esd_monthly_shares_lite.csv` | CSV (delimitado por `;`) | Matriz mensual compacta únicamente con el porcentaje de reparto ($\beta_i$ %), con los CUPS (`cups`, `use`) en el eje Y y los meses (`01`..`12`) en el eje X. |
 | `*_esd_fortnight_shares.csv` | CSV (delimitado por `;`) | Desglose quincenal (`1` del día 1 al 15, `2` del día 16 a fin de mes) de reparto por CUPS: mes, quincena, consumo, generación, porcentaje de reparto ($\beta_i$ %), kWh autoconsumidos, excedentes vertidos y demanda remanente de red. |
+| `*_esd_fortnight_shares_lite.csv` | CSV (delimitado por `;`) | Matriz quincenal compacta únicamente con el porcentaje de reparto ($\beta_i$ %), con los CUPS (`cups`, `use`) en el eje Y y las quincenas (`01-1`..`12-2`) en el eje X. |
 | `*_esd_hourly_shares.csv` | CSV (delimitado por `;`) | Serie temporal horaria con consumo, producción, cuotas (con suelo mínimo del 1%) y el Índice de Eficiencia Solar (entero 1-100 en horas de generación, 0 sin generación), ordenada por fecha y uso. |
 
 ---

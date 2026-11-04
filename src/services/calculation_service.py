@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.config import DEFAULT_WEATHER_DIR
 from src.curation.curator import DataCurator
 from src.domain.models import BylawConstraints
 from src.i18n import t
@@ -23,6 +24,7 @@ class CalculationRequest:
     generation_dir: Path
     curated_dir: Path
     output_dir: Path
+    weather_dir: Path = DEFAULT_WEATHER_DIR
     cups_config_path: Path | None = None
     force_curate: bool = False
     is_custom_input: bool = False
@@ -65,6 +67,7 @@ class CalculationService:
             generation_dir=request.generation_dir,
             cups_config_path=request.cups_config_path,
             curated_dir=request.curated_dir,
+            weather_dir=request.weather_dir,
         )
 
         curated_csv = (

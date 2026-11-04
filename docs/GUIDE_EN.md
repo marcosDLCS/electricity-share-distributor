@@ -237,7 +237,9 @@ Running `esd calculate` generates ready-to-use artifacts in `.output/`:
 | :--- | :--- | :--- |
 | `*_esd_interactive_report.html` | HTML (Standalone) | Offline interactive executive dashboard with dynamic bilingual ES/EN switcher, 4 primary energy KPI cards, dynamic hourly coefficient prevision (Orden TED/1247/2021), energy trajectory multi-bars, Photovoltaic Solar Efficiency Index graphic, and monthly coefficient matrix heatmap. |
 | `*_esd_monthly_shares.csv` | CSV (`;` delimited) | Monthly allocation breakdown per CUPS: consumption, generation, share percentage ($\beta_i$ %), self-consumed kWh, solar surplus, and remaining grid demand, ordered by month and facility use. |
+| `*_esd_monthly_shares_lite.csv` | CSV (`;` delimited) | Compact monthly share matrix containing only share percentages ($\beta_i$ %), with CUPS (`cups`, `use`) on the Y axis and calendar months (`01`..`12`) on the X axis. |
 | `*_esd_fortnight_shares.csv` | CSV (`;` delimited) | Fortnight (half-month: `1` for days 1–15, `2` for days 16–end of month) allocation breakdown per CUPS: month, fortnight, consumption, generation, share percentage ($\beta_i$ %), self-consumed kWh, solar surplus, and remaining grid demand. |
+| `*_esd_fortnight_shares_lite.csv` | CSV (`;` delimited) | Compact fortnight share matrix containing only share percentages ($\beta_i$ %), with CUPS (`cups`, `use`) on the Y axis and calendar fortnights (`01-1`..`12-2`) on the X axis. |
 | `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Full hourly time-series recording consumption, generation, shares (with 1% floor), and the Solar Efficiency Index (integer 1-100 for generation hours, 0 without generation), ordered by timestamp and use. |
 
 ---
