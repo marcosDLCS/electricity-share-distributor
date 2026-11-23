@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from src.i18n import t
+from src.ingestion.csv_utils import clean_numeric_series
 from src.optimization.efficiency import calculate_solar_efficiency
 from src.presentation.console import format_kwh
 from src.presentation.views.common import MONTH_ABBR_EN, MONTH_ABBR_ES
@@ -282,12 +283,8 @@ def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any
                 if "generation_kwh" in pri_rows.columns
                 else pd.Series(0.0, index=pri_rows.index)
             )
-            if pd.api.types.is_string_dtype(pri_c.dtype) or pri_c.dtype == object:
-                pri_c = pri_c.astype(str).str.replace(",", ".", regex=False).str.strip()
-            if pd.api.types.is_string_dtype(pri_g.dtype) or pri_g.dtype == object:
-                pri_g = pri_g.astype(str).str.replace(",", ".", regex=False).str.strip()
-            pri_c_vals = pd.to_numeric(pri_c, errors="coerce").fillna(0.0).to_numpy()
-            pri_g_vals = pd.to_numeric(pri_g, errors="coerce").fillna(0.0).to_numpy()
+            pri_c_vals = clean_numeric_series(pri_c, fill_na=0.0).to_numpy()
+            pri_g_vals = clean_numeric_series(pri_g, fill_na=0.0).to_numpy()
             single_sc_val = float(np.sum(np.minimum(pri_c_vals, pri_g_vals)))
         else:
             single_sc_val = 0.0
@@ -342,18 +339,12 @@ def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any
             )
 
         if "consumption_kwh" in df.columns:
-            c_series = df["consumption_kwh"]
-            if pd.api.types.is_string_dtype(c_series.dtype) or c_series.dtype == object:
-                c_series = c_series.astype(str).str.replace(",", ".", regex=False).str.strip()
-            c_vals = pd.to_numeric(c_series, errors="coerce").fillna(0.0).to_numpy()
+            c_vals = clean_numeric_series(df["consumption_kwh"], fill_na=0.0).to_numpy()
         else:
             c_vals = np.zeros(len(df))
 
         if "generation_kwh" in df.columns:
-            g_series = df["generation_kwh"]
-            if pd.api.types.is_string_dtype(g_series.dtype) or g_series.dtype == object:
-                g_series = g_series.astype(str).str.replace(",", ".", regex=False).str.strip()
-            g_vals = pd.to_numeric(g_series, errors="coerce").fillna(0.0).to_numpy()
+            g_vals = clean_numeric_series(df["generation_kwh"], fill_na=0.0).to_numpy()
         else:
             g_vals = np.zeros(len(df))
 

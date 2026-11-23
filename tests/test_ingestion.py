@@ -5,11 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import openpyxl
+import pandas as pd
 import pytest
 
-from src.ingestion.consumption import DatadisConsumptionLoader
+from src.ingestion.consumption import DatadisConsumptionLoader, DatadisValidator
+from src.ingestion.csv_utils import clean_numeric_series, sniff_csv_delimiter
 from src.ingestion.generation import HuaweiGenerationLoader
-from src.ingestion.schema import IngestionError, ValidationError
+from src.ingestion.schema import IngestionError, ValidationError, ValidationResult
 from src.ingestion.weather import (
     ALLOWED_WEATHER_HOST,
     MAX_RESPONSE_BYTES,
@@ -377,3 +379,173 @@ def test_generation_loader_sanitizes_corrupted_partial_outage_hours(tmp_path: Pa
     # Valid hour 16:00 is preserved intact
     assert df["generation_kwh"].iloc[1] == 56.33
     assert df["consumption_kwh"].iloc[1] == 17.64
+
+
+def test_consumption_loader_recursive_annualized_discovery(tmp_path: Path) -> None:
+    """Discover flat and annualized .input/consumption/<year>/*.csv while skipping hidden items."""
+    base_dir = tmp_path / ".input" / "consumption"
+    dir_2024 = base_dir / "2024"
+    dir_2025 = base_dir / "2025"
+    hidden_dir = base_dir / ".archive"
+    dir_2024.mkdir(parents=True)
+    dir_2025.mkdir(parents=True)
+    hidden_dir.mkdir(parents=True)
+
+    f_2024 = dir_2024 / "ES0021000000000001AA_2024.csv"
+    f_2025 = dir_2025 / "ES0021000000000001AA_2025.csv"
+    f_flat = base_dir / "ES0021000000000002BB_flat.csv"
+    f_hidden_file = dir_2024 / ".backup.csv"
+    f_hidden_sub = hidden_dir / "ignored.csv"
+
+    f_2024.write_text(
+        "cups;fecha;hora;consumo_kWh\nES0021000000000001AA;2024/05/01;01:00;1,250\n",
+        encoding="utf-8",
+    )
+    f_2025.write_text(
+        "cups;fecha;hora;consumo_kWh\nES0021000000000001AA;2025/05/01;01:00;2,500\n",
+        encoding="utf-8",
+    )
+    f_flat.write_text(
+        "cups;fecha;hora;consumo_kWh\nES0021000000000002BB;2026/05/01;01:00;3,750\n",
+        encoding="utf-8",
+    )
+    f_hidden_file.write_text("cups;fecha;hora;consumo_kWh\n", encoding="utf-8")
+    f_hidden_sub.write_text("cups;fecha;hora;consumo_kWh\n", encoding="utf-8")
+
+    loader = DatadisConsumptionLoader(base_dir)
+    all_files = loader.discover_files()
+    assert all_files == sorted([f_2024, f_2025, f_flat])
+
+    # Specific year directory hit
+    files_2024 = loader.discover_files(year=2024)
+    assert files_2024 == [f_2024]
+
+    # Fallback when year directory does not exist returns non-hidden recursive CSVs
+    files_2026 = loader.discover_files(year=2026)
+    assert files_2026 == sorted([f_2024, f_2025, f_flat])
+
+    df_2026 = loader.load_all(year=2026)
+    assert len(df_2026) == 1
+    assert df_2026["cups"].iloc[0] == "ES0021000000000002BB"
+    assert df_2026["consumption_kwh"].iloc[0] == 3.75
+
+
+def test_consumption_loader_consumokwh_alias_and_utf8_bom(tmp_path: Path) -> None:
+    """Accept camelCase consumoKwh header alias and UTF-8 BOM-encoded CSV files."""
+    bom_csv = tmp_path / "bom_alias.csv"
+    content = (
+        "cups;fecha;hora;consumoKwh;metodoObtencion\n"
+        '"ES0021000000000001AA";"2026/05/01";"01:00";"0,450";Real\n'
+        '"ES0021000000000001AA";"2026/05/01";"02:00";"0,550";Real\n'
+    )
+    bom_csv.write_bytes(b"\xef\xbb\xbf" + content.encode("utf-8"))
+
+    assert DatadisValidator.detect_encoding(bom_csv) == "utf-8-sig"
+    val = DatadisValidator.validate_file(bom_csv)
+    assert val.is_valid is True
+    assert val.total_rows == 2
+    assert val.detected_columns[0] == "cups"
+
+    df = DatadisConsumptionLoader.parse_file(bom_csv)
+    assert len(df) == 2
+    assert df["consumption_kwh"].tolist() == [0.45, 0.55]
+    assert df["timestamp"].tolist() == ["2026-05-01 00:00:00", "2026-05-01 01:00:00"]
+
+
+def test_datadis_validator_file_checks(tmp_path: Path) -> None:
+    """Validate missing, empty, header-only, missing-column, and valid CSV files."""
+    missing_file = tmp_path / "does_not_exist.csv"
+    res_missing = DatadisValidator.validate_file(missing_file)
+    assert isinstance(res_missing, ValidationResult)
+    assert res_missing.is_valid is False
+    assert "not found" in (res_missing.error_message or "").lower()
+
+    empty_file = tmp_path / "empty.csv"
+    empty_file.write_text("", encoding="utf-8")
+    res_empty = DatadisValidator.validate_file(empty_file)
+    assert res_empty.is_valid is False
+    assert "empty" in (res_empty.error_message or "").lower()
+
+    header_only = tmp_path / "header_only.csv"
+    header_only.write_text("cups;fecha;hora;consumo_kWh\n   \n", encoding="utf-8")
+    res_header_only = DatadisValidator.validate_file(header_only)
+    assert res_header_only.is_valid is False
+    assert res_header_only.total_rows == 0
+    assert "zero data rows" in (res_header_only.error_message or "").lower()
+
+    missing_col = tmp_path / "missing_col.csv"
+    missing_col.write_text("cups;fecha;hora\nES0021000000000001AA;2026/05/01;01:00\n")
+    res_missing_col = DatadisValidator.validate_file(missing_col)
+    assert res_missing_col.is_valid is False
+    assert res_missing_col.missing_columns == ["consumo_kWh"]
+
+    valid_file = tmp_path / "valid_alias.csv"
+    valid_file.write_text(
+        "cups,fecha,hora,consumoKwh\nES0021000000000001AA,2026-05-01,01:00,1.25\n",
+        encoding="utf-8",
+    )
+    res_valid = DatadisValidator.validate_file(valid_file)
+    assert res_valid.is_valid is True
+    assert res_valid.delimiter == ","
+    assert res_valid.total_rows == 1
+
+
+def test_consumption_loader_load_all_with_validation_skips_invalid(tmp_path: Path) -> None:
+    """Skip empty or malformed CSVs cleanly and raise IngestionError if all fail."""
+    valid_csv = tmp_path / "a_valid.csv"
+    create_mock_datadis_csv(valid_csv, cups="ES0021000000000001AA", num_days=1)
+
+    empty_csv = tmp_path / "b_empty.csv"
+    empty_csv.write_text("", encoding="utf-8")
+
+    bad_col_csv = tmp_path / "c_bad_col.csv"
+    bad_col_csv.write_text("fecha;hora;consumo_kWh\n2026/05/01;01:00;0,5\n", encoding="utf-8")
+
+    loader = DatadisConsumptionLoader(tmp_path)
+    df, results = loader.load_all_with_validation()
+
+    assert len(df) == 24
+    assert len(results) == 3
+    assert sum(1 for r in results if r.is_valid) == 1
+    assert sum(1 for r in results if not r.is_valid) == 2
+
+    df_non_strict = loader.load_all(strict=False)
+    assert len(df_non_strict) == 24
+
+    # All-invalid directory raises IngestionError
+    invalid_only_dir = tmp_path / "invalid_only"
+    invalid_only_dir.mkdir()
+    (invalid_only_dir / "empty.csv").write_text("", encoding="utf-8")
+    (invalid_only_dir / "bad.csv").write_text("a;b\n1;2\n", encoding="utf-8")
+
+    with pytest.raises(IngestionError, match="none could be loaded"):
+        DatadisConsumptionLoader(invalid_only_dir).load_all_with_validation()
+
+
+def test_clean_numeric_series_and_sniff_csv_delimiter(tmp_path: Path) -> None:
+    """Verify shared numeric normalization and CSV delimiter sniffing across formats."""
+    str_series = pd.Series([' "1,250" ', " 0,500 ", "'2 500,5'", "bad", None])
+    parsed = clean_numeric_series(str_series)
+    assert parsed.iloc[0] == 1.25
+    assert parsed.iloc[1] == 0.5
+    assert parsed.iloc[2] == 2500.5
+    assert pd.isna(parsed.iloc[3])
+    assert pd.isna(parsed.iloc[4])
+
+    filled = clean_numeric_series(str_series, fill_na=0.0)
+    assert filled.iloc[3] == 0.0
+    assert filled.iloc[4] == 0.0
+
+    num_series = pd.Series([1.5, None, 3.0])
+    assert clean_numeric_series(num_series, fill_na=0.0).tolist() == [1.5, 0.0, 3.0]
+
+    semicolon_csv = tmp_path / "semi.csv"
+    semicolon_csv.write_text("a;b;c\n1;2;3\n", encoding="utf-8")
+    comma_csv = tmp_path / "comma.csv"
+    comma_csv.write_text("a,b,c\n1,2,3\n", encoding="utf-8")
+    tab_csv = tmp_path / "tab.csv"
+    tab_csv.write_text("a\tb\tc\n1\t2\t3\n", encoding="utf-8")
+
+    assert sniff_csv_delimiter(semicolon_csv) == ";"
+    assert sniff_csv_delimiter(comma_csv) == ","
+    assert sniff_csv_delimiter(tab_csv) == "\t"

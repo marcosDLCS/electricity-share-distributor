@@ -1,19 +1,125 @@
-"""DATADIS hourly electricity consumption CSV parser and loader."""
+"""DATADIS hourly electricity consumption CSV validator, parser, and loader."""
 
 from __future__ import annotations
 
 import csv
 from pathlib import Path
+from typing import Final
 
 import numpy as np
 import pandas as pd
 
-from src.config import (
-    REQUIRED_CONSUMPTION_COLUMNS,
-    SUPPORTED_DELIMITERS,
-    SUPPORTED_ENCODINGS,
-)
-from src.ingestion.schema import IngestionError, ParseError, ValidationError
+from src.config import REQUIRED_CONSUMPTION_COLUMNS
+from src.ingestion.csv_utils import clean_numeric_series, detect_file_encoding, sniff_csv_delimiter
+from src.ingestion.schema import IngestionError, ParseError, ValidationError, ValidationResult
+
+CONSUMPTION_COLUMN_ALIASES: Final[dict[str, str]] = {
+    "cups": "cups",
+    "fecha": "fecha",
+    "hora": "hora",
+    "consumo_kwh": "consumo_kWh",
+    "consumokwh": "consumo_kWh",
+}
+
+
+def _clean_header(raw: str) -> str:
+    """Strip UTF-8 BOM, surrounding whitespace, and quotes from a CSV header."""
+    return raw.lstrip("\ufeff").strip().strip('"').strip("'")
+
+
+class DatadisValidator:
+    """Validates DATADIS consumption CSV files for encoding, delimiter, and schema conformance."""
+
+    @classmethod
+    def detect_encoding(cls, file_path: Path) -> str:
+        """Detect file encoding from the supported set (UTF-8 BOM, UTF-8, Latin-1, CP1252)."""
+        return detect_file_encoding(file_path)
+
+    @classmethod
+    def detect_delimiter(cls, file_path: Path, encoding: str) -> str:
+        """Detect CSV delimiter (semicolon, comma, or tab)."""
+        return sniff_csv_delimiter(file_path, encoding=encoding, default=";")
+
+    @classmethod
+    def validate_file(cls, file_path: Path) -> ValidationResult:
+        """Validate a single DATADIS CSV file for existence, readability, columns, and rows."""
+        if not file_path.exists() or not file_path.is_file():
+            return ValidationResult(
+                file_path=file_path,
+                is_valid=False,
+                error_message=f"File not found: {file_path}",
+            )
+
+        if file_path.stat().st_size == 0:
+            return ValidationResult(
+                file_path=file_path,
+                is_valid=False,
+                error_message="File is empty (0 bytes).",
+            )
+
+        encoding = cls.detect_encoding(file_path)
+        delimiter = cls.detect_delimiter(file_path, encoding)
+
+        try:
+            with file_path.open(encoding=encoding, errors="replace") as handle:
+                reader = csv.reader(handle, delimiter=delimiter)
+                try:
+                    raw_headers = next(reader)
+                except StopIteration:
+                    return ValidationResult(
+                        file_path=file_path,
+                        is_valid=False,
+                        delimiter=delimiter,
+                        encoding=encoding,
+                        error_message="File has no headers.",
+                    )
+
+                cleaned_headers = [_clean_header(h) for h in raw_headers]
+                canonical_headers = {
+                    CONSUMPTION_COLUMN_ALIASES.get(h.lower(), h) for h in cleaned_headers if h
+                }
+                missing = [
+                    req for req in REQUIRED_CONSUMPTION_COLUMNS if req not in canonical_headers
+                ]
+                if missing:
+                    return ValidationResult(
+                        file_path=file_path,
+                        is_valid=False,
+                        delimiter=delimiter,
+                        encoding=encoding,
+                        detected_columns=cleaned_headers,
+                        missing_columns=missing,
+                        error_message=f"Missing required columns: {', '.join(missing)}",
+                    )
+
+                row_count = sum(1 for row in reader if any(cell.strip() for cell in row))
+                if row_count == 0:
+                    return ValidationResult(
+                        file_path=file_path,
+                        is_valid=False,
+                        delimiter=delimiter,
+                        encoding=encoding,
+                        detected_columns=cleaned_headers,
+                        total_rows=0,
+                        error_message="File contains header but has zero data rows.",
+                    )
+
+                return ValidationResult(
+                    file_path=file_path,
+                    is_valid=True,
+                    delimiter=delimiter,
+                    encoding=encoding,
+                    detected_columns=cleaned_headers,
+                    total_rows=row_count,
+                )
+        except Exception as exc:
+            return ValidationResult(
+                file_path=file_path,
+                is_valid=False,
+                delimiter=delimiter,
+                encoding=encoding,
+                error_message=f"Error reading file: {exc}",
+            )
 
 
 class DatadisConsumptionLoader:
@@ -22,43 +128,48 @@ class DatadisConsumptionLoader:
     def __init__(self, consumption_dir: Path | str) -> None:
         self.consumption_dir = Path(consumption_dir)
 
-    def discover_files(self) -> list[Path]:
-        """Find all CSV files in the consumption directory."""
+    def _is_hidden_relative(self, file_path: Path) -> bool:
+        """Return True if any path segment relative to consumption_dir starts with '.'."""
+        rel_parts = file_path.relative_to(self.consumption_dir).parts
+        return any(part.startswith(".") for part in rel_parts)
+
+    def discover_files(self, year: int | None = None) -> list[Path]:
+        """Recursively discover DATADIS CSV files under flat or annualized directories."""
         if not self.consumption_dir.exists():
             raise IngestionError(f"Consumption directory not found: {self.consumption_dir}")
 
-        files = sorted(self.consumption_dir.glob("*.csv"))
+        files: list[Path] = []
+        if year is not None:
+            year_dir = self.consumption_dir / str(year)
+            if year_dir.exists() and year_dir.is_dir():
+                files = [
+                    p
+                    for p in year_dir.rglob("*.csv")
+                    if p.is_file() and not self._is_hidden_relative(p)
+                ]
+
+        if not files:
+            files = [
+                p
+                for p in self.consumption_dir.rglob("*.csv")
+                if p.is_file() and not self._is_hidden_relative(p)
+            ]
+
         if not files:
             raise IngestionError(
                 f"No CSV files found in consumption directory: {self.consumption_dir}"
             )
-        return files
+        return sorted(files)
 
     @staticmethod
     def detect_encoding(file_path: Path) -> str:
         """Detect file encoding from supported set."""
-        raw_bytes = file_path.read_bytes()[:4096]
-        for enc in SUPPORTED_ENCODINGS:
-            try:
-                raw_bytes.decode(enc)
-                return enc
-            except UnicodeDecodeError, LookupError:
-                continue
-        return "utf-8"
+        return DatadisValidator.detect_encoding(file_path)
 
     @staticmethod
     def detect_delimiter(file_path: Path, encoding: str) -> str:
         """Detect CSV delimiter (semicolon, comma, tab)."""
-        sample_text = file_path.read_text(encoding=encoding, errors="replace")[:4096]
-        try:
-            sniffer = csv.Sniffer()
-            dialect = sniffer.sniff(sample_text, delimiters=";,\t")
-            return dialect.delimiter
-        except Exception:
-            for delim in SUPPORTED_DELIMITERS:
-                if delim in sample_text:
-                    return delim
-            return ";"
+        return DatadisValidator.detect_delimiter(file_path, encoding)
 
     @classmethod
     def parse_file(cls, file_path: Path) -> pd.DataFrame:
@@ -76,39 +187,38 @@ class DatadisConsumptionLoader:
         except Exception as err:
             raise ParseError(f"Failed to parse CSV file {file_path.name}: {err}") from err
 
-        # Normalize column names (strip whitespace and quotes)
-        df.columns = [c.strip().strip('"').strip("'") for c in df.columns]
+        df.columns = [_clean_header(str(c)) for c in df.columns]
 
-        # Case-insensitive column matching
-        col_map = {c.lower(): c for c in df.columns}
+        canonical_map: dict[str, str] = {}
+        for col in df.columns:
+            canonical = CONSUMPTION_COLUMN_ALIASES.get(col.lower())
+            if canonical and canonical not in canonical_map:
+                canonical_map[canonical] = col
+
         for req in REQUIRED_CONSUMPTION_COLUMNS:
-            if req.lower() not in col_map:
+            if req not in canonical_map:
                 raise ValidationError(
                     f"File {file_path.name} missing required DATADIS column: '{req}'"
                 )
 
-        # Extract required columns
-        cups_col = col_map["cups"]
-        fecha_col = col_map["fecha"]
-        hora_col = col_map["hora"]
-        consumo_col = col_map["consumo_kwh"]
+        cups_col = canonical_map["cups"]
+        fecha_col = canonical_map["fecha"]
+        hora_col = canonical_map["hora"]
+        consumo_col = canonical_map["consumo_kWh"]
 
         clean_df = pd.DataFrame(
             {
                 "cups": df[cups_col].astype(str).str.strip().str.strip('"'),
                 "fecha": df[fecha_col].astype(str).str.strip().str.strip('"'),
                 "hora": df[hora_col].astype(str).str.strip().str.strip('"'),
-                "consumo_raw": df[consumo_col].astype(str).str.strip().str.strip('"'),
+                "consumo_raw": df[consumo_col],
             }
         )
 
-        # Parse numeric consumption (handling decimal comma or dot)
-        clean_df["consumption_kwh"] = (
-            clean_df["consumo_raw"].str.replace(" ", "").str.replace(",", ".").astype(float)
-        )
+        # Parse numeric consumption (handling decimal comma, dot, quotes, and spaces)
+        clean_df["consumption_kwh"] = clean_numeric_series(clean_df["consumo_raw"], fill_na=0.0)
 
         # Convert fecha and hora to interval-start canonical timestamps YYYY-MM-DD HH:MM:SS
-        # Normalize date strings (YYYY-MM-DD, YYYY/MM/DD, DD/MM/YYYY, DD-MM-YYYY) to canonical YYYY-MM-DD
         norm_date = (
             clean_df["fecha"]
             .str.strip()
@@ -153,20 +263,58 @@ class DatadisConsumptionLoader:
         clean_df["timestamp"] = norm_date + " " + h_str + ":00:00"
         return clean_df[["cups", "timestamp", "consumption_kwh"]]
 
-    def load_all(self) -> pd.DataFrame:
+    @staticmethod
+    def _combine_and_filter(dfs: list[pd.DataFrame], year: int | None = None) -> pd.DataFrame:
+        """Concatenate parsed DataFrames, deduplicate by (cups, timestamp), sort, and filter by year."""
+        combined = pd.concat(dfs, ignore_index=True)
+        combined = combined.drop_duplicates(subset=["cups", "timestamp"], keep="last")
+        combined = combined.sort_values(by=["cups", "timestamp"]).reset_index(drop=True)
+        if year is not None:
+            combined = combined[combined["timestamp"].str.startswith(f"{year:04d}-")].reset_index(
+                drop=True
+            )
+        return combined
+
+    def load_all_with_validation(
+        self, year: int | None = None
+    ) -> tuple[pd.DataFrame, list[ValidationResult]]:
+        """Validate and load all discovered CSV files, skipping invalid ones and surfacing warnings."""
+        files = self.discover_files(year=year)
+        dfs: list[pd.DataFrame] = []
+        validation_results: list[ValidationResult] = []
+
+        for file_path in files:
+            val_res = DatadisValidator.validate_file(file_path)
+            validation_results.append(val_res)
+            if val_res.is_valid:
+                try:
+                    dfs.append(self.parse_file(file_path))
+                except Exception as exc:
+                    val_res.is_valid = False
+                    val_res.error_message = str(exc)
+
+        if not dfs:
+            raise IngestionError(
+                f"Found {len(files)} CSV file(s) in {self.consumption_dir}, but none could be loaded."
+            )
+
+        return self._combine_and_filter(dfs, year=year), validation_results
+
+    def load_all(self, year: int | None = None, strict: bool = True) -> pd.DataFrame:
         """Load, validate, and deduplicate all CSV files in the consumption directory.
+
+        Args:
+            year: Optional calendar year filter.
+            strict: If True (default), raise immediately on invalid files; if False, skip
+                invalid files via ``load_all_with_validation()``.
 
         Returns:
             DataFrame with columns ['cups', 'timestamp', 'consumption_kwh'].
         """
-        files = self.discover_files()
-        dfs = []
-        for f in files:
-            dfs.append(self.parse_file(f))
+        if not strict:
+            df, _ = self.load_all_with_validation(year=year)
+            return df
 
-        combined = pd.concat(dfs, ignore_index=True)
-
-        # Deduplicate identical (cups, timestamp) readings, keeping latest
-        combined = combined.drop_duplicates(subset=["cups", "timestamp"], keep="last")
-        combined = combined.sort_values(by=["cups", "timestamp"]).reset_index(drop=True)
-        return combined
+        files = self.discover_files(year=year)
+        dfs = [self.parse_file(f) for f in files]
+        return self._combine_and_filter(dfs, year=year)

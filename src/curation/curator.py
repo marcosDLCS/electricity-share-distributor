@@ -29,6 +29,7 @@ from src.domain.exceptions import EsdError
 from src.domain.models import SupplyPoint, parse_share_fraction
 from src.ingestion.aligner import TimeSeriesAligner
 from src.ingestion.consumption import DatadisConsumptionLoader
+from src.ingestion.csv_utils import clean_numeric_series, sniff_csv_delimiter
 from src.ingestion.generation import HuaweiGenerationLoader
 from src.ingestion.schema import (
     AlignedDataset,
@@ -41,6 +42,26 @@ from src.ingestion.weather import (
     extract_coordinates_from_cups_file,
     parse_coordinate_pair,
 )
+
+
+def read_curated_csv(
+    path: Path,
+    delimiter: str | None = None,
+    dtype: dict[str, object] | None = None,
+    dataset_label: str = "curated",
+) -> pd.DataFrame:
+    """Read a curated CSV file with delimiter/decimal sniffing and CurationError wrapping."""
+    sep = delimiter or sniff_csv_delimiter(path, encoding="utf-8", default=",")
+    decimal_char = "," if sep == ";" else "."
+    try:
+        return pd.read_csv(
+            path,
+            sep=sep,
+            decimal=decimal_char,
+            dtype=dtype,
+        )
+    except Exception as err:
+        raise CurationError(f"Failed to read {dataset_label} CSV '{path}': {err}") from err
 
 
 def dataframe_to_aligned_dataset(
@@ -83,26 +104,8 @@ def dataframe_to_aligned_dataset(
         "exported_energy",
         "imported_energy",
     ):
-        if num_col in df_clean.columns and (
-            pd.api.types.is_string_dtype(df_clean[num_col].dtype)
-            or df_clean[num_col].dtype == object
-        ):
-            df_clean[num_col] = (
-                df_clean[num_col].astype(str).str.replace(",", ".", regex=False).str.strip()
-            )
-    df_clean["consumption"] = pd.to_numeric(df_clean["consumption"], errors="coerce").fillna(0.0)
-    df_clean["generation"] = pd.to_numeric(df_clean["generation"], errors="coerce").fillna(0.0)
-    if "community_demand" in df_clean.columns:
-        df_clean["community_demand"] = pd.to_numeric(
-            df_clean["community_demand"], errors="coerce"
-        ).fillna(0.0)
-    for add_col in (
-        "self_consumption",
-        "exported_energy",
-        "imported_energy",
-    ):
-        if add_col in df_clean.columns:
-            df_clean[add_col] = pd.to_numeric(df_clean[add_col], errors="coerce").fillna(0.0)
+        if num_col in df_clean.columns:
+            df_clean[num_col] = clean_numeric_series(df_clean[num_col], fill_na=0.0)
 
     # Filter to CUPS present in cups.json if configured and non-empty
     cups_cfg: dict[str, SupplyPoint] = {}
@@ -487,17 +490,12 @@ class DataCurator:
         if not path.exists() or not path.is_file():
             raise CurationError(f"Aggregated generation file '{path}' does not exist.")
 
-        sep = delimiter
-        if sep is None:
-            first_line = (
-                path.read_text(encoding="utf-8").splitlines()[0] if path.stat().st_size > 0 else ""
-            )
-            sep = ";" if ";" in first_line else ","
-        decimal_char = "," if sep == ";" else "."
-        try:
-            df = pd.read_csv(path, sep=sep, decimal=decimal_char, dtype={"timestamp": str})
-        except Exception as err:
-            raise CurationError(f"Failed to read generation CSV '{path}': {err}") from err
+        df = read_curated_csv(
+            path,
+            delimiter=delimiter,
+            dtype={"timestamp": str},
+            dataset_label="generation",
+        )
 
         return GenerationDataset.from_dataframe(df)
 
@@ -587,22 +585,12 @@ class DataCurator:
         if not path.exists() or not path.is_file():
             raise CurationError(f"Aggregated consumption file '{path}' does not exist.")
 
-        sep = delimiter
-        if sep is None:
-            first_line = (
-                path.read_text(encoding="utf-8").splitlines()[0] if path.stat().st_size > 0 else ""
-            )
-            sep = ";" if ";" in first_line else ","
-        decimal_char = "," if sep == ";" else "."
-        try:
-            df = pd.read_csv(
-                path,
-                sep=sep,
-                decimal=decimal_char,
-                dtype={"cups_id": str, "timestamp": str},
-            )
-        except Exception as err:
-            raise CurationError(f"Failed to read consumption CSV '{path}': {err}") from err
+        df = read_curated_csv(
+            path,
+            delimiter=delimiter,
+            dtype={"cups_id": str, "timestamp": str},
+            dataset_label="consumption",
+        )
 
         cups_uses: dict[str, str] = {}
         try:
@@ -1005,7 +993,11 @@ class DataCurator:
         ):
             try:
                 first_line = csv_path.read_text(encoding="utf-8").splitlines()[0]
-                sep = delimiter if delimiter in first_line else (";" if ";" in first_line else ",")
+                sep = (
+                    delimiter
+                    if delimiter in first_line
+                    else sniff_csv_delimiter(csv_path, encoding="utf-8", default=",")
+                )
                 cols = [c.strip() for c in first_line.split(sep)]
                 if (
                     "community_demand" in cols
@@ -1120,24 +1112,12 @@ class DataCurator:
         if not path.exists() or not path.is_file():
             raise CurationError(f"Curated file '{path}' does not exist.")
 
-        # Auto-detect delimiter if not provided
-        sep = delimiter
-        if sep is None:
-            first_line = (
-                path.read_text(encoding="utf-8").splitlines()[0] if path.stat().st_size > 0 else ""
-            )
-            sep = ";" if ";" in first_line else ","
-
-        decimal_char = "," if sep == ";" else "."
-        try:
-            df = pd.read_csv(
-                path,
-                sep=sep,
-                decimal=decimal_char,
-                dtype={"cups_id": str, "timestamp": str},
-            )
-        except Exception as err:
-            raise CurationError(f"Failed to read curated CSV '{path}': {err}") from err
+        df = read_curated_csv(
+            path,
+            delimiter=delimiter,
+            dtype={"cups_id": str, "timestamp": str},
+            dataset_label="curated",
+        )
 
         effective_cups_path: Path | str | None = cups_config_path
         if effective_cups_path is None:

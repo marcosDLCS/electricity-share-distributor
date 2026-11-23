@@ -17,6 +17,7 @@ from src.curation import (
     DataCurator,
     dataframe_to_aligned_dataset,
     format_energy_value,
+    read_curated_csv,
 )
 from src.ingestion.schema import AlignmentError
 
@@ -1540,3 +1541,26 @@ def test_curation_and_calculation_filter_cups_to_cups_json(tmp_path: Path) -> No
     assert aligned.cups_list == [c1, c2]
     assert c3_extra not in aligned.data.columns
     assert float(aligned.data.loc["2026-05-01 12:00:00", "community_demand"]) == 5.0
+
+
+def test_read_curated_csv_delimiter_autodetect_and_error(tmp_path: Path) -> None:
+    """Verify read_curated_csv auto-detects ';' vs ',' decimals and wraps read errors in CurationError."""
+    semi_csv = tmp_path / "semi.csv"
+    semi_csv.write_text(
+        "timestamp;cups_id;consumption\n2026-05-01 12:00:00;ES0021000000000001AA;1,75\n",
+        encoding="utf-8",
+    )
+    df_semi = read_curated_csv(semi_csv, dtype={"cups_id": str, "timestamp": str})
+    assert float(df_semi["consumption"].iloc[0]) == 1.75
+
+    comma_csv = tmp_path / "comma.csv"
+    comma_csv.write_text(
+        "timestamp,cups_id,consumption\n2026-05-01 12:00:00,ES0021000000000001AA,2.50\n",
+        encoding="utf-8",
+    )
+    df_comma = read_curated_csv(comma_csv, dtype={"cups_id": str, "timestamp": str})
+    assert float(df_comma["consumption"].iloc[0]) == 2.50
+
+    missing_csv = tmp_path / "missing.csv"
+    with pytest.raises(CurationError, match="Failed to read curated CSV"):
+        read_curated_csv(missing_csv, delimiter=",")

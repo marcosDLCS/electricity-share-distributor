@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| **COH-02** | `P1` High | `Cohesion` | Unify DATADIS Ingestion: Recursive Annualized Discovery, Per-File Validation & Shared CSV/Numeric Helpers | `src/ingestion/consumption.py`, `src/curation/`, `src/presentation/html_report.py` |
 | **FEAT-01** | `P1` High | `Features` | Migrate `datadis-analyzer` Community Consumption Summary & Fair-Share Analytics (`esd summary`) | `src/analytics/`, `src/services/`, `src/cli.py`, `src/presentation/`, `src/i18n.py` |
 | **FEAT-02** | `P1` High | `Features` | Migrate `datadis-analyzer` Multi-Year Apples-to-Apples Comparison & Visual Charts (`esd compare`) | `src/analytics/`, `src/services/`, `src/cli.py`, `src/presentation/`, `src/i18n.py` |
 | **ARCH-01** | `P1` High | `Architecture` | Domain & Ingestion Accuracy: Multi-Year Scaling, Primary Reconciliation, DST & Consumption-Only Doctor Audit | `src/optimization/engine.py`, `src/curation/curator.py`, `src/ingestion/` |
@@ -85,14 +84,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
   4. **Fast Openpyxl Styling:** Optimize `ReportExporter._export_styled_dataframe_excel()` to write DataFrame rows directly without `df_out.to_dict(orient="records")` and skip redundant per-cell `ws.cell()` styling on default white-background rows.
 
 ## 🔗 Cohesion
-
-### COH-02 (`P1` High): Unify DATADIS Ingestion: Recursive Annualized Discovery, Per-File Validation & Shared CSV/Numeric Helpers
-- **Goal:** Unify DATADIS ingestion across flat and annualized folder layouts, add resilient per-file validation for batch workflows, and centralize CSV delimiter/decimal sniffing and comma-decimal string cleaning into shared helpers across ingestion, curation, and reporting.
-- **Target Components:** `src/ingestion/consumption.py`, `src/curation/curator.py`, `src/curation/models.py`, `src/ingestion/generation.py`, `src/presentation/html_report.py`, `tests/`.
-- **Acceptance Criteria:**
-  1. **Recursive Annualized Discovery & Header Normalization:** Update `DatadisConsumptionLoader.discover_files()` (`src/ingestion/consumption.py`) to recursively discover CSVs across both flat `.input/consumption/*.csv` and `datadis-analyzer`'s annualized `.input/consumption/<year>/*.csv` subdirectories (skipping hidden files/folders and supporting an optional `year` filter), and accept the `consumoKwh` header alias alongside `consumo_kWh`.
-  2. **Per-File Validation & Graceful Skipping:** Introduce per-file `ValidationResult` checks (existence, non-zero size, encoding, delimiter, mandatory columns, `>=1` data row) so batch ingestion can gracefully skip malformed/empty CSVs and surface structured warnings to `summary`, `compare`, and `doctor` instead of crashing the entire run.
-  3. **Shared Curated CSV Reader & Numeric Cleaner:** Extract a single reusable CSV reader helper for curated datasets (`load_generation_dataset`, `load_consumption_dataset`, `load_aligned_dataset`) encapsulating delimiter sniffing (`;` vs `,`), decimal character selection, and `CurationError` wrapping, and expose/reuse `clean_numeric_series()` across `dataframe_to_aligned_dataset()`, `HuaweiGenerationLoader`, `DatadisConsumptionLoader`, and `html_report.py`.
 
 ### COH-01 (`P2` Medium): Unify `cups.json` Configuration, Primary Supply Point, Coordinate Resolution & Recursive Output Cleanup
 - **Goal:** Eliminate duplicated `cups.json` loading, primary CUPS discovery, geographical coordinate fallback chains, and non-recursive output cleanup logic across curation, services, CLI, optimization, and HTML reporting.

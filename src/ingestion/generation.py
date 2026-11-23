@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.ingestion.csv_utils import clean_numeric_series
 from src.ingestion.schema import IngestionError, ParseError, ValidationError
 
 
@@ -129,36 +130,14 @@ class HuaweiGenerationLoader:
         timestamps = clean_df[ts_col].astype(str).str.replace(" DST", "", regex=False).str.strip()
 
         # Parse generation values
-        gen_values = pd.to_numeric(
-            clean_df[gen_col].astype(str).str.replace(",", "."), errors="coerce"
-        ).fillna(0.0)
+        gen_values = clean_numeric_series(clean_df[gen_col], fill_na=0.0)
 
-        cons_values = (
-            pd.to_numeric(clean_df[cons_col].astype(str).str.replace(",", "."), errors="coerce")
-            if cons_col
-            else None
-        )
+        cons_values = clean_numeric_series(clean_df[cons_col]) if cons_col else None
         self_cons_values = (
-            pd.to_numeric(
-                clean_df[self_cons_col].astype(str).str.replace(",", "."), errors="coerce"
-            ).fillna(0.0)
-            if self_cons_col
-            else None
+            clean_numeric_series(clean_df[self_cons_col], fill_na=0.0) if self_cons_col else None
         )
-        exp_values = (
-            pd.to_numeric(
-                clean_df[exp_col].astype(str).str.replace(",", "."), errors="coerce"
-            ).fillna(0.0)
-            if exp_col
-            else None
-        )
-        imp_values = (
-            pd.to_numeric(
-                clean_df[imp_col].astype(str).str.replace(",", "."), errors="coerce"
-            ).fillna(0.0)
-            if imp_col
-            else None
-        )
+        exp_values = clean_numeric_series(clean_df[exp_col], fill_na=0.0) if exp_col else None
+        imp_values = clean_numeric_series(clean_df[imp_col], fill_na=0.0) if imp_col else None
 
         # Sanitize corrupted partial-outage telemetry hours where reported PV generation
         # is physically less than exported energy (inverter yield dropout mid-hour).

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import pandas as pd
 
@@ -22,6 +23,20 @@ from src.domain.exceptions import (
 
 class ParseError(IngestionError):
     """Raised when parsing CSV or Excel data formats fails."""
+
+
+@dataclass
+class ValidationResult:
+    """Validation outcome for an individual input data file."""
+
+    file_path: Path
+    is_valid: bool
+    delimiter: str = ";"
+    encoding: str = "utf-8"
+    detected_columns: list[str] = field(default_factory=list)
+    missing_columns: list[str] = field(default_factory=list)
+    total_rows: int = 0
+    error_message: str | None = None
 
 
 @dataclass(frozen=True)

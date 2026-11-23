@@ -16,6 +16,7 @@ from src.domain.exceptions import (
     EsdError as EsdError,
 )
 from src.domain.models import SupplyPoint
+from src.ingestion.csv_utils import clean_numeric_series
 
 # Canonical domain model alias for backward compatibility
 CupsConfig = SupplyPoint
@@ -132,12 +133,7 @@ def extract_temporal_features(
     return year, month, day, hour, day_of_week, is_weekend
 
 
-def _clean_numeric_series(series: pd.Series) -> pd.Series:
-    """Normalize a pandas Series with potential string comma decimals into float values."""
-    if pd.api.types.is_string_dtype(series.dtype) or series.dtype == object:
-        cleaned = series.astype(str).str.replace(",", ".", regex=False).str.strip()
-        return pd.to_numeric(cleaned, errors="coerce")
-    return pd.to_numeric(series, errors="coerce")
+_clean_numeric_series = clean_numeric_series
 
 
 @dataclass

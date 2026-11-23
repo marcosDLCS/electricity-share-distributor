@@ -4,6 +4,7 @@ from src.curation.curator import (
     DataCurator,
     dataframe_to_aligned_dataset,
     format_energy_value,
+    read_curated_csv,
 )
 from src.curation.models import (
     CONSUMPTION_COLUMNS,
@@ -48,4 +49,5 @@ __all__ = [
     "dataframe_to_aligned_dataset",
     "extract_temporal_features",
     "format_energy_value",
+    "read_curated_csv",
 ]
