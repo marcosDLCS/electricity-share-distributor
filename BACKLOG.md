@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| **SIMP-02** | `P2` Medium | `Simplicity` | Prune Orphaned Localization Keys & Simplify Translation Catalog Builder | `src/i18n.py`, `tests/` |
 | **COH-01** | `P2` Medium | `Cohesion` | Unify `cups.json` Configuration, Primary Supply Point, Coordinate Resolution & Recursive Output Cleanup | `src/curation/curator.py`, `src/services/weather_service.py`, `src/cli.py`, `src/optimization/engine.py`, `src/presentation/html_report.py` |
 | **SEC-01** | `P2` Medium | `Security` | Harden Formula Injection Sanitization & Streamline Git History Privacy Audit | `src/presentation/export.py`, `src/security.py` |
 | **SEC-02** | `P2` Medium | `Security` | Migrate `datadis-analyzer` Credential, Secret & Private Coordinate Leak Scanners | `src/security.py`, `tests/test_security.py`, `tests/test_weather.py` |
@@ -91,13 +90,7 @@ _No pending tasks._
 
 ## 🧹 Simplicity
 
-### SIMP-02 (`P2` Medium): Prune Orphaned Localization Keys & Simplify Translation Catalog Builder
-- **Goal:** Delete ~55 orphaned translation keys from `src/i18n.py` and remove unnecessary prefix-stripping key multiplication in `_build_translation_catalog()`.
-- **Target Components:** `src/i18n.py`, `tests/`.
-- **Acceptance Criteria:**
-  1. Remove all unused translation keys (including obsolete `opt_*` CLI option strings, unreferenced view titles/columns, and dead status messages) from both `"en"` and `"es"` dictionaries in `STRUCTURED_TRANSLATIONS`.
-  2. Simplify `_build_translation_catalog()` to index only `f"{ns}.{key}"` and flat `key`, removing the unused prefix-stripping loop.
-  3. Verify 100% EN/ES key and format-placeholder parity in `tests/`.
+_No pending tasks._
 
 ## 🎨 Design
 

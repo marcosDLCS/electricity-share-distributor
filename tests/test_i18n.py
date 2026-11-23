@@ -23,22 +23,27 @@ def test_translation_fallback() -> None:
 
 
 def test_translation_interpolation() -> None:
-    res = t("version_banner", lang="en", version="2026.10.001")
-    assert "2026.10.001" in res
+    cleaned = t("cleaned_files", lang="en", count=3)
+    assert "3 file(s)" in cleaned
+    init_es = t("init_success", lang="es", language="Español")
+    assert "Español" in init_es
 
 
 def test_structured_namespaces_access() -> None:
-    # Test dot-notation namespaced keys
+    # Test dot-notation namespaced keys map identically to flat keys
     assert t("app.app_title", lang="en") == t("app_title", lang="en")
     assert t("cli.cmd_calculate_desc", lang="en") == t("cmd_calculate_desc", lang="en")
     assert t("doctor.doc_lbl_healthy", lang="en") == t("doc_lbl_healthy", lang="en")
     assert t("curate.title_curate_summary", lang="es") == t("title_curate_summary", lang="es")
     assert t("tables.title_community_summary", lang="es") == t("title_community_summary", lang="es")
+    assert t("analytics.summary_overview_title", lang="en") == t(
+        "summary_overview_title", lang="en"
+    )
 
-    # Test clean prefix aliases
-    assert t("cli.calculate_desc", lang="en") == t("cmd_calculate_desc", lang="en")
-    assert t("doctor.lbl_healthy", lang="en") == t("doc_lbl_healthy", lang="en")
-    assert t("export.success_title", lang="en") == t("export_success_title", lang="en")
+    # Prefix-stripped aliases are no longer generated
+    assert "cli.calculate_desc" not in TRANSLATIONS["en"]
+    assert "doctor.lbl_healthy" not in TRANSLATIONS["en"]
+    assert "export.success_title" not in TRANSLATIONS["en"]
 
 
 def test_i18n_namespace_enum() -> None:
@@ -76,12 +81,20 @@ def test_i18n_placeholder_parity() -> None:
         )
 
 
-def test_i18n_cli_option_keys() -> None:
-    """Verify newly added CLI option keys and html export format in i18n catalog."""
-    for lang in ("en", "es"):
-        assert "html" in t("opt_format", lang=lang)
-        assert len(t("opt_min_share", lang=lang)) > 0
-        assert len(t("opt_max_share", lang=lang)) > 0
-        assert len(t("opt_precision", lang=lang)) > 0
-        assert len(t("opt_strategy", lang=lang)) > 0
-        assert len(t("opt_verbose", lang=lang)) > 0
+def test_i18n_structured_namespace_parity_and_no_collisions() -> None:
+    """Verify per-namespace EN/ES key parity, non-empty values, and exact 2x flat+namespaced sizing."""
+    for ns in I18nNamespace:
+        en_entries = STRUCTURED_TRANSLATIONS["en"][ns]
+        es_entries = STRUCTURED_TRANSLATIONS["es"][ns]
+        assert set(en_entries.keys()) == set(es_entries.keys()), (
+            f"Namespace '{ns}' mismatch: EN-ES={set(en_entries) - set(es_entries)}, "
+            f"ES-EN={set(es_entries) - set(en_entries)}"
+        )
+        for key, en_val in en_entries.items():
+            assert en_val.strip(), f"Empty EN string for {ns}.{key}"
+            assert es_entries[key].strip(), f"Empty ES string for {ns}.{key}"
+
+    expected_en_count = 2 * sum(len(entries) for entries in STRUCTURED_TRANSLATIONS["en"].values())
+    expected_es_count = 2 * sum(len(entries) for entries in STRUCTURED_TRANSLATIONS["es"].values())
+    assert len(TRANSLATIONS["en"]) == expected_en_count
+    assert len(TRANSLATIONS["es"]) == expected_es_count
