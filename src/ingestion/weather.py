@@ -25,8 +25,8 @@ def format_weather_filename(year: int, latitude: float, longitude: float) -> str
     """Format concise weather CSV filename: {year}_{lat}_{lon}_weather.csv.
 
     Example:
-        format_weather_filename(2024, 41.674543, -4.727212)
-        -> '2024_41.6745_-4.7272_weather.csv'
+        format_weather_filename(2024, 39.469912, -0.376312)
+        -> '2024_39.4699_-0.3763_weather.csv'
     """
     lat_str = f"{latitude:.4f}".rstrip("0").rstrip(".") or "0"
     lon_str = f"{longitude:.4f}".rstrip("0").rstrip(".") or "0"

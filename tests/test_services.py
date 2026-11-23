@@ -144,7 +144,7 @@ def test_weather_service_coordinate_resolution_priority(tmp_path: Path) -> None:
     cups_file.write_text(
         json.dumps(
             [
-                {"cups": "ES0021000000000001AA", "lat": 41.6745, "long": -4.7272},
+                {"cups": "ES0021000000000001AA", "lat": 39.4699, "long": -0.3763},
                 {"cups": "ES0021000000000002BB", "lat": 40.4168, "lon": -3.7038},
             ]
         ),
@@ -168,7 +168,7 @@ def test_weather_service_coordinate_resolution_priority(tmp_path: Path) -> None:
         cups_file=cups_file,
         config=cfg,
     )
-    assert coords_cups == [(41.6745, -4.7272), (40.4168, -3.7038)]
+    assert coords_cups == [(39.4699, -0.3763), (40.4168, -3.7038)]
 
     # 3. Config fallback when cups_file is empty/missing
     coords_cfg = WeatherService.resolve_coordinates(
@@ -202,7 +202,7 @@ def test_weather_service_execute_multi_location(tmp_path: Path) -> None:
     cups_file.write_text(
         json.dumps(
             [
-                {"cups": "ES0021000000000001AA", "lat": 41.6745, "long": -4.7272},
+                {"cups": "ES0021000000000001AA", "lat": 39.4699, "long": -0.3763},
                 {"cups": "ES0021000000000002BB", "lat": 40.4168, "lon": -3.7038},
             ]
         ),
@@ -248,10 +248,10 @@ def test_weather_service_execute_multi_location(tmp_path: Path) -> None:
         res = WeatherService.execute(req, progress_callback=progress)
 
     assert len(res.results) == 2
-    assert res.results[0].latitude == 41.6745
+    assert res.results[0].latitude == 39.4699
     assert res.results[1].latitude == 40.4168
     assert calls == [
-        (41.6745, -4.7272, 1, 2),
+        (39.4699, -0.3763, 1, 2),
         (40.4168, -3.7038, 2, 2),
     ]
 

@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| **SEC-02** | `P2` Medium | `Security` | Migrate `datadis-analyzer` Credential, Secret & Private Coordinate Leak Scanners | `src/security.py`, `tests/test_security.py`, `tests/test_weather.py` |
 | **DOC-01** | `P2` Medium | `Documentation` | Synchronize `README.md`, Bilingual Guides & CLI Help with Parameterless `calculate` & New Exports | `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `src/presentation/views/common.py` |
 | **DOC-02** | `P2` Medium | `Documentation` | Unified Platform Documentation & `datadis-analyzer` Migration / Retirement Guide | `README.md`, `AGENTS.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `src/presentation/views/common.py` |
 | **DES-01** | `P3` Low | `Design` | Align Interactive HTML Dashboard with 4-Way Modality Progression & Streamline Template Logic | `src/presentation/html_report.py` |
@@ -49,13 +48,7 @@ _No pending tasks._
 
 ## 🛡️ Security
 
-### SEC-02 (`P2` Medium): Migrate `datadis-analyzer` Credential, Secret & Private Coordinate Leak Scanners
-- **Goal:** Bring `src/security.py` to full parity with `datadis-analyzer` by adding exposed-secret and private-coordinate detection while preserving `esd`'s synthetic weather test examples.
-- **Target Components:** `src/security.py`, `tests/test_security.py`, `tests/test_weather.py`.
-- **Acceptance Criteria:**
-  1. Migrate `datadis-analyzer` credential and secret pattern scanners into `src/security.py` (PEM private keys, `Bearer` tokens, API/auth/secret token assignments, AWS `AKIA` keys, GitHub `gh[pousr]_` tokens, and Slack `xox` tokens) and integrate them across file, directory, staged, and git-history scans.
-  2. Migrate private geographic coordinate leak detection into `src/security.py`: dynamically discover private coordinates from local `.input/cups/cups.json` and `.esd_config.json`, detect cardinal/decimal coordinate pairs across repository files, define an explicit synthetic city-center allowlist for approved documentation/test fixtures, and replace any non-synthetic high-precision coordinate fixtures in tests or docs.
-  3. Support single-path targeted auditing via `--scan <path>` in `src/security.py` CLI and add comprehensive unit tests in `tests/test_security.py`.
+_No pending tasks._
 
 ## 📚 Documentation
 

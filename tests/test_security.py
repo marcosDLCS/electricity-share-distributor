@@ -11,10 +11,15 @@ import openpyxl
 from src.security import (
     check_privacy,
     clear_private_signatures_cache,
+    find_coordinate_leaks,
     find_cups_leaks,
     find_path_leaks,
+    find_secret_leaks,
+    get_known_private_coordinates,
     get_known_private_signatures,
+    is_synthetic_coordinate_pair,
     is_synthetic_cups,
+    main,
     scan_directory,
     scan_file,
     scan_git_history,
@@ -334,3 +339,145 @@ def test_scan_git_history_detects_commit_message_and_diff_leaks(tmp_path: Path) 
     # Only one path leak (from notes.md), NOT a second one from src/security.py
     path_findings = [item for item in findings if item[2] == fake_path]
     assert len(path_findings) == 1
+
+
+def test_find_secret_leaks_detects_all_patterns() -> None:
+    """Verify find_secret_leaks detects PEM keys, Bearer tokens, API keys, AWS, GitHub, and Slack tokens."""
+    assert find_secret_leaks("Standard configuration without credentials or secrets.") == []
+
+    # Dynamic constructions so this test file contains zero literal secret patterns
+    priv_key = "-----BEGIN " + "RSA PRIVATE KEY-----"
+    bearer = "Bearer " + "x" * 24
+    api_assign = "api_key" + " = 'secret_" + "token_123456'"
+    aws_key = "AKIA" + "IOSFODNN7EXAMPLE"
+    gh_token = "ghp_" + "a" * 36
+    slack_token = "xoxb-" + "1234567890abcdef"
+
+    for sample in (priv_key, bearer, api_assign, aws_key, gh_token, slack_token):
+        leaks = find_secret_leaks(f"config: {sample}")
+        assert len(leaks) == 1
+        assert leaks[0].startswith("Secret pattern: ")
+
+
+def test_coordinate_allowlist_and_leak_detection() -> None:
+    """Verify synthetic city-center coordinates pass while arbitrary/non-synthetic coordinates fail."""
+    assert is_synthetic_coordinate_pair(40.4168, -3.7038)
+    assert is_synthetic_coordinate_pair(39.46991234, -0.37631234)
+    assert not is_synthetic_coordinate_pair(float("42." + "1234"), float("-3." + "5678"))
+
+    # Approved city centers & cardinals must produce zero leaks
+    clean_text = (
+        "Madrid (40.4168, -3.7038), Valencia (39.46991234, -0.37631234), "
+        "40.4168°N, 3.7038°W, and fractional weights [0.7142, 0.1429, 0.0715] "
+        "or array [33.33333, 16.66666, 16.66666]."
+    )
+    assert find_coordinate_leaks(clean_text, private_coordinates=set()) == []
+
+    # Non-synthetic coordinate pair & cardinal degree strings must be flagged
+    non_synth_pair = "42." + "1234, -3." + "5678"
+    assert find_coordinate_leaks(f"Location: {non_synth_pair}", private_coordinates=set()) == [
+        f"Coordinate pair: {non_synth_pair}"
+    ]
+
+    non_synth_cardinal = "42." + "1234° N"
+    assert find_coordinate_leaks(f"Site: {non_synth_cardinal}", private_coordinates=set()) == [
+        f"Geographic coordinate: {non_synth_cardinal}"
+    ]
+
+
+def test_known_private_coordinates_discovery_and_enforcement(tmp_path: Path) -> None:
+    """Verify private coordinates from cups.json/.esd_config.json are discovered and blocked."""
+    cups_dir = tmp_path / ".input" / "cups"
+    cups_dir.mkdir(parents=True)
+    lat_priv = "42." + "987654"
+    lon_priv = "-2." + "654321"
+    (cups_dir / "cups.json").write_text(
+        json.dumps(
+            [
+                {"cups": "ES0021000000000001AA", "lat": float(lat_priv), "long": float(lon_priv)},
+                {"cups": "ES0021000000000002BB", "lat": 40.4168, "long": -3.7038},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    lat_cfg = "43." + "1112"
+    lon_cfg = "-5." + "4443"
+    (tmp_path / ".esd_config.json").write_text(
+        json.dumps({"latitude": float(lat_cfg), "longitude": float(lon_cfg)}),
+        encoding="utf-8",
+    )
+
+    clear_private_signatures_cache()
+    sigs = get_known_private_coordinates(tmp_path)
+    assert ("42." + "9877") in sigs
+    assert ("42." + "9876") in sigs
+    assert ("-2." + "6543") in sigs
+    assert ("43." + "1112") in sigs
+    assert ("-5." + "4443") in sigs
+    assert "40.4168" not in sigs
+
+    dirty_file = tmp_path / "notes.md"
+    dirty_file.write_text(f"Weather file 2024_{'42.' + '9877'}.csv\n", encoding="utf-8")
+    dir_findings = scan_directory(tmp_path)
+    assert dirty_file in dir_findings
+    assert any("Private coordinate" in leak for _, leak, _ in dir_findings[dirty_file])
+
+
+def test_secret_leaks_across_file_xlsx_staged_and_history(tmp_path: Path) -> None:
+    """Verify secrets are flagged across text files, .xlsx workbooks, staged diffs, and git history."""
+    aws_key = "AKIA" + "IOSFODNN7EXAMPLE"
+    gh_token = "ghp_" + "b" * 36
+
+    # 1. Text file & .xlsx file
+    txt_file = tmp_path / "creds.txt"
+    txt_file.write_text(f"token={aws_key}\n", encoding="utf-8")
+    txt_findings = scan_file(txt_file)
+    assert len(txt_findings) == 1
+    assert "Secret pattern:" in txt_findings[0][1]
+
+    wb = openpyxl.Workbook()
+    wb.active["A1"] = aws_key
+    xlsx_file = tmp_path / "creds.xlsx"
+    wb.save(xlsx_file)
+    wb.close()
+    xlsx_findings = scan_xlsx_file(xlsx_file)
+    assert len(xlsx_findings) == 1
+    assert "Secret pattern:" in xlsx_findings[0][1]
+
+    # 2. Git repo staged & history detection
+    repo = tmp_path / "secret_repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Tester"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+
+    env_file = repo / "app.env"
+    env_file.write_text(f"AWS={aws_key}\n", encoding="utf-8")
+    subprocess.run(["git", "add", "app.env"], cwd=repo, check=True)
+
+    staged = scan_git_staged(repo)
+    assert "app.env" in staged
+    assert any("Secret pattern:" in item[1] for item in staged["app.env"])
+
+    subprocess.run(["git", "commit", "-m", f"chore: using {gh_token}"], cwd=repo, check=True)
+    hist = scan_git_history(repo)
+    assert any(loc == "commit-message" and "Secret pattern:" in leak for _, loc, leak in hist)
+    assert any(loc != "commit-message" and "Secret pattern:" in leak for _, loc, leak in hist)
+
+
+def test_security_cli_main_and_scan_flag(tmp_path: Path) -> None:
+    """Verify main() supports --help and --scan <path> for files, dirs, missing, and dirty targets."""
+    assert main(["--help"]) == 0
+    assert main(["--scan"]) == 1
+    assert main(["--scan", str(tmp_path / "missing.py")]) == 1
+
+    clean_file = tmp_path / "safe.py"
+    clean_file.write_text("CITY = (40.4168, -3.7038)\n", encoding="utf-8")
+    assert main(["--scan", str(clean_file)]) == 0
+    assert main(["--scan", str(tmp_path)]) == 0
+
+    aws_key = "AKIA" + "IOSFODNN7EXAMPLE"
+    dirty_file = tmp_path / "leak.py"
+    dirty_file.write_text(f"KEY = '{aws_key}'\n", encoding="utf-8")
+    assert main(["--scan", str(dirty_file)]) == 1
+    assert main(["--scan", str(tmp_path)]) == 1

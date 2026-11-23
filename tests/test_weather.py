@@ -64,8 +64,8 @@ def _mock_open_meteo_response(
 def test_format_weather_filename() -> None:
     """format_weather_filename should produce concise {year}_{lat}_{lon}_weather.csv names."""
     assert (
-        format_weather_filename(2024, 41.67454314, -4.72721283)
-        == "2024_41.6745_-4.7272_weather.csv"
+        format_weather_filename(2024, 39.46991234, -0.37631234)
+        == "2024_39.4699_-0.3763_weather.csv"
     )
     assert format_weather_filename(2023, 40.4168, -3.7038) == "2023_40.4168_-3.7038_weather.csv"
     assert format_weather_filename(2025, 40.0, 0.0) == "2025_40_0_weather.csv"
@@ -74,9 +74,9 @@ def test_format_weather_filename() -> None:
 def test_extract_coordinates_deduplication() -> None:
     """Repeated coordinates in CUPS data must be deduplicated into unique entries."""
     raw_data = [
-        {"cups": "ES0021000000000001AA", "lat": "41.67454314", "long": "-4.72721283"},
-        {"cups": "ES0021000000000002BB", "lat": "41.67454314", "long": "-4.72721283"},
-        {"cups": "ES0021000000000003CC", "lat": "41.67454314", "long": "-4.72721283"},
+        {"cups": "ES0021000000000001AA", "lat": "39.46991234", "long": "-0.37631234"},
+        {"cups": "ES0021000000000002BB", "lat": "39.46991234", "long": "-0.37631234"},
+        {"cups": "ES0021000000000003CC", "lat": "39.46991234", "long": "-0.37631234"},
         {"cups": "ES0021000000000004DD", "latitude": 40.4168, "longitude": -3.7038},
         {"cups": "ES0021000000000005EE", "lat": 40.4168, "lon": -3.7038},  # duplicate
         {"cups": "ES0021000000000006FF"},  # missing coords
@@ -85,7 +85,7 @@ def test_extract_coordinates_deduplication() -> None:
 
     coords = extract_coordinates_from_cups_data(raw_data)
     assert len(coords) == 2
-    assert coords[0] == (41.6745, -4.7272)
+    assert coords[0] == (39.4699, -0.3763)
     assert coords[1] == (40.4168, -3.7038)
 
 
@@ -403,9 +403,9 @@ def test_cli_weather_uses_cups_file_deduplicated(tmp_path: Path) -> None:
     cups_file.write_text(
         json.dumps(
             [
-                {"cups": "ES0021000000000001AA", "lat": "41.67454314", "long": "-4.72721283"},
-                {"cups": "ES0021000000000002BB", "lat": "41.67454314", "long": "-4.72721283"},
-                {"cups": "ES0021000000000003CC", "lat": "41.67454314", "long": "-4.72721283"},
+                {"cups": "ES0021000000000001AA", "lat": "39.46991234", "long": "-0.37631234"},
+                {"cups": "ES0021000000000002BB", "lat": "39.46991234", "long": "-0.37631234"},
+                {"cups": "ES0021000000000003CC", "lat": "39.46991234", "long": "-0.37631234"},
                 {"cups": "ES0021000000000004DD", "lat": "40.4168", "long": "-3.7038"},
             ]
         ),
@@ -434,7 +434,7 @@ def test_cli_weather_uses_cups_file_deduplicated(tmp_path: Path) -> None:
     assert result.exit_code == 0
     # Exactly 2 unique coordinates: exactly 2 downloads despite 4 entries in cups.json!
     assert mock_urlopen.call_count == 2
-    assert (weather_dir / "2024_41.6745_-4.7272_weather.csv").exists()
+    assert (weather_dir / "2024_39.4699_-0.3763_weather.csv").exists()
     assert (weather_dir / "2024_40.4168_-3.7038_weather.csv").exists()
 
 

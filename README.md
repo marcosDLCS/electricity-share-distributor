@@ -3,7 +3,7 @@
 > Optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic self-consumption (*autoconsumo colectivo*) across shared community services in Spain under **Real Decreto 244/2019**.
 
 [![Python](https://img.shields.io/badge/Python-3.14+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.11.014-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.11.015-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-SciPy%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -230,7 +230,7 @@ esd doctor --verbose
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |
 
 ### `esd weather`
-Downloads hourly historical weather data (temperature, cloud cover, WMO weather code) from the Open-Meteo Archive API into `.input/weather/` for an entire calendar year. The year is the only mandatory parameter: if coordinates are not provided on the CLI, `esd weather` automatically inspects `cups.json` (`.input/cups/cups.json`), deduplicates any repeated coordinates across supply points, and downloads a concise weather file for each unique location (`{year}_{lat}_{lon}_weather.csv`, e.g. `2024_41.6745_-4.7272_weather.csv`). If a file already exists for that year and location, it is automatically overwritten:
+Downloads hourly historical weather data (temperature, cloud cover, WMO weather code) from the Open-Meteo Archive API into `.input/weather/` for an entire calendar year. The year is the only mandatory parameter: if coordinates are not provided on the CLI, `esd weather` automatically inspects `cups.json` (`.input/cups/cups.json`), deduplicates any repeated coordinates across supply points, and downloads a concise weather file for each unique location (`{year}_{lat}_{lon}_weather.csv`, e.g. `2024_40.4168_-3.7038_weather.csv`). If a file already exists for that year and location, it is automatically overwritten:
 
 ```bash
 # Download weather for all unique locations defined in cups.json (no duplicate downloads)
