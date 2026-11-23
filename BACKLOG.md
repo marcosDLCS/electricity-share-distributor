@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| **COH-01** | `P2` Medium | `Cohesion` | Unify `cups.json` Configuration, Primary Supply Point, Coordinate Resolution & Recursive Output Cleanup | `src/curation/curator.py`, `src/services/weather_service.py`, `src/cli.py`, `src/optimization/engine.py`, `src/presentation/html_report.py` |
 | **SEC-01** | `P2` Medium | `Security` | Harden Formula Injection Sanitization & Streamline Git History Privacy Audit | `src/presentation/export.py`, `src/security.py` |
 | **SEC-02** | `P2` Medium | `Security` | Migrate `datadis-analyzer` Credential, Secret & Private Coordinate Leak Scanners | `src/security.py`, `tests/test_security.py`, `tests/test_weather.py` |
 | **DOC-01** | `P2` Medium | `Documentation` | Synchronize `README.md`, Bilingual Guides & CLI Help with Parameterless `calculate` & New Exports | `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `src/presentation/views/common.py` |
@@ -47,13 +46,7 @@ _No pending tasks._
 
 ## 🔗 Cohesion
 
-### COH-01 (`P2` Medium): Unify `cups.json` Configuration, Primary Supply Point, Coordinate Resolution & Recursive Output Cleanup
-- **Goal:** Eliminate duplicated `cups.json` loading, primary CUPS discovery, geographical coordinate fallback chains, and non-recursive output cleanup logic across curation, services, CLI, optimization, and HTML reporting.
-- **Target Components:** `src/curation/curator.py`, `src/services/weather_service.py`, `src/ingestion/doctor.py`, `src/optimization/engine.py`, `src/presentation/html_report.py`, `src/cli.py`.
-- **Acceptance Criteria:**
-  1. Ensure `AlignedDataset` and `OptimizationResult` always carry pre-resolved `primary_cups` and `cups_uses` from `cups.json`, removing fallback `DataCurator().load_cups_config()` calls and brittle use-name keyword heuristics (`["aerotermia", "principal", ...]`) from `DistributionOptimizer` and `html_report.py`.
-  2. Consolidate coordinate resolution (`DataCurator.get_default_location()` and `WeatherService.resolve_coordinates()`) into a single shared resolution helper following the deterministic priority order: explicit CLI coordinates $\rightarrow$ primary CUPS in `cups.json` $\rightarrow$ participating CUPS in `cups.json` $\rightarrow$ persistent `AppConfig` (isolated from custom test directories).
-  3. Refactor `cleanup_command()` in `src/cli.py` to reuse `clear_output_directory()` from `src/config.py` so nested subdirectories such as `.output/charts/` are removed cleanly, and add a hidden `clean` CLI alias matching `da clean`.
+_No pending tasks._
 
 ## 🛡️ Security
 

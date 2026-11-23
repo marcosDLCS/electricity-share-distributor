@@ -225,35 +225,13 @@ def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any
     tot_gen = tot.total_generation_kwh
     tot_dem = tot.total_consumption_kwh
 
-    # 1. Identify primary supply point (or fallback to first CUPS)
+    # 1. Identify primary supply point directly from OptimizationResult (or fallback to first CUPS)
     primary_cups: str | None = opt_result.primary_cups
-    primary_name: str = ""
-    if primary_cups:
-        primary_name = opt_result.cups_uses.get(primary_cups, "")
-
-    if not primary_cups:
-        try:
-            from src.curation.curator import DataCurator
-
-            cups_cfg = DataCurator().load_cups_config()
-            for c in cups_cfg.values():
-                if c.primary and c.cups in opt_result.cups_list:
-                    primary_cups = c.cups
-                    primary_name = c.use
-                    break
-        except Exception:
-            pass
-
-    if not primary_cups:
-        for cups_id, use_str in opt_result.cups_uses.items():
-            if any(k in use_str.lower() for k in ["aerotermia", "principal", "climat", "comun"]):
-                primary_cups = cups_id
-                primary_name = use_str
-                break
-
+    if primary_cups and opt_result.cups_list and primary_cups not in opt_result.cups_list:
+        primary_cups = None
     if not primary_cups and opt_result.cups_list:
         primary_cups = opt_result.cups_list[0]
-        primary_name = opt_result.cups_uses.get(primary_cups, "")
+    primary_name: str = opt_result.cups_uses.get(primary_cups, "") if primary_cups else ""
 
     has_hourly = (
         opt_result.hourly_result is not None

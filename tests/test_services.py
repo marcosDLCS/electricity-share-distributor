@@ -254,3 +254,50 @@ def test_weather_service_execute_multi_location(tmp_path: Path) -> None:
         (41.6745, -4.7272, 1, 2),
         (40.4168, -3.7038, 2, 2),
     ]
+
+
+def test_unified_coordinate_resolution_prioritizes_primary_and_isolates_custom_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify primary CUPS coordinates take precedence and custom dirs ignore global AppConfig fallback."""
+    from src.curation.curator import DataCurator
+
+    cups_file = tmp_path / "cups.json"
+    cups_file.write_text(
+        json.dumps(
+            [
+                {
+                    "cups": "ES0021000000000001AA",
+                    "lat": 37.3891,
+                    "lon": -5.9845,
+                    "primary": False,
+                },
+                {
+                    "cups": "ES0021000000000002BB",
+                    "lat": 40.4168,
+                    "long": -3.7038,
+                    "primary": True,
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    global_cfg = AppConfig(latitude=43.2630, longitude=-2.9350)
+    monkeypatch.setattr("src.curation.curator.load_config", lambda: global_cfg)
+
+    # 1. WeatherService puts primary CUPS coordinates first
+    coords = WeatherService.resolve_coordinates(cups_file=cups_file, config=global_cfg)
+    assert coords == [(40.4168, -3.7038), (37.3891, -5.9845)]
+
+    # 2. DataCurator.get_default_location picks primary CUPS coordinate
+    custom_cons = tmp_path / "custom_cons"
+    custom_cons.mkdir()
+    curator = DataCurator(consumption_dir=custom_cons, cups_config_path=cups_file)
+    assert curator.get_default_location() == (40.4168, -3.7038)
+
+    # 3. Custom consumption_dir in a workspace without cups.json must NOT inherit global AppConfig coordinates
+    isolated_cons = tmp_path / "isolated" / "consumption"
+    isolated_cons.mkdir(parents=True)
+    curator_isolated = DataCurator(consumption_dir=isolated_cons)
+    assert curator_isolated.get_default_location() is None

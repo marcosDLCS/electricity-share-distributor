@@ -893,6 +893,7 @@ def config_command(
 
 
 @app.command(name="cleanup")
+@app.command(name="clean", hidden=True)
 def cleanup_command(
     output_dir: Path | None = typer.Option(
         None,
@@ -938,12 +939,17 @@ def cleanup_command(
         target_dirs = [out_dir, cur_dir, wth_dir]
         dirs_display = ", ".join(str(d) for d in target_dirs)
 
-        files: list[Path] = []
+        items: list[Path] = []
         for d in target_dirs:
             if d.exists() and d.is_dir():
-                files.extend(f for f in d.iterdir() if f.is_file() and not f.name.startswith("."))
+                items.extend(
+                    item
+                    for item in d.iterdir()
+                    if not item.name.startswith(".")
+                    and (item.is_file() or item.is_symlink() or item.is_dir())
+                )
 
-        if not files:
+        if not items:
             render_cleanup_result(count=0, output_dir=dirs_display, lang=active_lang)
             return
 
@@ -952,7 +958,7 @@ def cleanup_command(
                 t(
                     "prompt_cleanup_confirm",
                     lang=active_lang,
-                    count=len(files),
+                    count=len(items),
                     dir=dirs_display,
                 ),
                 default=False,
@@ -961,14 +967,7 @@ def cleanup_command(
                 console.print(f"[yellow]{t('cleanup_aborted', lang=active_lang)}[/yellow]")
                 return
 
-        count = 0
-        for f in files:
-            try:
-                f.unlink()
-                count += 1
-            except Exception as err:
-                console.print(f"[red]Error deleting {f.name}: {err}[/red]")
-
+        count = sum(clear_output_directory(d) for d in target_dirs)
         render_cleanup_result(count=count, output_dir=dirs_display, lang=active_lang)
     except typer.Exit, typer.Abort:
         raise

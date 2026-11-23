@@ -443,3 +443,53 @@ def test_cli_config_display_includes_curated_dir() -> None:
     res = runner.invoke(app, ["config"])
     assert res.exit_code == 0
     assert "curated_dir" in res.output
+
+
+def test_cli_cleanup_recursive_and_hidden_clean_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ensure cleanup removes nested subdirectories while keeping .gitkeep, and hidden 'clean' alias works."""
+    from src.config import AppConfig
+
+    def _setup_dirs(prefix: str) -> tuple[Path, Path, Path]:
+        out_dir = tmp_path / f"{prefix}_out"
+        cur_dir = tmp_path / f"{prefix}_cur"
+        wth_dir = tmp_path / f"{prefix}_wth"
+        charts_dir = out_dir / "charts"
+        charts_dir.mkdir(parents=True)
+        cur_dir.mkdir()
+        wth_dir.mkdir()
+        (out_dir / ".gitkeep").write_text("", encoding="utf-8")
+        (charts_dir / "sample.svg").write_text("<svg/>", encoding="utf-8")
+        (cur_dir / "esd.csv").write_text("dummy", encoding="utf-8")
+        (wth_dir / "2026_weather.csv").write_text("dummy", encoding="utf-8")
+        return out_dir, cur_dir, wth_dir
+
+    # 1. 'esd cleanup --force' removes nested charts directory while preserving .gitkeep
+    out_a, cur_a, wth_a = _setup_dirs("a")
+    monkeypatch.setattr(
+        "src.cli.load_config",
+        lambda: AppConfig(output_dir=str(out_a), curated_dir=str(cur_a), weather_dir=str(wth_a)),
+    )
+    res_cleanup = runner.invoke(app, ["cleanup", "--force"])
+    assert res_cleanup.exit_code == 0
+    assert not (out_a / "charts").exists()
+    assert (out_a / ".gitkeep").exists()
+    assert not (cur_a / "esd.csv").exists()
+    assert not (wth_a / "2026_weather.csv").exists()
+
+    # 2. Hidden 'clean' alias works identically while remaining hidden from --help
+    out_b, cur_b, wth_b = _setup_dirs("b")
+    monkeypatch.setattr(
+        "src.cli.load_config",
+        lambda: AppConfig(output_dir=str(out_b), curated_dir=str(cur_b), weather_dir=str(wth_b)),
+    )
+    res_clean = runner.invoke(app, ["clean", "--force"])
+    assert res_clean.exit_code == 0
+    assert not (out_b / "charts").exists()
+    assert (out_b / ".gitkeep").exists()
+
+    res_help = runner.invoke(app, ["--help"])
+    assert res_help.exit_code == 0
+    assert " cleanup " in res_help.output
+    assert " clean " not in res_help.output

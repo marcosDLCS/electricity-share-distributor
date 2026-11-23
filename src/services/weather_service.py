@@ -6,13 +6,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.config import DEFAULT_WEATHER_DIR, AppConfig, load_config, resolve_cups_config_path
+from src.config import DEFAULT_WEATHER_DIR, AppConfig, load_config
 from src.domain.exceptions import ValidationError
 from src.i18n import t
 from src.ingestion.weather import (
     OpenMeteoWeatherDownloader,
     WeatherDownloadResult,
-    extract_coordinates_from_cups_file,
+    resolve_community_coordinates,
 )
 
 
@@ -60,33 +60,17 @@ class WeatherService:
             ValidationError: If coordinates are incomplete or cannot be resolved.
         """
         cfg = config or load_config()
-
-        if latitude is not None and longitude is not None:
-            return [(latitude, longitude)]
-
-        if latitude is not None or longitude is not None:
-            raise ValidationError(
-                "Both --latitude and --longitude must be provided when specifying manual coordinates."
-            )
-
-        # Check cups.json configuration file
-        if cups_file is not None:
-            if cups_file.exists() and cups_file.is_file():
-                coords = extract_coordinates_from_cups_file(cups_file)
-                if coords:
-                    return coords
-        elif resolve_cups:
-            cups_path = resolve_cups_config_path(config=cfg)
-            if cups_path:
-                coords = extract_coordinates_from_cups_file(cups_path)
-                if coords:
-                    return coords
-
-        # Fallback to persistent configuration if cups.json didn't yield any coordinates
-        if cfg.latitude is not None and cfg.longitude is not None:
-            return [(cfg.latitude, cfg.longitude)]
-
-        raise ValidationError(t("err_coords_required", lang=lang))
+        coords = resolve_community_coordinates(
+            latitude=latitude,
+            longitude=longitude,
+            cups_file=cups_file,
+            config=cfg,
+            allow_config_fallback=True,
+            resolve_default_cups=resolve_cups,
+        )
+        if not coords:
+            raise ValidationError(t("err_coords_required", lang=lang))
+        return coords
 
     @staticmethod
     def execute(

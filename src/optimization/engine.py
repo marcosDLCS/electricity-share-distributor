@@ -835,16 +835,10 @@ class DistributionOptimizer:
 
         hours_str = [f"{h:02d}" for h in range(24)]
 
-        # Resolve CUPS functional uses for labeling and sorting
-        cups_uses: dict[str, str] = getattr(aligned_dataset, "cups_uses", {}) or {}
-        if not cups_uses:
-            try:
-                from src.curation.curator import DataCurator
-
-                cfg = DataCurator().load_cups_config()
-                cups_uses = {c.cups: c.use for c in cfg.values() if c.use}
-            except Exception:
-                cups_uses = {}
+        # Read pre-resolved CUPS functional uses directly from aligned_dataset
+        cups_uses: dict[str, str] = (
+            dict(aligned_dataset.cups_uses) if aligned_dataset.cups_uses else {}
+        )
 
         if aligned_df.empty or n_cups == 0:
             empty_matrix = HourlyProfileMatrix(
@@ -861,18 +855,10 @@ class DistributionOptimizer:
                 time_series_df=pd.DataFrame(),
             )
 
-        # Identify effective primary CUPS if configured
-        effective_primary = primary_cups or getattr(aligned_dataset, "primary_cups", None)
-        if effective_primary is None:
-            try:
-                from src.curation.curator import DataCurator
-
-                cups_cfg = DataCurator().load_cups_config()
-                candidate = next((c.cups for c in cups_cfg.values() if c.primary), None)
-                if candidate and candidate in cups_list:
-                    effective_primary = candidate
-            except Exception:
-                pass
+        # Read pre-resolved primary CUPS directly from argument or aligned_dataset
+        effective_primary = primary_cups or aligned_dataset.primary_cups
+        if effective_primary and effective_primary not in cups_list:
+            effective_primary = None
 
         pri_idx = (
             cups_list.index(effective_primary)
@@ -1307,28 +1293,12 @@ class DistributionOptimizer:
         )
         cups_list = aligned_dataset.cups_list
 
-        cups_uses: dict[str, str] = getattr(aligned_dataset, "cups_uses", {}) or {}
-        if not cups_uses:
-            try:
-                from src.curation.curator import DataCurator
-
-                cups_cfg = DataCurator().load_cups_config()
-                cups_uses = {c.cups: c.use for c in cups_cfg.values() if c.use}
-            except Exception:
-                cups_uses = {}
-
-        # Resolve effective primary CUPS
-        effective_primary = primary_cups or getattr(aligned_dataset, "primary_cups", None)
-        if effective_primary is None:
-            try:
-                from src.curation.curator import DataCurator
-
-                cups_cfg = DataCurator().load_cups_config()
-                candidate = next((c.cups for c in cups_cfg.values() if c.primary), None)
-                if candidate and candidate in cups_list:
-                    effective_primary = candidate
-            except Exception:
-                pass
+        cups_uses: dict[str, str] = (
+            dict(aligned_dataset.cups_uses) if aligned_dataset.cups_uses else {}
+        )
+        effective_primary = primary_cups or aligned_dataset.primary_cups
+        if effective_primary and effective_primary not in cups_list:
+            effective_primary = None
 
         monthly_results = cls._evaluate_calendar_months(
             aligned_dataset=aligned_dataset,

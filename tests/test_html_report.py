@@ -457,35 +457,29 @@ def test_prevision_reads_primary_cups_directly_without_disk_read(
     assert prev["primary_name"] == "Custom Primary"
 
 
-def test_prevision_falls_back_to_curator_when_primary_cups_none(
+def test_prevision_no_disk_read_or_keyword_heuristic_when_primary_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify _calculate_hourly_prevision falls back to DataCurator when opt_result.primary_cups is None."""
+    """Verify _calculate_hourly_prevision never reads cups.json or uses keyword heuristics when primary_cups is None."""
     from src.curation.curator import DataCurator
-    from src.domain.models import SupplyPoint
     from src.presentation.html_report import _calculate_hourly_prevision
 
     opt_result, _ = _create_mock_optimization_result()
     opt_result.primary_cups = None
+    # Put keyword-like name on the second CUPS to prove keyword heuristics are absent
+    opt_result.cups_uses = {
+        "ES0021000000000001AA": "Garaje",
+        "ES0021000000000002BB": "Aerotermia Principal",
+    }
 
-    called: list[bool] = []
+    def fail_load_cups_config(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("DataCurator.load_cups_config must not be called by html_report")
 
-    def mock_load_cups_config(*args: Any, **kwargs: Any) -> dict[str, SupplyPoint]:
-        called.append(True)
-        return {
-            "ES0021000000000001AA": SupplyPoint(
-                cups="ES0021000000000001AA",
-                use="Fallback Aerotermia",
-                primary=True,
-            )
-        }
-
-    monkeypatch.setattr(DataCurator, "load_cups_config", mock_load_cups_config)
+    monkeypatch.setattr(DataCurator, "load_cups_config", fail_load_cups_config)
 
     prev = _calculate_hourly_prevision(opt_result)
-    assert len(called) == 1
     assert prev["primary_cups"] == "ES0021000000000001AA"
-    assert prev["primary_name"] == "Fallback Aerotermia"
+    assert prev["primary_name"] == "Garaje"
 
 
 def test_matrix_table_total_footer_row() -> None:

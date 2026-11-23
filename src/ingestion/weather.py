@@ -10,11 +10,15 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 import pandas as pd
 
-from src.ingestion.schema import IngestionError
+from src.ingestion.schema import IngestionError, ValidationError
+
+if TYPE_CHECKING:
+    from src.config import AppConfig
+    from src.domain.models import SupplyPoint
 
 
 def format_weather_filename(year: int, latitude: float, longitude: float) -> str:
@@ -85,10 +89,11 @@ def extract_coordinates_from_cups_data(
     unique_coords: list[tuple[float, float]] = []
     seen: set[tuple[float, float]] = set()
 
-    for item in items:
-        if not isinstance(item, dict):
-            continue
+    ordered_items = [
+        item for item in items if isinstance(item, dict) and bool(item.get("primary", False))
+    ] + [item for item in items if isinstance(item, dict) and not bool(item.get("primary", False))]
 
+    for item in ordered_items:
         coords = parse_coordinate_pair(item)
         if coords is None:
             continue
@@ -124,6 +129,76 @@ def extract_coordinates_from_cups_file(
         return extract_coordinates_from_cups_data(data, precision=precision)
     except Exception:
         return []
+
+
+def resolve_community_coordinates(
+    latitude: float | None = None,
+    longitude: float | None = None,
+    cups_configs: dict[str, SupplyPoint] | None = None,
+    cups_file: Path | str | None = None,
+    config: AppConfig | None = None,
+    allow_config_fallback: bool = True,
+    resolve_default_cups: bool = True,
+    precision: int = 4,
+) -> list[tuple[float, float]]:
+    """Resolve community coordinates using the single deterministic priority chain.
+
+    Resolution order:
+        1. Explicit manual coordinates (both latitude and longitude required).
+        2. Parsed CUPS configs (primary supply point first, then participating points).
+        3. CUPS JSON file (explicit cups_file or workspace default when resolve_default_cups=True).
+        4. Persistent AppConfig coordinates (when allow_config_fallback=True).
+
+    Raises:
+        ValidationError: If only one of latitude or longitude is specified.
+    """
+    from src.config import load_config, resolve_cups_config_path
+
+    if latitude is not None and longitude is not None:
+        return [(latitude, longitude)]
+
+    if latitude is not None or longitude is not None:
+        raise ValidationError(
+            "Both --latitude and --longitude must be provided when specifying manual coordinates."
+        )
+
+    if cups_configs:
+        ordered_cfgs = [c for c in cups_configs.values() if c.primary] + [
+            c for c in cups_configs.values() if not c.primary
+        ]
+        unique_coords: list[tuple[float, float]] = []
+        seen: set[tuple[float, float]] = set()
+        for cfg_point in ordered_cfgs:
+            if cfg_point.latitude is not None and cfg_point.longitude is not None:
+                coord = (
+                    round(cfg_point.latitude, precision),
+                    round(cfg_point.longitude, precision),
+                )
+                if coord not in seen:
+                    seen.add(coord)
+                    unique_coords.append(coord)
+        if unique_coords:
+            return unique_coords
+
+    cfg = config or load_config()
+
+    if cups_file is not None:
+        cups_path = Path(cups_file)
+        if cups_path.exists() and cups_path.is_file():
+            coords = extract_coordinates_from_cups_file(cups_path, precision=precision)
+            if coords:
+                return coords
+    elif resolve_default_cups:
+        default_cups_path = resolve_cups_config_path(config=cfg)
+        if default_cups_path:
+            coords = extract_coordinates_from_cups_file(default_cups_path, precision=precision)
+            if coords:
+                return coords
+
+    if allow_config_fallback and cfg.latitude is not None and cfg.longitude is not None:
+        return [(round(float(cfg.latitude), precision), round(float(cfg.longitude), precision))]
+
+    return []
 
 
 # Official WMO weather code descriptions

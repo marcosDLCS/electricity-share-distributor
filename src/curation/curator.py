@@ -40,8 +40,8 @@ from src.ingestion.schema import (
 from src.ingestion.weather import (
     OpenMeteoWeatherDownloader,
     WeatherLoader,
-    extract_coordinates_from_cups_file,
     parse_coordinate_pair,
+    resolve_community_coordinates,
 )
 
 
@@ -196,14 +196,10 @@ def dataframe_to_aligned_dataset(
             if cand in cups_list:
                 resolved_primary = cand
 
-    if not resolved_primary:
-        try:
-            cfg = cups_cfg or DataCurator(cups_config_path=cups_config_path).load_cups_config()
-            cand = next((c.cups for c in cfg.values() if c.primary), None)
-            if cand and cand in cups_list:
-                resolved_primary = cand
-        except Exception:
-            pass
+    if not resolved_primary and cups_cfg:
+        cand = next((c.cups for c in cups_cfg.values() if c.primary), None)
+        if cand and cand in cups_list:
+            resolved_primary = cand
 
     # Summary metadata
     summary = IngestionSummary(
@@ -375,39 +371,23 @@ class DataCurator:
             Tuple of (latitude, longitude) rounded to 4 decimals, or None if not configured.
         """
         configs = cups_configs if cups_configs is not None else self.load_cups_config()
-
-        # 1. Primary CUPS coordinates take first priority
-        for cfg in configs.values():
-            if cfg.primary and cfg.latitude is not None and cfg.longitude is not None:
-                return (round(cfg.latitude, 4), round(cfg.longitude, 4))
-
-        # 2. Any other participating CUPS coordinates
-        for cfg in configs.values():
-            if cfg.latitude is not None and cfg.longitude is not None:
-                return (round(cfg.latitude, 4), round(cfg.longitude, 4))
-
-        # 3. Direct extraction from cups configuration file if configs was empty
         found_path = self._resolve_cups_path()
-        if found_path:
-            coords = extract_coordinates_from_cups_file(found_path)
-            if coords:
-                return coords[0]
-
-        # 4. Fallback to persistent configuration if custom cups config not specified
-        if not self.cups_config_path:
-            app_cfg = load_config()
-            default_cons_dirs = {
-                DEFAULT_CONSUMPTION_DIR.resolve(),
-                Path(app_cfg.consumption_dir).resolve(),
-            }
-            if (
-                self.consumption_dir.resolve() in default_cons_dirs
-                and app_cfg.latitude is not None
-                and app_cfg.longitude is not None
-            ):
-                return (round(app_cfg.latitude, 4), round(app_cfg.longitude, 4))
-
-        return None
+        app_cfg = load_config()
+        default_cons_dirs = {
+            DEFAULT_CONSUMPTION_DIR.resolve(),
+            Path(app_cfg.consumption_dir).resolve(),
+        }
+        allow_cfg = (
+            self.cups_config_path is None and self.consumption_dir.resolve() in default_cons_dirs
+        )
+        coords = resolve_community_coordinates(
+            cups_configs=configs,
+            cups_file=found_path,
+            config=app_cfg,
+            allow_config_fallback=allow_cfg,
+            resolve_default_cups=False,
+        )
+        return coords[0] if coords else None
 
     @staticmethod
     def _filter_df_by_period(

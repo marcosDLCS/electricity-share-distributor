@@ -1384,3 +1384,55 @@ def test_round_betas_2d_matches_1d_exact_parity() -> None:
             )
             assert np.array_equal(rounded_2d, expected_rows)
             assert np.allclose(np.sum(rounded_2d, axis=1), 1.0, atol=1e-9)
+
+
+def test_optimizer_uses_pre_resolved_metadata_without_curator_disk_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify DistributionOptimizer relies strictly on AlignedDataset metadata without calling DataCurator."""
+    from src.curation.curator import DataCurator
+
+    c1 = "ES0021000000000001AA"
+    c2 = "ES0021000000000002BB"
+    cups_list = [c1, c2]
+    timestamps = ["2026-05-01 00:00:00", "2026-05-01 12:00:00"]
+    df = pd.DataFrame(
+        {
+            c1: [2.0, 6.0],
+            c2: [1.0, 4.0],
+            "generation_kwh": [0.0, 10.0],
+        },
+        index=timestamps,
+    )
+    dataset = AlignedDataset(
+        data=df,
+        cups_list=cups_list,
+        metadata=IngestionSummary(
+            cups_count=2,
+            cups_list=cups_list,
+            consumption_files_loaded=2,
+            generation_files_loaded=1,
+            start_time=timestamps[0],
+            end_time=timestamps[-1],
+            total_hours=2,
+        ),
+        monthly_groups={"2026-05": df},
+        cups_uses={c1: "Garaje", c2: "Piscina"},
+        primary_cups=c2,
+    )
+
+    def fail_load_cups_config(*args: object, **kwargs: object) -> object:
+        raise AssertionError("DistributionOptimizer must not invoke DataCurator.load_cups_config")
+
+    monkeypatch.setattr(DataCurator, "load_cups_config", fail_load_cups_config)
+
+    opt_result = DistributionOptimizer.optimize_dataset(
+        dataset,
+        strategy=OptimizationStrategy.OPTIMAL,
+        include_baselines=False,
+        compute_hourly=True,
+    )
+    assert opt_result.primary_cups == c2
+    assert opt_result.cups_uses == {c1: "Garaje", c2: "Piscina"}
+    assert opt_result.hourly_result is not None
+    assert opt_result.hourly_result.profile_matrix.cups_uses == {c1: "Garaje", c2: "Piscina"}
