@@ -3,7 +3,7 @@
 > Optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic self-consumption (*autoconsumo colectivo*) across shared community services in Spain under **Real Decreto 244/2019**.
 
 [![Python](https://img.shields.io/badge/Python-3.14+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.11.015-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.11.016-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-SciPy%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -26,12 +26,12 @@ It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/da
 ## 🚀 Key Capabilities
 
 - **📥 Dual Time-Series Ingestion:** DATADIS hourly consumption curves (per CUPS) and solar inverter generation Excel workbooks (`.xlsx`).
-- **⏱️ Time-Series Alignment & DST:** Synchronizes disparate timestamps across leap years, missing intervals, and European DST switches (23h spring leap, 25h autumn transition).
-- **🧮 Regulatory Optimization Engine:** Solves monthly linear programming models under **Real Decreto 244/2019** via `scipy.optimize.linprog(method='highs')`, finding optimal $\beta_i$ coefficients ($\sum \beta_i \le 1.0$) that maximize collective self-consumption.
-- **📋 Annual Prevision Distribution Matrix:** Formulates a 12-month calendar schedule (Jan–Dec) for an upcoming operating year, skipping incomplete months (`—`) and pooling multi-year observations with $1/K$ energy scaling.
-- **⚖️ Strategy Benchmarking:** Evaluates `optimal` LP against `consumption_share` and `equal` ($1/N$) baselines.
-- **📊 Rich 80-Column Terminal UI:** Tabular overviews, monthly trajectories, strategy comparisons, and visual share bars formatted for 80-column terminals.
-- **📝 Multi-Format Reporting:** Timestamped exports in CSV (monthly and hourly shares) and standalone interactive HTML (`html`) in `.output/`.
+- **⏱️ Time-Series Alignment & DST:** Synchronizes disparate timestamps across leap years, missing intervals, and European DST switches (23h spring leap, 25h autumn transition with per-file energy conservation prior to cross-file deduplication).
+- **🧮 Regulatory Optimization Engine:** Solves monthly and fortnight (24 half-month) linear programming models under **Real Decreto 244/2019** alongside dynamic 24-hour profiles under **Orden TED/1247/2021** via `scipy.optimize.linprog(method='highs')`, finding optimal $\beta_i$ coefficients ($\sum \beta_i = 1.0$) that maximize collective self-consumption.
+- **📋 Annual Prevision Distribution Matrix:** Formulates a 12-month calendar schedule (Jan–Dec) for an upcoming operating year, skipping incomplete months (`—`) and pooling multi-year observations with exact per-month $1/k_m$ energy scaling.
+- **⚡ 4-Way Modality Progression:** Evaluates Current No-Share baseline against Monthly Share (RD 244/2019), Fortnight Share, and Hourly Share (Orden TED/1247/2021).
+- **📊 Rich 80-Column Terminal UI:** Tabular overviews, monthly trajectories, and visual share bars formatted cleanly for 80-column terminals.
+- **📝 Multi-Format Reporting:** Timestamped exports across **6 deliverables** in `.output/`: interactive HTML dashboard, monthly shares CSV + lite matrix CSV, fortnight shares CSV + lite matrix CSV, and hourly shares CSV.
 - **🌐 Localization & Versioning:** Bilingual English/Spanish (`en`/`es`) support and automated per-commit CalVer (`YYYY.MM.NNN`).
 
 ---
@@ -141,17 +141,11 @@ esd init --lang es
 ### 4. Run Optimization
 
 ```bash
-# Calculate optimal coefficients for all available data
+# Calculate monthly, fortnight, and hourly coefficients for CUPS configured in cups.json
 esd calculate
 
-# Focus on a specific month and export all reports (CSV shares and HTML)
-esd calculate -y 2026 -m 5 -f all
-
-# Generate standalone interactive HTML report for property owners
-esd calculate -f html
-
-# Inspect comparison between LP optimization and equal allocation
-esd calculate -v comparison
+# (Optional) Adjust precision or language beforehand in persistent configuration
+esd config --precision 2 --lang es
 ```
 
 ---
@@ -159,30 +153,20 @@ esd calculate -v comparison
 ## 📖 CLI Command Reference
 
 ### `esd calculate`
-Calculates optimal monthly distribution coefficients ($\beta_i$).
+Calculates optimal monthly (RD 244/2019), fortnight (24 half-month), and dynamic hourly (Orden TED/1247/2021) distribution coefficients ($\beta_i$) using zero command-line arguments. Reads workspace directories, language, and share precision from `.esd_config.json`, evaluates only participating CUPS and optional per-CUPS `min_share`/`max_share` bylaws configured in `cups.json`, auto-curates `.curated/esd.csv` when missing or stale, renders 80-column terminal summary/trajectory/matrix tables, and exports all **6 timestamped `.output/` deliverables**:
 
 ```bash
-esd calculate [OPTIONS]
+esd calculate
 ```
 
-| Option | Flag | Description | Default |
-| :--- | :--- | :--- | :--- |
-| `--strategy` | `-s` | Allocation method: `optimal` (RD 244/2019 LP), `consumption_share`, or `equal` | `optimal` |
-| `--year` | `-y` | Filter calculation to a specific calendar year | `None` (all) |
-| `--month` | `-m` | Filter calculation to a specific month (1–12) | `None` (all) |
-| `--view` | `-v` | Terminal view mode: `summary` (overview + matrix + details), `matrix` (share matrix), `trajectory`, `hourly`, `coefficients`, `comparison`, or `all` | `summary` |
-| `--hourly` | `-H` | Calculate and export distribution shares per hour (24-hour diurnal profile and hourly time-series) | `False` |
-| `--format` | `-f` | Report export format: `all`, `table` (no file export), `csv`, or `html` | `all` |
-| `--precision` | `-p` | Share percentage precision: `0` (e.g. 53%), `1` (e.g. 52.8%), or `2` (e.g. 52.86%) | From config |
-| `--min-share` | — | Regulatory or bylaw minimum share floor per CUPS (e.g. `0.05` or `5%`) | `None` |
-| `--max-share` | — | Regulatory or bylaw maximum share cap per CUPS (e.g. `0.70` or `70%`) | `None` |
-| `--force-curate` | — | Force re-running curation before calculating, even if master `esd.csv` exists | `False` |
-| `--consumption-dir` | `-c` | Folder containing DATADIS hourly consumption CSV files | From config |
-| `--generation-dir` | `-g` | Folder containing solar inverter generation Excel files | From config |
-| `--curated-dir` | `-u` | Folder containing curated time-series CSV/Excel files (`generation`, `consumption`, `esd`) | From config |
-| `--cups-file` | `-C` | Path to `cups.json` specifying CUPS uses and primary flags | From config |
-| `--output-dir` | `-o` | Custom report destination directory | From config |
-| `--lang` | `-l` | Language override (`en` or `es`) | From config |
+| Deliverable | Format | Contents |
+| :--- | :--- | :--- |
+| `*_esd_interactive_report.html` | HTML (Standalone) | Interactive offline ES/EN executive dashboard, 4 KPI cards, hourly profile, SEI chart & monthly heatmap |
+| `*_esd_monthly_shares.csv` | CSV (`;`) | Full monthly allocation and energy balance per CUPS |
+| `*_esd_monthly_shares_lite.csv` | CSV (`;`) | Compact monthly share matrix (CUPS vs. months `01`..`12`) |
+| `*_esd_fortnight_shares.csv` | CSV (`;`) | Full fortnight allocation (`1`: days 1–15, `2`: days 16–end) and energy balance per CUPS |
+| `*_esd_fortnight_shares_lite.csv` | CSV (`;`) | Compact fortnight share matrix (CUPS vs. fortnights `01-1`..`12-2`) |
+| `*_esd_hourly_shares.csv` | CSV (`;`) | Hourly time-series shares (with 1% active floor) and integer Solar Efficiency Index (`0`–`100`) |
 
 ### `esd curate`
 Executes the 3-stage canonical data pipeline: (1) aggregates split solar generation files into `.curated/generation.csv` and `.curated/generation.xlsx` (`GenerationDataset`), (2) aggregates split CUPS consumption files into `.curated/consumption.csv` and `.curated/consumption.xlsx` (`ConsumptionDataset`), and (3) reconciles fake-zero loads on the primary meter, enriches with CUPS metadata and weather indicators (temperature, cloud cover), and produces the master `.curated/esd.csv` and `.curated/esd.xlsx` datasets:
@@ -278,12 +262,20 @@ esd config --consumption-dir /path/to/consumption --generation-dir /path/to/gene
 ```
 
 ### `esd cleanup`
-Removes generated reports and export files from `.output/`:
+Recursively removes generated reports, charts, curated datasets, and cached weather files from `.output`, `.curated`, and `.input/weather` (preserving hidden files such as `.gitkeep`):
 
 ```bash
 esd cleanup
 esd cleanup --force  # Skip interactive confirmation
 ```
+
+| Option | Flag | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--output-dir` | `-o` | Output directory to clean | From config (`.output`) |
+| `--curated-dir` | `-u` | Curated directory to clean | From config (`.curated`) |
+| `--weather-dir` | `-w` | Weather cache directory to clean | From config (`.input/weather`) |
+| `--force` | `-f` | Force deletion without interactive confirmation | `False` |
+| `--lang` | `-l` | Language override (`en` or `es`) | From config |
 
 ### `esd version`
 Displays active CalVer release version and build metadata:
@@ -326,10 +318,11 @@ Under Spain's regulatory framework and European GDPR (Regulation EU 2016/679, al
 
 - **Synthetic Identifiers:** All documentation examples, sample reports, and test cases use synthetic mock identifiers adhering strictly to `ES00210000000000XXYY` (`ES0021000000000001AA`, `ES0021000000000002BB`, etc.).
 - **Local Data Isolation:** Input folders (`.input/`) and generated reports (`.output/`) are excluded from Git tracking via `.gitignore`.
-- **Automated Verification Harness:** A pre-commit hook and automated CI harness execute `python3 -m src.security` to audit workspace files and the entire Git commit history, guaranteeing that no real CUPS or residential identifiers ever enter version control.
+- **Automated Verification Harness:** A pre-commit hook and automated CI harness execute `python3 -m src.security` to audit workspace files, `.xlsx` workbooks, staged diffs, and the entire Git commit history for real CUPS, private geographic coordinates, local paths, and exposed secrets/credentials:
   ```bash
-  python3 -m src.security         # Verify workspace and all commit history
-  python3 -m src.security --staged # Verify staged git index changes
+  python3 -m src.security                # Verify workspace and all commit history
+  python3 -m src.security --staged       # Verify staged git index changes
+  python3 -m src.security --scan <path>  # Verify a specific file or directory
   ```
 
 ---

@@ -85,7 +85,7 @@ Estructurado con delimitador `;`, coma `,` para decimales y sin separadores de m
 ```csv
 timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption;community_demand;generation;self_consumption;exported_energy;imported_energy;temperature;cloud_cover
 2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000001AA;Aerotermia;8,5;9,7;12,5;6,0;6,0;2,5;21,4;12
-2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000002BB;Garaje;1,2;9,7;12,5;0,0;0,0;0,0;0,0;21,4;12
+2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000002BB;Garaje;1,2;9,7;12,5;0,0;0,0;0,0;21,4;12
 ```
 
 #### 2. Libros de Excel Estilizados (`esd.xlsx`, `generation.xlsx`, `consumption.xlsx`)
@@ -95,7 +95,7 @@ Creado junto al CSV con formato profesional para análisis interactivo:
 - **Emojis Booleanos:** La columna `is_weekend` muestra marcas visuales intuitivas (`✅` para fin de semana, `❌` para día laborable).
 - **Inmovilización de Paneles y Filtros:** Cabecera fija (`freeze_panes`) y filtros automáticos desplegables nativos en todas las columnas.
 
-Para el suministro principal de la instalación, `esd` adopta siempre el mayor consumo entre la distribuidora (DATADIS) y el sensor de potencia del inversor solar ($\max(C_{\text{DATADIS}}, C_{\text{inversor}})$). Esto garantiza registrar la demanda real y completa de la instalación eliminando los falsos ceros. El punto de suministro principal recibe además las métricas detalladas del balance solar: el autoconsumo físico instantáneo (`self_consumption`), los excedentes solares vertidos a la red (`exported_energy`) y la energía importada de la red (`imported_energy`). El resto de puntos participantes reciben cero para estos flujos individuales previos al reparto colectivo. El conjunto de datos se encuentra ordenado cronológicamente por marca de tiempo (fecha/hora) y, dentro de cada hora, alfabéticamente por uso del suministro. Además, cada intervalo horario incorpora el contexto meteorológico local (`temperature` en °C y porcentaje de nubosidad `cloud_cover` de 0 a 100%). Si los datos meteorológicos no están disponibles localmente en `.input/weather/`, `esd curate` ejecuta automáticamente la consulta a Open-Meteo utilizando la ubicación por defecto de la comunidad en `.input/cups/cups.json`.
+Para el suministro principal de la instalación, `esd` adopta siempre el mayor consumo entre la distribuidora (DATADIS) y el sensor de potencia del inversor solar ($\max(C_{\text{DATADIS}}, C_{\text{inversor}})$). Esta reconciliación no destructiva captura la demanda física real cuando el autoconsumo se produce detrás del contador, sin sobrescribir jamás las lecturas fiscales positivas de DATADIS durante caídas de telemetría del inversor. El punto de suministro principal recibe además los flujos de balance de planta acotados por conservación física ($SC_{\text{principal}, h} = \min(G_h, C_{\text{final}, h})$): autoconsumo físico instantáneo (`self_consumption`), excedentes solares vertidos a la red (`exported_energy`) y energía importada de la red (`imported_energy`). El resto de puntos participantes reciben cero para estos flujos individuales previos al reparto colectivo. El conjunto de datos se encuentra ordenado cronológicamente por marca de tiempo (fecha/hora) y, dentro de cada hora, alfabéticamente por uso del suministro. Además, cada intervalo horario incorpora el contexto meteorológico local (`temperature` en °C y porcentaje de nubosidad `cloud_cover` de 0 a 100%). Si los datos meteorológicos no están disponibles localmente en `.input/weather/`, `esd curate` ejecuta automáticamente la consulta a Open-Meteo utilizando la ubicación por defecto de la comunidad en `.input/cups/cups.json`.
 
 ---
 
@@ -118,8 +118,8 @@ Si la instalación solar se dio de alta a mitad de mes (por ejemplo, un 20 de ju
 - `esd` comprueba que cada mes histórico disponga de lecturas continuas desde el principio hasta el final del mes, cubriendo **al menos el 90% de los días y horas naturales**.
 - Si un mes no cumple este umbral de calidad, la herramienta lo omite y muestra un guion (`—`) en lugar de arrojar porcentajes basados en datos incompletos.
 
-### 4. Agregación Multianual contra Anomalías Meteorológicas
-El clima varía de un año a otro. Un mes de mayo lluvioso en 2025 y un mayo soleado en 2026 no deberían desorientar el acuerdo comunitario. Cuando se dispone de datos del mismo mes en varios años, `esd` combina todas las horas históricas observadas. Esto diluye anomalías temporales y genera un perfil equilibrado y representativo a largo plazo.
+### 4. Agregación Multianual y Escalado por Mes $1/k_m$
+El clima varía de un año a otro. Un mes de mayo lluvioso en 2025 y un mayo soleado en 2026 no deberían desorientar el acuerdo comunitario. Cuando los datos históricos abarcan varios años naturales, `esd` combina todas las observaciones completas de cada mes natural y escala las magnitudes energéticas agregadas de cada mes (generación solar, demanda, autoconsumo y excedentes) por su multiplicidad exacta por mes **$1/k_m$** (donde $k_m$ es el número de años completos observados en el mes natural $m$, o en la quincena/hora equivalente). Al ponderar cada mes según sus propios años observados en lugar de usar un divisor global único, las series parciales desiguales nunca distorsionan el balance anual normalizado.
 
 ### 5. Redondeo Exacto al 100% (Método de Restos Mayores / Hare-Niemeyer)
 Las distribuidoras eléctricas rechazan de plano las tablas de coeficientes si la suma de porcentajes no da **exactamente el 100%**.
@@ -128,12 +128,12 @@ Las distribuidoras eléctricas rechazan de plano las tablas de coeficientes si l
 
 ### 6. Perfiles Horarios Diarios y Asignación Nocturna
 En días de tormenta, la producción solar puede caer bruscamente. Si los motores del ascensor arrancan en un momento puntual de sol débil, calcular porcentajes instantáneos en ese día le asignaría un porcentaje desproporcionado (como el 95%) que no refleja su patrón habitual.
-- El perfil diario de 24 horas (`--hourly`) calcula el patrón típico consolidado en todos los días observados.
+- Durante `esd calculate`, el motor diurno de 24 horas calcula automáticamente el patrón típico consolidado en todos los días observados.
 - Ofrece tanto el porcentaje horario real (`share_pct`) como el porcentaje estimado regulatorio (`estimated_share_pct`) conforme a la Orden TED/1247/2021.
 - **Horas nocturnas con producción exactamente cero:** En las horas nocturnas sin ninguna producción solar, cada CUPS participante recibe un suelo regulatorio activo del 1% (o su cuota mínima configurada), asignándose el porcentaje restante al suministro principal de la instalación (p. ej. 99% principal / 1% secundario en una comunidad de dos suministros). Esto garantiza que todos los puntos participantes mantengan un coeficiente activo en los registros horarios asegurando una suma reglamentaria exactamente del 100%.
 
 ### 7. Índice de Eficiencia Solar Fotovoltaica (SEI)
-En el cálculo horario (`--hourly`), cada fila incorpora una métrica dedicada de `solar_efficiency` como un número entero sin decimales. Para las horas con generación solar activa ($G_h > 0$), proporciona un índice de **1 a 100**. Para las horas sin generación (o intervalos nocturnos), se fija en **0**.
+En el cálculo horario (`*_esd_hourly_shares.csv`), cada fila incorpora una métrica dedicada de `solar_efficiency` como un número entero sin decimales. Para las horas con generación solar activa ($G_h > 0$), proporciona un índice de **1 a 100**. Para las horas sin generación (o intervalos nocturnos), se fija en **0**.
 
 El índice modela el rendimiento físico fotovoltaico y la geometría óptica solar a partir de los datos meteorológicos locales de Open-Meteo:
 $$\text{SEI} = \begin{cases} \text{clip}\left(\text{round}\left(100.0 \times f_{\text{cloud}} \times f_{\text{temp}} \times f_{\text{season}} \times f_{\text{hour}}\right), \; 1, \; 100\right) & \text{si } G_h > 0 \\ 0 & \text{si } G_h = 0 \end{cases}$$
@@ -142,23 +142,27 @@ $$\text{SEI} = \begin{cases} \text{clip}\left(\text{round}\left(100.0 \times f_{
   $$f_{\text{cloud}} = 1.0 - 0.75 \times \left(\frac{CC}{100.0}\right)^{1.2}$$
 - **Degradación Térmica de Célula ($f_{\text{temp}}$):** Reproduce el coeficiente térmico de potencia característico de las células de silicio ($-0,4\% / ^\circ\text{C}$ respecto a $20^\circ\text{C}$ ambiente de referencia). Mañanas frías y despejadas ofrecen una mejora de rendimiento (hasta $+8\%$), mientras que el calor extremo del mediodía estival degrada la tensión de los paneles:
   $$f_{\text{temp}} = \text{clip}\left(1.0 - 0.004 \times (T_{\text{amb}} - 20.0), \; 0.80, \; 1.08\right)$$
-- **Elevación Solar Estacional ($f_{\text{season}}$):** Modela la declinación solar anual y la masa de aire atmosférica en latitudes de la Península Ibérica (36°N–43°N), alcanzando su cénit en el solsticio de verano (junio/julio ~ 1,00) y su mínimo en el de invierno (diciembre/enero ~ 0,70):
+- **Elevación Solar Estacional ($f_{\text{season}}$):** Modela la declinación solar anual y la masa de aire atmosférica en latitudes de la Península Ibérica (36°N–43°N), alcanzando su máximo en verano (junio/julio ~ 1,00) y su mínimo en invierno (diciembre/enero ~ 0,70):
   $$f_{\text{season}} = 0.85 + 0.15 \times \cos\left(\frac{2\pi \times (m - 6.5)}{12.0}\right)$$
 - **Ángulo Cénit Diurno ($f_{\text{hour}}$):** Refleja la curva diurna de elevación solar y el ángulo de incidencia sobre paneles de cubierta con inclinación fija, alcanzando el máximo en el mediodía solar (13:00–14:00 en España) con mínimas pérdidas por reflexión de Fresnel, y reduciéndose en horas rasantes:
   $$f_{\text{hour}} = \begin{cases} 0.70 + 0.30 \times \sin\left(\pi \times \frac{h - 6.0}{15.0}\right) & \text{si } 6 \le h \le 21 \\ 0.65 & \text{en otro caso} \end{cases}$$
 
 ### 8. Restricciones Regulatorias y Límites Estatutarios (*Estatutos de la Comunidad*)
-Los acuerdos de junta y estatutos de comunidades de propietarios a menudo establecen cuotas mínimas y máximas de reparto entre los servicios comunes:
-- **Cuota Mínima Garantizada (`--min-share`):** Garantiza que los circuitos comunes menores (ventilación de garajes, alumbrado de escaleras, ascensores) perciban un porcentaje base de energía solar (p. ej. $\beta_i \ge 0.05$ o 5%), evitando que un único suministro acapare toda la generación.
-- **Cuota Máxima Tope (`--max-share`):** Impide que consumos intensivos (p. ej. bombas de calor centralizadas de aerotermia) monopolicen en exceso la producción (p. ej. tope del 70% o $\beta_i \le 0.70$).
-- **Límites Individuales por CUPS en `cups.json`:** Cada suministro puede fijar directamente en `cups.json` sus propios valores `"min_share"` y `"max_share"`.
-- El optimizador de programación lineal HiGHS incorpora las cotas de variables $L_i \le \beta_i \le U_i$, verifica la factibilidad matemática ($\sum L_i \le 1.0$) y aplica el redondeo exacto de Hare-Niemeyer dentro de los límites tanto en el cálculo mensual como en el perfil diurno y serie temporal horaria (`--hourly`), garantizando $\sum \beta_i = 100.0\%$ estricto.
+Los acuerdos de junta y estatutos de comunidades de propietarios a menudo establecen cuotas mínimas y máximas de reparto entre los servicios comunes, configuradas directamente en `.input/cups/cups.json`:
+- **Cuota Mínima Garantizada (`"min_share"`):** Garantiza que los circuitos comunes menores (ventilación de garajes, alumbrado de escaleras, ascensores) perciban un porcentaje base de energía solar (p. ej. `0.05` o 5%), evitando que un único suministro acapare toda la generación.
+- **Cuota Máxima Tope (`"max_share"`):** Impide que consumos intensivos (p. ej. bombas de calor centralizadas de aerotermia) monopolicen en exceso la producción (p. ej. tope de `0.70` o 70%).
+- **Cumplimiento Uniforme de Cotas:** El optimizador de programación lineal HiGHS incorpora las cotas de variables $L_i \le \beta_i \le U_i$, verifica la factibilidad matemática ($\sum L_i \le 1.0$) y aplica el redondeo exacto de Hare-Niemeyer dentro de los límites en los repartos mensual, quincenal y horario de 24 horas, garantizando $\sum \beta_i = 100.0\%$ estricto.
+
+### 9. Cambios Horarios DST Europeos y Conservación de Energía en Otoño
+La España peninsular aplica los cambios horarios europeos (un día de 23 horas el último domingo de marzo y un día de 25 horas el último domingo de octubre):
+- **Hora Repetida en Otoño (`02:00` CEST/CET):** Al atrasar los relojes, tanto las exportaciones de consumo de DATADIS como los informes del inversor contienen dos intervalos `02:00` independientes en la fecha del cambio.
+- **Consolidación Intradía sin Pérdidas ni Duplicados:** Antes de fusionar múltiples archivos solapados, `esd` suma las dos lecturas de la hora `02:00` dentro de cada archivo de origen (`consolidate_autumn_dst`) para conservar el 100% de la energía de las 25 horas sin duplicar exportaciones de periodos solapados.
 
 ---
 
-## 5. 📊 Balance Energético Comunitario y Progresión de Autoconsumo en 3 Modalidades
+## 5. 📊 Balance Energético Comunitario y Progresión de Autoconsumo en 4 Modalidades
 
-Para proporcionar total transparencia a propietarios y administradores de fincas, `esd` evalúa y expone un balance energético completo de seis magnitudes clave junto a una comparativa de tres modalidades de autoconsumo en consola, informes HTML y exportaciones.
+Para proporcionar total transparencia a propietarios y administradores de fincas, `esd` evalúa y expone un balance energético completo de seis magnitudes clave junto a una comparativa de cuatro modalidades de autoconsumo en consola, informes HTML y exportaciones.
 
 ### Los Seis Indicadores Clave del Balance Energético
 1. **Generación Solar Total ($G_{\text{total}}$):** Kilovatios-hora totales producidos por la instalación solar fotovoltaica en el conjunto del periodo evaluado.
@@ -168,11 +172,12 @@ Para proporcionar total transparencia a propietarios y administradores de fincas
 5. **Excedentes Vertidos a Red ($Surplus$):** Energía solar que supera el consumo simultáneo de los servicios comunitarios ($\max(0, G_h - C_h)$), inyectada a la red de distribución.
 6. **Energía Autoconsumida Total ($SC$):** Kilovatios-hora solares aprovechados directamente in situ por las instalaciones comunes ($\min(C_h, G_h)$), evitando la compra de electricidad de la red a precio minorista.
 
-### Las Tres Modalidades de Autoconsumo y su Progresión
-`esd` calcula y compara tres escenarios operativos a partir de la telemetría real:
-1. **Autoconsumo Actual (Sin Reparto / Línea Base):** Autoconsumo directo obtenido cuando la planta solar está conectada físicamente únicamente al contador principal (habitualmente la aerotermia central) sin reparto colectivo con otros servicios. Refleja la situación de partida previa al acuerdo regulatorio.
-2. **Reparto Mensual Fijo (Real Decreto 244/2019):** Autoconsumo colectivo resultante de optimizar coeficientes fijos mensuales ($\beta_{i, m}$). Al redistribuir cuotas según la estacionalidad (mayor cuota a la piscina en verano y a la calefacción central en invierno), el aprovechamiento colectivo aumenta de forma sustancial frente al autoconsumo individual.
-3. **Reparto Horario Dinámico (Orden TED/1247/2021):** Autoconsumo dinámico mediante coeficientes variables hora a hora ($\beta_{i, h}$). Dado que los consumos comunitarios varían sensiblemente a lo largo del día (motores de ascensores en horas punta de entrada y salida, depuradoras en las horas centrales y bombas de calor en ciclos diurnos), el reparto horario maximiza la coincidencia instantánea, capturando el máximo de energía solar y reduciendo la factura eléctrica comunitaria al mínimo legal y físico posible.
+### Las Cuatro Modalidades de Autoconsumo y su Progresión
+`esd` calcula y compara cuatro escenarios operativos sobre una base temporal anualizada homogénea:
+1. **Autoconsumo Actual (Sin Reparto / Línea Base):** Autoconsumo directo obtenido cuando la planta solar está conectada físicamente únicamente al contador principal (habitualmente la aerotermia central) sin reparto colectivo con otros servicios. Calculado desde telemetría ($SC_{\text{principal}, h}$) con escalado homogéneo $1/k_m$.
+2. **Reparto Mensual Fijo (Real Decreto 244/2019):** Autoconsumo colectivo resultante de optimizar coeficientes fijos mensuales ($\beta_{i, m}$), adaptando las cuotas a la estacionalidad de piscina y calefacción.
+3. **Reparto Quincenal (24 Quincenas):** Optimización bimensual que calcula coeficientes $\beta_i$ independientes para los días 1–15 y 16–fin de cada mes, capturando transiciones estacionales con respaldo automático mensual en quincenas con apagón de telemetría (`MIN_FORTNIGHT_SOLAR_DAYS = 5`).
+4. **Reparto Horario Dinámico (Orden TED/1247/2021):** Autoconsumo dinámico mediante coeficientes variables hora a hora ($\beta_{i, h}$), maximizando la coincidencia instantánea entre generación y picos horarios de consumo comunitario.
 
 ---
 
@@ -256,7 +261,7 @@ Para desarrolladores y agentes autónomos que naveguen por la base de código:
 | :--- | :--- | :--- | :--- |
 | **CLI y Comandos** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `curate_command`, `weather_command`, `doctor_command` | Enrutamiento de comandos Typer, validación de parámetros y flujo de ejecución. |
 | **Servicios de Aplicación** | [`src/services/`](../src/services) | `CalculationService`, `CurationService`, `DoctorService`, `WeatherService` | Orquestadores de flujos y procesos de negocio de la aplicación. |
-| **Núcleo de Dominio** | [`src/domain/`](../src/domain) | `SupplyPoint`, `ShareAllocation`, `EnergyBalance`, `EsdError` | Modelos de dominio puros, objetos de valor y excepciones de dominio centralizadas. |
+| **Núcleo de Dominio** | [`src/domain/`](../src/domain) | `SupplyPoint`, `BylawConstraints`, `EsdError` | Modelos de dominio puros, cotas estatutarias y excepciones centralizadas. |
 | **Configuración** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision`, `get_weather_dir` | Persistencia de ajustes (`.esd_config.json`) y resolución de rutas. |
 | **Localización** | [`src/i18n.py`](../src/i18n.py) | `t()`, `I18nNamespace`, `TRANSLATIONS` | Espacios de nombres de dominio estructurados (app, cli, doctor, curate, weather, tables, export) con paridad de parámetros y resolución dual. |
 | **Ingesta: Consumo** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | Búsqueda de CSVs de DATADIS, detección de codificación y lectura. |
@@ -267,5 +272,5 @@ Para desarrolladores y agentes autónomos que naveguen por la base de código:
 | **Optimización: Modelos** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Estructuras matriciales, perfiles horarios diarios y métricas comunitarias. |
 | **Optimización: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Programación lineal (HiGHS), perfil horario, comparativas y redondeo Hare-Niemeyer. |
 | **Presentación: Vistas** | [`src/presentation/views/`](../src/presentation/views) | `render_coefficients_matrix_table`, `render_community_summary` | Tablas Rich en consola, tarjetas KPI con insignias de ganancia base, mapas de calor bitono, minigráficos unicode, barra de progreso en 4 pasos y formato adaptativo de 80 columnas. |
-| **Presentación: Exportación** | [`src/presentation/export.py`](../src/presentation/export.py) | `ReportExporter` | Arquitectura unificada de exportación de cuotas CSV mensuales y horarias e informes interactivos HTML. |
-| **Seguridad y Privacidad** | [`src/security.py`](../src/security.py) | `check_privacy`, `scan_xlsx_file`, `scan_git_history` | Control de cumplimiento RGPD, registro de firmas de cups.json, escaneo de libros Excel y verificación de CUPS sintéticos. |
+| **Presentación: Exportación** | [`src/presentation/export.py`](../src/presentation/export.py) | `ReportExporter` | Exportador unificado para los 6 entregables en `.output/` (CSV mensuales/quincenales/horarios, matrices lite e HTML interactivo) con saneamiento de fórmulas. |
+| **Seguridad y Privacidad** | [`src/security.py`](../src/security.py) | `check_privacy`, `scan_xlsx_file`, `scan_git_history` | Control RGPD de CUPS, detección de coordenadas privadas y secretos, escaneo `.xlsx`, auditoría `--scan` e inspección del historial Git en flujo único. |

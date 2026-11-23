@@ -95,7 +95,7 @@ Created alongside the CSV with executive styling for interactive analysis:
 - **Boolean Emojis:** The `is_weekend` column displays intuitive visual checkmarks (`✅` for weekend, `❌` for weekday).
 - **Freeze Panes & AutoFilter:** The header row is frozen and native Excel filters are enabled across all columns.
 
-For the primary installation point, `esd` always adopts the higher consumption between the utility (DATADIS) and the solar inverter smart power sensor ($\max(C_{\text{DATADIS}}, C_{\text{inverter}})$). This guarantees full equipment demand is captured while avoiding fake zero underreporting. The primary supply point also receives the detailed solar energy balance metrics: physical instantaneous self-consumption (`self_consumption`), solar generation exported to the grid (`exported_energy`), and grid electricity imported (`imported_energy`). Other participating points receive zero for these plant-level flows prior to collective allocation. The dataset is ordered chronologically by timestamp (date/hour) and within each timestamp alphabetically by facility use. Furthermore, each hourly record includes local weather context (`temperature` in °C and `cloud_cover` percentage from 0 to 100%). If weather data is not already stored locally in `.input/weather/`, `esd curate` automatically queries Open-Meteo using the community's default location from `.input/cups/cups.json`.
+For the primary installation point, `esd` always adopts the higher consumption between the utility (DATADIS) and the solar inverter smart power sensor ($\max(C_{\text{DATADIS}}, C_{\text{inverter}})$). This non-destructive reconciliation captures full physical equipment demand when solar generation feeds loads behind the meter, without ever erasing positive fiscal DATADIS readings during inverter telemetry dropouts. The primary supply point also receives plant-level energy flows constrained by physical conservation ($SC_{\text{primary}, h} = \min(G_h, C_{\text{final}, h})$): physical instantaneous self-consumption (`self_consumption`), solar generation exported to the grid (`exported_energy`), and grid electricity imported (`imported_energy`). Other participating points receive zero for these plant-level flows prior to collective allocation. The dataset is ordered chronologically by timestamp (date/hour) and within each timestamp alphabetically by facility use. Furthermore, each hourly record includes local weather context (`temperature` in °C and `cloud_cover` percentage from 0 to 100%). If weather data is not already stored locally in `.input/weather/`, `esd curate` automatically queries Open-Meteo using the community's default location from `.input/cups/cups.json`.
 
 ---
 
@@ -118,8 +118,8 @@ If the solar plant was commissioned midway through a month (e.g., on June 20th),
 - `esd` verifies that each historical month has readings spanning from the start to the end of the month, covering **at least 90% of expected calendar days and hours**.
 - If a month does not meet this threshold, the tool skips that month and displays a clean dash (`—`) rather than guessing with incomplete data.
 
-### 4. Multi-Year Seasonal Pooling
-Weather varies from year to year. A rainy May in 2025 followed by an exceptionally sunny May in 2026 shouldn't mislead the community agreement. When historical data is available for the same calendar month across multiple years, `esd` pools all hourly observations together. This blends out short-term weather anomalies and creates a balanced, representative profile for future years.
+### 4. Multi-Year Seasonal Pooling & Per-Month $1/k_m$ Calendar Scaling
+Weather varies from year to year. A rainy May in 2025 followed by an exceptionally sunny May in 2026 shouldn't mislead the community agreement. When historical data spans multiple calendar years, `esd` pools all complete observations for each calendar month and scales each month's pooled energy metrics (solar generation, demand, self-consumption, and surplus) by exact per-month multiplicity **$1/k_m$** (where $k_m$ is the number of complete historical years observed for calendar month $m$, or matching fortnight/hour buckets). Because uneven partial-year histories (e.g., two Septembers but one January) are weighted per calendar month rather than by a single global constant, the resulting Jan–Dec prevision reflects an unbiased normalized annual energy year.
 
 ### 5. Exact 100% Rounding (The Hare-Niemeyer Method)
 Electrical distribution companies (DSOs) reject regulatory share filings if the percentages do not sum to **strictly 100%**.
@@ -128,12 +128,12 @@ Electrical distribution companies (DSOs) reject regulatory share filings if the 
 
 ### 6. Cloud-Resilient Hourly Profiles & Night Allocation
 On cloudy or stormy days, solar production can drop to near zero. If elevator motors kick in during a momentary solar lull, calculating an instantaneous percentage would assign the elevator an absurdly high share (like 95%) that doesn't reflect typical habits.
-- The 24-hour diurnal profile (`--hourly`) calculates consolidated hourly patterns across all observed days.
+- During `esd calculate`, the 24-hour diurnal engine automatically calculates consolidated hourly patterns across all observed days.
 - It provides both the actual share (`share_pct`) and a cloud-resilient estimated share (`estimated_share_pct`) formatted for filing under Orden TED/1247/2021.
 - **Night Hours with Exact Zero Generation:** In night hours where solar generation is exactly zero, every participating CUPS receives an active regulatory floor of 1% (or its configured minimum share), with the remaining share assigned to the primary installation CUPS (e.g. 99% primary / 1% secondary for a two-supply community). This ensures every participating point retains a continuous active coefficient in hourly filings while maintaining an exact regulatory 100% sum.
 
 ### 7. Photovoltaic Solar Efficiency Index (SEI)
-In the hourly calculation (`--hourly`), each record includes a dedicated `solar_efficiency` metric as a plain integer without decimals. For hours with active solar generation ($G_h > 0$), it yields an index from **1 to 100**. For hours without generation (or nighttime intervals), it is set to **0**.
+In the hourly output (`*_esd_hourly_shares.csv`), each record includes a dedicated `solar_efficiency` metric as a plain integer without decimals. For hours with active solar generation ($G_h > 0$), it yields an index from **1 to 100**. For hours without generation (or nighttime intervals), it is set to **0**.
 
 The index models real-world photovoltaic performance and optical solar geometry based on Open-Meteo local weather archives:
 $$\text{SEI} = \begin{cases} \text{clip}\left(\text{round}\left(100.0 \times f_{\text{cloud}} \times f_{\text{temp}} \times f_{\text{season}} \times f_{\text{hour}}\right), \; 1, \; 100\right) & \text{if } G_h > 0 \\ 0 & \text{if } G_h = 0 \end{cases}$$
@@ -148,17 +148,21 @@ $$\text{SEI} = \begin{cases} \text{clip}\left(\text{round}\left(100.0 \times f_{
   $$f_{\text{hour}} = \begin{cases} 0.70 + 0.30 \times \sin\left(\pi \times \frac{h - 6.0}{15.0}\right) & \text{if } 6 \le h \le 21 \\ 0.65 & \text{otherwise} \end{cases}$$
 
 ### 8. Regulatory Constraints & Community Bylaw Limits (*Estatutos de la Comunidad*)
-Homeowners association agreements and community bylaws frequently establish statutory allocation bounds across shared supplies:
-- **Minimum Share Floor (`--min-share`):** Guarantees smaller common circuits (e.g. garage ventilation, elevator cabs, stair lighting) a baseline allocation (e.g., $\beta_i \ge 0.05$ or 5%) so all facilities benefit from the collective installation.
-- **Maximum Share Cap (`--max-share`):** Prevents dominant consumers (e.g. centralized aerothermal heating) from monopolizing generation (e.g., capped at $\beta_i \le 0.70$ or 70%).
-- **Custom Per-CUPS Bylaws in `cups.json`:** Individual supply points can also define specific `"min_share"` and `"max_share"` limits directly in `cups.json`.
-- The HiGHS linear programming solver incorporates variable bounds $L_i \le \beta_i \le U_i$, checks mathematical feasibility ($\sum L_i \le 1.0$), and applies Hare-Niemeyer exact rounding strictly within bounds across both monthly calculations and the 24-hour diurnal profile and hourly time-series (`--hourly`), guaranteeing an exact $\sum \beta_i = 100.0\%$.
+Homeowners association agreements and community bylaws frequently establish statutory allocation bounds across shared supplies, configured directly in `.input/cups/cups.json`:
+- **Minimum Share Floor (`"min_share"`):** Guarantees smaller common circuits (e.g. garage ventilation, elevator cabs, stair lighting) a baseline allocation (e.g. `0.05` or 5%) so all facilities benefit from the collective installation.
+- **Maximum Share Cap (`"max_share"`):** Prevents dominant consumers (e.g. centralized aerothermal heating) from monopolizing generation (e.g. capped at `0.70` or 70%).
+- **Uniform Constraint Enforcement:** The HiGHS linear programming solver incorporates variable bounds $L_i \le \beta_i \le U_i$, checks mathematical feasibility ($\sum L_i \le 1.0$), and applies Hare-Niemeyer exact rounding strictly within bounds across monthly, fortnight, and 24-hour diurnal schedules, guaranteeing an exact $\sum \beta_i = 100.0\%$ sum.
+
+### 9. European DST Transitions & Autumn Energy Conservation
+Continental Spain observes European Daylight Saving Time transitions (a 23-hour day on the last Sunday of March and a 25-hour day on the last Sunday of October):
+- **Autumn Repeated Hour (`02:00` CEST/CET):** When DST clocks step back, both DATADIS consumption exports and inverter Excel logs contain two separate `02:00` intervals on that transition date.
+- **Zero-Loss Within-File Consolidation:** Before merging overlapping exports across files, `esd` sums the two intra-day `02:00` readings inside each individual source file (`consolidate_autumn_dst`) so 100% of 25-hour autumn energy is conserved without double-counting overlapping date ranges across multiple exports.
 
 ---
 
-## 5. 📊 Community Energy Balance & 3-Way Self-Consumption Progression
+## 5. 📊 Community Energy Balance & 4-Way Self-Consumption Progression
 
-To provide complete transparency and support informed decision-making by property owners and HOA boards, `esd` reports a consolidated six-metric energy balance and a three-tier self-consumption progression across all terminal views, interactive HTML dashboards, and multi-format exports.
+To provide complete transparency and support informed decision-making by property owners and HOA boards, `esd` reports a consolidated six-metric energy balance and a four-tier self-consumption progression across all terminal views, interactive HTML dashboards, and multi-format exports.
 
 ### The Six Core Energy Balance KPIs
 1. **Total Solar Generation ($G_{\text{total}}$):** Aggregate kilowatt-hours produced by the rooftop photovoltaic system across the entire evaluation horizon.
@@ -168,11 +172,12 @@ To provide complete transparency and support informed decision-making by propert
 5. **Solar Surplus Spilled ($Surplus$):** Excess solar electricity generated when instantaneous photovoltaic production exceeds simultaneous community demand ($\max(0, G_h - C_h)$), injected into the street grid.
 6. **Total Self-Consumed Energy ($SC$):** Net solar kilowatt-hours directly captured and consumed by community equipment on-site ($\min(C_h, G_h)$), avoiding retail utility grid purchases.
 
-### The 3-Way Self-Consumption Modality Progression
-`esd` calculates and contrasts three distinct operating regimes directly from telemetry:
-1. **Current Self-Consumption (Baseline / No Share):** Direct self-consumption achieved when solar generation is wired solely to the primary installation (e.g., central aerothermal heating) with zero collective sharing. Recorded directly from inverter telemetry.
-2. **Estimated Monthly Share (Real Decreto 244/2019):** Optimal collective self-consumption under legally fixed monthly coefficients ($\beta_{i, m}$). By dynamically shifting shares between facilities according to seasonal habits (e.g., allocating higher shares to pool filtration in summer and to central heating in winter), self-consumption increases substantially over single-meter wiring.
-3. **Estimated Hourly Share (Orden TED/1247/2021):** Dynamic diurnal self-consumption utilizing variable hourly schedules ($\beta_{i, h}$). Because facility loads vary significantly throughout the day (elevator motors during commute peaks, pool filtration around solar noon, and heat pumps in diurnal cycles), dynamic hourly allocation maximizes instantaneous coincidence, capturing maximum solar energy and reducing the community's overall electricity bill to the physical minimum.
+### The 4-Way Self-Consumption Modality Progression
+`esd` calculates and contrasts four operating regimes directly from telemetry on a normalized calendar baseline:
+1. **Current Self-Consumption (Baseline / No Share):** Direct self-consumption achieved when solar generation is wired solely to the primary installation (e.g., central aerothermal heating) with zero collective sharing. Recorded from physical telemetry ($SC_{\text{primary}, h}$) and annualized consistently via per-month $1/k_m$ scaling.
+2. **Monthly Share (Real Decreto 244/2019):** Optimal collective self-consumption under legally fixed monthly coefficients ($\beta_{i, m}$). Redistributing monthly shares across facilities (e.g., pool filtration in summer, central heating in winter) captures substantially more solar energy than single-meter wiring.
+3. **Fortnight Share (24 Half-Month Periods):** Bi-monthly optimization computing independent $\beta_{i}$ allocations for days 1–15 and days 16–end of each month, tracking seasonal transitions (e.g., pool startups or shoulder-month heating shifts) with built-in outage fallback (`MIN_FORTNIGHT_SOLAR_DAYS = 5`).
+4. **Dynamic Hourly Share (Orden TED/1247/2021):** Dynamic diurnal self-consumption utilizing variable 24-hour schedules ($\beta_{i, h}$). Because facility loads peak at different hours of the day, hourly coefficients maximize instantaneous coincidence, pushing collective self-consumption to the physical optimum.
 
 ---
 
@@ -256,7 +261,7 @@ For developers and autonomous agents navigating the codebase:
 | :--- | :--- | :--- | :--- |
 | **CLI & Commands** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `curate_command`, `weather_command`, `doctor_command` | Typer command routing, parameter validation, and user workflow dispatch. |
 | **Application Services** | [`src/services/`](../src/services) | `CalculationService`, `CurationService`, `DoctorService`, `WeatherService` | Core workflow orchestrators encapsulating business processes. |
-| **Domain Core** | [`src/domain/`](../src/domain) | `SupplyPoint`, `ShareAllocation`, `EnergyBalance`, `EsdError` | Pure domain models, value objects, and centralized domain exceptions. |
+| **Domain Core** | [`src/domain/`](../src/domain) | `SupplyPoint`, `BylawConstraints`, `EsdError` | Pure domain models, bylaw bounds, and centralized domain exceptions. |
 | **Configuration** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision`, `get_weather_dir` | Settings persistence (`.esd_config.json`) and folder resolution. |
 | **Localization** | [`src/i18n.py`](../src/i18n.py) | `t()`, `I18nNamespace`, `TRANSLATIONS` | Structured domain namespaces (app, cli, doctor, curate, weather, tables, export) with parameter parity and dual-mode resolution. |
 | **Ingestion: Consumption** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | DATADIS CSV discovery, encoding detection, and reading. |
@@ -267,5 +272,5 @@ For developers and autonomous agents navigating the codebase:
 | **Optimization: Models** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Matrix structures, diurnal profiles, and community metrics. |
 | **Optimization: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Linear programming solver, diurnal profile engine, baselines, and Hare-Niemeyer rounding. |
 | **Presentation: Views** | [`src/presentation/views/`](../src/presentation/views) | `render_coefficients_matrix_table`, `render_community_summary` | Rich terminal tables, executive KPI cards with baseline gain badges, two-tone heatmaps, unicode sparklines, 4-step progress stepper, and adaptive 80-column formatting. |
-| **Presentation: Exports** | [`src/presentation/export.py`](../src/presentation/export.py) | `ReportExporter` | Unified report exporter architecture for monthly and hourly CSV shares and standalone interactive HTML dashboards. |
-| **Security & Privacy** | [`src/security.py`](../src/security.py) | `check_privacy`, `scan_xlsx_file`, `scan_git_history` | GDPR enforcement, cups.json signature tracking, Excel workbook scanning, and synthetic CUPS verification harness. |
+| **Presentation: Exports** | [`src/presentation/export.py`](../src/presentation/export.py) | `ReportExporter` | Unified exporter producing all 6 `.output/` deliverables (monthly/fortnight/hourly CSVs, lite matrices, and interactive HTML) with formula sanitization. |
+| **Security & Privacy** | [`src/security.py`](../src/security.py) | `check_privacy`, `scan_xlsx_file`, `scan_git_history` | GDPR CUPS enforcement, private coordinate & exposed secret detection, `.xlsx` scanning, `--scan` targeted audits, and streamed git history inspection. |

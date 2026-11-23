@@ -38,7 +38,7 @@ STRUCTURED_TRANSLATIONS: dict[str, dict[str, dict[str, str]]] = {
             "available_commands": "AVAILABLE COMMANDS",
             "cleaned_files": "Removed {count} file(s) from target directories.",
             "cleanup_aborted": "Cleanup aborted by user.",
-            "cmd_calculate_desc": "Calculate optimal monthly, fortnight, and hourly distribution coefficients and export deliverables.",
+            "cmd_calculate_desc": "Calculate optimal monthly, fortnight, and hourly shares (parameterless) and export all 6 .output/ deliverables.",
             "cmd_cleanup_desc": "Remove generated data from .output, .curated, and .input/weather directories.",
             "cmd_compare_desc": "Compare consumption and variations across multiple years with apples-to-apples completeness.",
             "cmd_config_desc": "Inspect or update persistent application configuration and directory paths.",
@@ -53,6 +53,15 @@ STRUCTURED_TRANSLATIONS: dict[str, dict[str, dict[str, str]]] = {
             "cmd_weather_desc": "Download hourly weather data (temperature, cloud cover, weather code) from Open-Meteo into .input/weather.",
             "err_lat_range": "Latitude must be between -90.0 and 90.0 (got {val}).",
             "err_lon_range": "Longitude must be between -180.0 and 180.0 (got {val}).",
+            "help_workflow_body": (
+                "  1. esd doctor       Pre-flight audit of consumption, solar & weather files\n"
+                "  2. esd curate       Build curated CSV/XLSX datasets in .curated/\n"
+                "  3. esd calculate    Zero-arg calculation -> 6 CSV/HTML files in .output/\n"
+                "                      (monthly, monthly_lite, fortnight, fortnight_lite,\n"
+                "                       hourly shares CSVs + interactive HTML report)\n"
+                "  4. esd cleanup      Clean .output, .curated, and .input/weather"
+            ),
+            "help_workflow_heading": "QUICK WORKFLOW & OUTPUT DELIVERABLES",
             "init_clean_cleared": "Cleared {count} file(s) from .output",
             "init_clean_ready": "Ready & clean",
             "init_lbl_lang": "Language",
@@ -288,7 +297,7 @@ STRUCTURED_TRANSLATIONS: dict[str, dict[str, dict[str, str]]] = {
             "available_commands": "COMANDOS DISPONIBLES",
             "cleaned_files": "Se han eliminado {count} archivo(s) de los directorios de destino.",
             "cleanup_aborted": "Limpieza cancelada por el usuario.",
-            "cmd_calculate_desc": "Calcular los coeficientes óptimos de reparto mensual, quincenal y horario y exportar entregables.",
+            "cmd_calculate_desc": "Calcular cuotas óptimas mensuales, quincenales y horarias (sin argumentos) y exportar los 6 archivos en .output/.",
             "cmd_cleanup_desc": "Eliminar datos generados de los directorios .output, .curated y .input/weather.",
             "cmd_compare_desc": "Comparar consumo y variaciones entre varios años con comparativa homogénea de meses completos.",
             "cmd_config_desc": "Inspeccionar o actualizar la configuración persistente y las rutas de directorios.",
@@ -303,6 +312,15 @@ STRUCTURED_TRANSLATIONS: dict[str, dict[str, dict[str, str]]] = {
             "cmd_weather_desc": "Descargar datos meteorológicos horarios (temperatura, nubosidad, código de tiempo) de Open-Meteo en .input/weather.",
             "err_lat_range": "La latitud debe estar entre -90.0 y 90.0 (valor recibido: {val}).",
             "err_lon_range": "La longitud debe estar entre -180.0 y 180.0 (valor recibido: {val}).",
+            "help_workflow_body": (
+                "  1. esd doctor       Auditoría previa de consumo, generación FV y clima\n"
+                "  2. esd curate       Generar conjuntos CSV/XLSX curados en .curated/\n"
+                "  3. esd calculate    Cálculo sin argumentos -> 6 archivos en .output/\n"
+                "                      (monthly, monthly_lite, fortnight, fortnight_lite,\n"
+                "                       hourly shares CSV + informe interactivo HTML)\n"
+                "  4. esd cleanup      Limpiar .output, .curated y .input/weather"
+            ),
+            "help_workflow_heading": "FLUJO RÁPIDO Y ENTREGABLES",
             "init_clean_cleared": "Se eliminaron {count} archivo(s) de .output",
             "init_clean_ready": "Listo y limpio",
             "init_lbl_lang": "Idioma",

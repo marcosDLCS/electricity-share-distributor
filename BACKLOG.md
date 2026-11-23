@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| **DOC-01** | `P2` Medium | `Documentation` | Synchronize `README.md`, Bilingual Guides & CLI Help with Parameterless `calculate` & New Exports | `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `src/presentation/views/common.py` |
 | **DOC-02** | `P2` Medium | `Documentation` | Unified Platform Documentation & `datadis-analyzer` Migration / Retirement Guide | `README.md`, `AGENTS.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `src/presentation/views/common.py` |
 | **DES-01** | `P3` Low | `Design` | Align Interactive HTML Dashboard with 4-Way Modality Progression & Streamline Template Logic | `src/presentation/html_report.py` |
 | **DES-02** | `P3` Low | `Design` | Cohesive Visual Polish for Consumption Summary & Multi-Year Comparison Views (80-Col UI & Responsive SVG/HTML) | `src/presentation/views/`, `src/presentation/charts.py`, `src/presentation/console.py` |
@@ -51,13 +50,6 @@ _No pending tasks._
 _No pending tasks._
 
 ## 📚 Documentation
-
-### DOC-01 (`P2` Medium): Synchronize `README.md`, Bilingual Guides & CLI Help with Parameterless `calculate` & New Exports
-- **Goal:** Align `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, and CLI help views with the simplified parameterless `esd calculate` workflow, the 6 exported `.output/` deliverables, and the expanded `esd cleanup` command.
-- **Target Components:** `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `src/presentation/views/common.py`.
-- **Acceptance Criteria:**
-  1. Update `README.md` and `render_help()` in `src/presentation/views/common.py` to remove obsolete `esd calculate` flags (`--strategy`, `--year`, `--month`, `--view`, `--hourly`, `--format`, `--min-share`, `--max-share`), document the 6 `.output/` deliverables (including `*_esd_monthly_shares_lite.csv`, `*_esd_fortnight_shares.csv`, and `*_esd_fortnight_shares_lite.csv`), and reflect that `esd cleanup` cleans `.output`, `.curated`, and `.input/weather`.
-  2. Document the non-destructive primary CUPS reconciliation formula (`max(datadis, inverter)`), autumn DST energy conservation, and multi-year $1/k_m$ calendar scaling in both `docs/GUIDE_EN.md` and `docs/GUIDE_ES.md`.
 
 ### DOC-02 (`P2` Medium): Unified Platform Documentation & `datadis-analyzer` Migration / Retirement Guide
 - **Goal:** Consolidate product positioning across all docs once `datadis-analyzer` capabilities are integrated so `datadis-analyzer` can be cleanly archived.

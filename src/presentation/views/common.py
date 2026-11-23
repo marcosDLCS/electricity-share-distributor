@@ -107,6 +107,10 @@ def render_help(lang: str | None = None) -> None:
 
     console.print(cmd_table)
     console.print()
+    console.print(
+        f"[bold cyan]{t('help_workflow_heading', lang=lang)}[/bold cyan]\n"
+        f"{t('help_workflow_body', lang=lang)}\n"
+    )
 
 
 def render_version(lang: str | None = None) -> None:

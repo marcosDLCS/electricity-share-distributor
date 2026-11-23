@@ -25,11 +25,22 @@ def test_cli_help() -> None:
     assert result.exit_code == 0
     assert "ELECTRICITY SHARE DISTRIBUTOR" in result.output
     assert "AVAILABLE COMMANDS" in result.output
+    assert "QUICK WORKFLOW & OUTPUT DELIVERABLES" in result.output
+    assert "esd calculate" in result.output
+    assert ".output" in result.output
+    assert ".curated" in result.output
+    assert ".input/weather" in result.output
+    for obsolete_flag in ("--strategy", "--min-share", "--hourly"):
+        assert obsolete_flag not in result.output
 
     result_es = runner.invoke(app, ["help", "--lang", "es"])
     assert result_es.exit_code == 0
     assert "DISTRIBUIDOR DE ENERGÍA COMPARTIDA" in result_es.output
     assert "COMANDOS DISPONIBLES" in result_es.output
+    assert "FLUJO RÁPIDO Y ENTREGABLES" in result_es.output
+    assert "esd calculate" in result_es.output
+    assert ".output" in result_es.output
+    assert ".input/weather" in result_es.output
 
 
 def test_cli_init_english() -> None:
