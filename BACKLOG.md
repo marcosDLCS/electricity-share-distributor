@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| **ARCH-02** | `P2` Medium | `Architecture` | Performance Vectorization: Curation Pipeline, 2D Rounding, Solver Baselines & Excel Export | `src/curation/`, `src/optimization/`, `src/presentation/export.py` |
 | **SIMP-02** | `P2` Medium | `Simplicity` | Prune Orphaned Localization Keys & Simplify Translation Catalog Builder | `src/i18n.py`, `tests/` |
 | **COH-01** | `P2` Medium | `Cohesion` | Unify `cups.json` Configuration, Primary Supply Point, Coordinate Resolution & Recursive Output Cleanup | `src/curation/curator.py`, `src/services/weather_service.py`, `src/cli.py`, `src/optimization/engine.py`, `src/presentation/html_report.py` |
 | **SEC-01** | `P2` Medium | `Security` | Harden Formula Injection Sanitization & Streamline Git History Privacy Audit | `src/presentation/export.py`, `src/security.py` |
@@ -45,14 +44,7 @@ _No pending tasks._
 
 ## 🏗️ Architecture
 
-### ARCH-02 (`P2` Medium): Performance Vectorization: Curation Pipeline, 2D Rounding, Solver Baselines & Excel Export
-- **Goal:** Eliminate tens of thousands of Python loop iterations and redundant LP/heuristic solves across time-series curation, hourly share optimization, solar efficiency calculation, and styled Excel generation.
-- **Target Components:** `src/curation/curator.py`, `src/curation/models.py`, `src/optimization/engine.py`, `src/optimization/efficiency.py`, `src/presentation/export.py`, `tests/`.
-- **Acceptance Criteria:**
-  1. **Vectorized Curation & DataFrame Construction:** Replace the nested Python loop (`for ts in aligned.data.index` with `aligned.data.loc[ts, ...]`) in `DataCurator.curate()` and per-record `extract_temporal_features()` calls in `CuratedDataset.to_dataframe()` with vectorized Pandas/NumPy operations.
-  2. **Vectorized 2D Hare-Niemeyer Rounding & Solar Efficiency:** Vectorize `DistributionOptimizer._round_betas()` and `calculate_solar_efficiency()` to operate on 2D/1D NumPy arrays across all $T$ timestamps simultaneously in `compute_hourly_optimization()` and `evaluate_hourly_self_consumption()`.
-  3. **On-Demand Baseline Evaluation:** Default `include_baselines=False` in `CalculationService.execute()` so `esd calculate` does not run 24 extra monthly solves, 48 extra fortnight solves, and 2 extra full-year hourly evaluations for unused `consumption_share` and `equal` baselines unless explicitly requested.
-  4. **Fast Openpyxl Styling:** Optimize `ReportExporter._export_styled_dataframe_excel()` to write DataFrame rows directly without `df_out.to_dict(orient="records")` and skip redundant per-cell `ws.cell()` styling on default white-background rows.
+_No pending tasks._
 
 ## 🔗 Cohesion
 

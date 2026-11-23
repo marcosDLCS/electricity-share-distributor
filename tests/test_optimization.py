@@ -1330,3 +1330,57 @@ def test_require_full_month_filters_all_modalities_and_incomplete_fortnight() ->
     assert f_07_1.has_data is True
     assert f_07_2.has_data is False
     assert f_05_1.has_data is False
+
+
+def test_round_betas_2d_matches_1d_exact_parity() -> None:
+    """Verify 2D vectorized Hare-Niemeyer rounding matches 1D row-by-row across precisions and constraints."""
+    from src.domain.models import BylawConstraints
+
+    cups_list = [
+        "ES0021000000000001AA",
+        "ES0021000000000002BB",
+        "ES0021000000000003CC",
+        "ES0021000000000004DD",
+    ]
+    raw_matrix = np.array(
+        [
+            [0.25, 0.25, 0.25, 0.25],  # exact tie
+            [0.333333, 0.333333, 0.333334, 0.0],  # near tie + zero clamping to 1% floor
+            [0.0, 0.0, 0.0, 0.0],  # all-zero row fallback
+            [0.985, 0.005, 0.005, 0.005],  # multi-column negative deficit adjustment
+            [0.7142, 0.1429, 0.0715, 0.0714],  # mixed remainders
+        ],
+        dtype=float,
+    )
+
+    constraints_none = None
+    constraints_active = BylawConstraints(
+        min_share=0.05,
+        max_share=0.70,
+        cups_min_shares={cups_list[0]: 0.15},
+        cups_max_shares={cups_list[3]: 0.35},
+    )
+
+    for constraints in (constraints_none, constraints_active):
+        for precision in (0, 1, 2):
+            rounded_2d = DistributionOptimizer._round_betas(
+                raw_matrix,
+                precision=precision,
+                cups_list=cups_list,
+                constraints=constraints,
+            )
+            assert rounded_2d.shape == raw_matrix.shape
+
+            expected_rows = np.vstack(
+                [
+                    DistributionOptimizer._round_betas(
+                        row,
+                        precision=precision,
+                        cups_list=cups_list,
+                        constraints=constraints,
+                    )
+                    for row in raw_matrix
+                ]
+            )
+            assert np.array_equal(rounded_2d, expected_rows)
+            assert np.allclose(np.sum(rounded_2d, axis=1), 1.0, atol=1e-9)

@@ -140,3 +140,36 @@ def test_hourly_optimization_solar_efficiency_only_on_generation(tmp_path: Path)
     # Night hour 23:00 has generation = 0, so solar_efficiency must be integer 0
     row_23 = ts_df[ts_df["timestamp"] == timestamps[2]].iloc[0]
     assert row_23["solar_efficiency"] == 0
+
+
+def test_calculate_solar_efficiency_vectorized_matches_scalar() -> None:
+    """Verify vectorized array calculate_solar_efficiency matches scalar results element-for-element."""
+    import numpy as np
+
+    months = np.array([1, 3, 6, 8, 10, 12, 6, 12])
+    hours = np.array([2, 8, 13, 14, 17, 23, 12, 19])
+    temps = np.array([5.0, 14.2, float("nan"), 36.5, 22.0, -5.0, 45.0, float("nan")])
+    clouds = np.array([100.0, 45.0, 0.0, float("nan"), 75.0, 20.0, 0.0, 100.0])
+
+    vec_out = calculate_solar_efficiency(months, hours, temperature=temps, cloud_cover=clouds)
+    assert isinstance(vec_out, np.ndarray)
+    assert np.issubdtype(vec_out.dtype, np.integer)
+
+    scalar_out = [
+        calculate_solar_efficiency(
+            month=int(m),
+            hour=int(h),
+            temperature=None if np.isnan(t) else float(t),
+            cloud_cover=None if np.isnan(c) else float(c),
+        )
+        for m, h, t, c in zip(months, hours, temps, clouds, strict=True)
+    ]
+    assert vec_out.tolist() == scalar_out
+
+    # Also test None temperature/cloud_cover with array month/hour
+    vec_none = calculate_solar_efficiency(months, hours, temperature=None, cloud_cover=None)
+    scalar_none = [
+        calculate_solar_efficiency(month=int(m), hour=int(h))
+        for m, h in zip(months, hours, strict=True)
+    ]
+    assert vec_none.tolist() == scalar_none

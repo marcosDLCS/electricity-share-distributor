@@ -601,52 +601,81 @@ class CuratedDataset:
         3. Community & solar balance: community_demand, generation, self_consumption, exported_energy, imported_energy
         4. Weather context: temperature, cloud_cover
         """
-        rows: list[dict[str, Any]] = []
-        for r in self.records:
-            year, month, day, hour, day_of_week, is_weekend = extract_temporal_features(r.timestamp)
-            comm_demand = r.total_consumption
-
-            for c in r.cups:
-                rows.append(
-                    {
-                        "timestamp": r.timestamp,
-                        "year": year,
-                        "month": month,
-                        "day": day,
-                        "hour": hour,
-                        "day_of_week": day_of_week,
-                        "is_weekend": is_weekend,
-                        "cups_id": c.id,
-                        "use": c.use,
-                        "consumption": c.consumption,
-                        "community_demand": comm_demand,
-                        "generation": r.generation,
-                        "self_consumption": c.self_consumption,
-                        "exported_energy": c.exported_energy,
-                        "imported_energy": c.imported_energy,
-                        "temperature": r.temperature,
-                        "cloud_cover": r.cloud_cover,
-                    }
-                )
-
         columns = list(ESD_COLUMNS)
-        if not rows:
+        if not self.records:
             return pd.DataFrame(columns=columns)
 
-        df = pd.DataFrame(rows)
-        for int_col in ("year", "month", "day", "hour", "cloud_cover"):
-            if int_col in df.columns:
-                df[int_col] = pd.to_numeric(df[int_col], errors="coerce").astype("Int64")
-        if "temperature" in df.columns:
-            df["temperature"] = pd.to_numeric(df["temperature"], errors="coerce").round(1)
-        if "is_weekend" in df.columns:
-            df["is_weekend"] = df["is_weekend"].astype(bool)
+        ts_col: list[str] = []
+        cups_col: list[str] = []
+        use_col: list[str] = []
+        cons_col: list[float | int] = []
+        comm_col: list[float | int] = []
+        gen_col: list[float | int] = []
+        sc_col: list[float | int] = []
+        exp_col: list[float | int] = []
+        imp_col: list[float | int] = []
+        temp_col: list[float | None] = []
+        cloud_col: list[int | float | None] = []
 
-        sort_cols = [col for col in ["timestamp", "use", "cups_id"] if col in df.columns]
+        for r in self.records:
+            ts = r.timestamp
+            comm = r.total_consumption
+            gen = r.generation
+            temp = r.temperature
+            cloud = r.cloud_cover
+            for c in r.cups:
+                ts_col.append(ts)
+                cups_col.append(c.id)
+                use_col.append(c.use)
+                cons_col.append(c.consumption)
+                comm_col.append(comm)
+                gen_col.append(gen)
+                sc_col.append(c.self_consumption)
+                exp_col.append(c.exported_energy)
+                imp_col.append(c.imported_energy)
+                temp_col.append(temp)
+                cloud_col.append(cloud)
+
+        if not ts_col:
+            return pd.DataFrame(columns=columns)
+
+        df = pd.DataFrame(
+            {
+                "timestamp": ts_col,
+                "cups_id": cups_col,
+                "use": use_col,
+                "consumption": cons_col,
+                "community_demand": comm_col,
+                "generation": gen_col,
+                "self_consumption": sc_col,
+                "exported_energy": exp_col,
+                "imported_energy": imp_col,
+                "temperature": temp_col,
+                "cloud_cover": cloud_col,
+            }
+        )
+
+        dt_series = pd.to_datetime(df["timestamp"], format="%Y-%m-%d %H:%M:%S", errors="coerce")
+        if dt_series.isna().any():
+            dt_series = dt_series.fillna(pd.to_datetime(df["timestamp"], errors="coerce"))
+
+        dow_idx = dt_series.dt.day_of_week
+        df["year"] = dt_series.dt.year.astype("Int64")
+        df["month"] = dt_series.dt.month.astype("Int64")
+        df["day"] = dt_series.dt.day.astype("Int64")
+        df["hour"] = dt_series.dt.hour.astype("Int64")
+        df["day_of_week"] = dow_idx.map(dict(enumerate(_DAYS_OF_WEEK))).fillna("")
+        df["is_weekend"] = (dow_idx >= 5).fillna(False).astype(bool)
+
+        df["cloud_cover"] = pd.to_numeric(df["cloud_cover"], errors="coerce").astype("Int64")
+        df["temperature"] = pd.to_numeric(df["temperature"], errors="coerce").round(1)
+
+        df = df[columns]
+        sort_cols = ["timestamp", "use", "cups_id"]
         df = df.sort_values(
             by=sort_cols,
             key=lambda col: col.astype(str).str.lower() if col.name in ("use", "cups_id") else col,
-            ascending=[True] * len(sort_cols),
+            ascending=[True, True, True],
         ).reset_index(drop=True)
         return df
 

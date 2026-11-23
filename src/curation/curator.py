@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from src.config import (
@@ -757,90 +758,161 @@ class DataCurator:
                     cloud_val = round(float(cloud)) if pd.notna(cloud) else None
                     weather_map[str(ts_fmt)] = (temp_val, cloud_val)
 
-        records: list[CuratedHourRecord] = []
-        total_gen_kwh = 0.0
-        total_cons_kwh = 0.0
-        recovered_kwh = 0.0
-        reconciled_hours_set: set[str] = set()
-        cups_reconciled_counts: dict[str, int] = dict.fromkeys(aligned.cups_list, 0)
-        cups_total_cons: dict[str, float] = dict.fromkeys(aligned.cups_list, 0.0)
+        # Pre-sort CUPS metadata once so every hour emits CUPS in deterministic alphabetical (use, id) order
+        cups_entries = [
+            (cid, cups_configs.get(cid, SupplyPoint(cups=cid, use="", primary=False)))
+            for cid in aligned.cups_list
+        ]
+        cups_entries.sort(
+            key=lambda item: (str(item[1].use or "").strip().lower(), str(item[0]).lower())
+        )
+        sorted_cups = [cid for cid, _ in cups_entries]
+        sorted_cfgs = [cfg for _, cfg in cups_entries]
 
-        for ts in aligned.data.index:
-            ts_str = str(ts)
+        timestamps = aligned.data.index.astype(str).tolist()
+        t_steps = len(timestamps)
+        n_cups = len(sorted_cups)
 
-            gen_val = float(aligned.data.loc[ts, "generation_kwh"])
-            total_gen_kwh += gen_val
-
-            g_rec = gen_record_map.get(ts_str)
-            hw_cons_val: float | None = (
-                float(g_rec.consumption)
-                if g_rec is not None and g_rec.consumption is not None
-                else None
+        if t_steps == 0:
+            summary = CuratedSummary(
+                total_hours=0,
+                reconciled_hours_count=0,
+                recovered_kwh=0.0,
+                total_generation_kwh=0.0,
+                total_consumption_kwh=0.0,
+                start_time="",
+                end_time="",
+                cups_count=len(aligned.cups_list),
+                primary_cups=primary_cups,
+                cups_reconciled_hours=dict.fromkeys(aligned.cups_list, 0),
+                cups_total_consumption=dict.fromkeys(aligned.cups_list, 0.0),
             )
-            hw_sc_val: float = max(0.0, float(g_rec.self_consumption)) if g_rec is not None else 0.0
-            hw_exp_val: float = max(0.0, float(g_rec.exported_energy)) if g_rec is not None else 0.0
-            hw_imp_val: float = max(0.0, float(g_rec.imported_energy)) if g_rec is not None else 0.0
+            return CuratedDataset(
+                records=[],
+                summary=summary,
+                cups_configs=cups_configs,
+            )
 
-            cups_readings: list[CuratedCupsReading] = []
-            hour_cons_sum = 0.0
+        gen_arr = aligned.data["generation_kwh"].to_numpy(dtype=float)
+        hw_cons_list = [
+            float(g_rec.consumption)
+            if (g_rec := gen_record_map.get(ts_str)) is not None and g_rec.consumption is not None
+            else float("nan")
+            for ts_str in timestamps
+        ]
+        hw_sc_list = [
+            max(0.0, float(g_rec.self_consumption))
+            if (g_rec := gen_record_map.get(ts_str)) is not None
+            else 0.0
+            for ts_str in timestamps
+        ]
+        hw_exp_list = [
+            max(0.0, float(g_rec.exported_energy))
+            if (g_rec := gen_record_map.get(ts_str)) is not None
+            else 0.0
+            for ts_str in timestamps
+        ]
+        hw_imp_list = [
+            max(0.0, float(g_rec.imported_energy))
+            if (g_rec := gen_record_map.get(ts_str)) is not None
+            else 0.0
+            for ts_str in timestamps
+        ]
 
-            for cups_id in aligned.cups_list:
-                cfg = cups_configs.get(cups_id, SupplyPoint(cups=cups_id, use="", primary=False))
-                datadis_cons = float(aligned.data.loc[ts, cups_id])
+        hw_cons_arr = np.array(hw_cons_list, dtype=float)
+        hw_sc_arr = np.array(hw_sc_list, dtype=float)
+        hw_exp_arr = np.array(hw_exp_list, dtype=float)
+        hw_imp_arr = np.array(hw_imp_list, dtype=float)
 
-                is_reconciled = False
-                final_cons = datadis_cons
+        total_gen_kwh = float(np.sum(gen_arr))
 
-                # For primary CUPS: use the canonical inverter consumption reading directly when present,
-                # unless the inverter reading is a zero-dropout while the fiscal meter recorded grid demand.
-                if (
-                    cfg.primary
-                    and hw_cons_val is not None
-                    and (hw_cons_val > 0.0 or datadis_cons <= 0.0)
-                ):
-                    final_cons = hw_cons_val
-                    if (hw_cons_val - datadis_cons) > 0.001:
-                        is_reconciled = True
-                        diff = hw_cons_val - datadis_cons
-                        recovered_kwh += diff
-                        reconciled_hours_set.add(ts_str)
-                        cups_reconciled_counts[cups_id] += 1
+        if n_cups > 0:
+            datadis_mat = aligned.data[sorted_cups].to_numpy(dtype=float)
+            is_primary_mask = np.array([cfg.primary for cfg in sorted_cfgs], dtype=bool)
+            has_hw = (~np.isnan(hw_cons_arr))[:, np.newaxis]
+            hw_cons_2d = np.where(has_hw, hw_cons_arr[:, np.newaxis], 0.0)
+            use_hw = (
+                is_primary_mask[np.newaxis, :]
+                & has_hw
+                & ((hw_cons_2d > 0.0) | (datadis_mat <= 0.0))
+            )
 
-                # Self-consumed electricity: primary CUPS receives physical reading bounded by min(generation, final_cons)
-                c_self_cons = max(0.0, min(hw_sc_val, gen_val, final_cons)) if cfg.primary else 0.0
-                c_exp = hw_exp_val if cfg.primary else 0.0
-                c_imp = hw_imp_val if cfg.primary else 0.0
+            final_cons_mat = np.where(use_hw, hw_cons_2d, datadis_mat)
+            diff_mat = final_cons_mat - datadis_mat
+            reconciled_mat = use_hw & (diff_mat > 0.001)
 
-                cups_total_cons[cups_id] += final_cons
-                hour_cons_sum += final_cons
+            recovered_kwh = float(np.sum(np.where(reconciled_mat, diff_mat, 0.0)))
+            reconciled_hours_count = int(np.sum(np.any(reconciled_mat, axis=1)))
+            cups_reconciled_counts = {
+                cid: int(cnt)
+                for cid, cnt in zip(sorted_cups, np.sum(reconciled_mat, axis=0), strict=True)
+            }
+            cups_total_cons = {
+                cid: float(tot)
+                for cid, tot in zip(sorted_cups, np.sum(final_cons_mat, axis=0), strict=True)
+            }
+            hour_cons_sums = np.sum(final_cons_mat, axis=1)
 
-                cups_readings.append(
-                    CuratedCupsReading(
-                        id=cups_id,
-                        use=cfg.use,
-                        consumption=format_energy_value(final_cons),
-                        primary=cfg.primary,
-                        reconciled=is_reconciled,
-                        self_consumption=format_energy_value(c_self_cons),
-                        exported_energy=format_energy_value(c_exp),
-                        imported_energy=format_energy_value(c_imp),
-                    )
+            self_cons_mat = np.where(
+                is_primary_mask[np.newaxis, :],
+                np.maximum(
+                    0.0,
+                    np.minimum(
+                        np.minimum(hw_sc_arr[:, np.newaxis], gen_arr[:, np.newaxis]),
+                        final_cons_mat,
+                    ),
+                ),
+                0.0,
+            )
+            exp_mat = np.where(is_primary_mask[np.newaxis, :], hw_exp_arr[:, np.newaxis], 0.0)
+            imp_mat = np.where(is_primary_mask[np.newaxis, :], hw_imp_arr[:, np.newaxis], 0.0)
+
+            cons_rows = final_cons_mat.tolist()
+            rec_rows = reconciled_mat.tolist()
+            sc_rows = self_cons_mat.tolist()
+            exp_rows = exp_mat.tolist()
+            imp_rows = imp_mat.tolist()
+        else:
+            recovered_kwh = 0.0
+            reconciled_hours_count = 0
+            cups_reconciled_counts = {}
+            cups_total_cons = {}
+            hour_cons_sums = np.zeros(t_steps, dtype=float)
+            cons_rows = [[] for _ in range(t_steps)]
+            rec_rows = [[] for _ in range(t_steps)]
+            sc_rows = [[] for _ in range(t_steps)]
+            exp_rows = [[] for _ in range(t_steps)]
+            imp_rows = [[] for _ in range(t_steps)]
+
+        total_cons_kwh = float(np.sum(hour_cons_sums))
+        gen_rows = gen_arr.tolist()
+        hour_sum_rows = hour_cons_sums.tolist()
+
+        records: list[CuratedHourRecord] = []
+        for idx, ts_str in enumerate(timestamps):
+            cups_readings = [
+                CuratedCupsReading(
+                    id=sorted_cups[c_idx],
+                    use=sorted_cfgs[c_idx].use,
+                    consumption=format_energy_value(cons_rows[idx][c_idx]),
+                    primary=sorted_cfgs[c_idx].primary,
+                    reconciled=bool(rec_rows[idx][c_idx]),
+                    self_consumption=format_energy_value(sc_rows[idx][c_idx]),
+                    exported_energy=format_energy_value(exp_rows[idx][c_idx]),
+                    imported_energy=format_energy_value(imp_rows[idx][c_idx]),
                 )
+                for c_idx in range(n_cups)
+            ]
 
-            cups_readings.sort(key=lambda c: (str(c.use or "").strip().lower(), str(c.id).lower()))
-
-            total_cons_kwh += hour_cons_sum
-
-            # Weather readings for this interval if present
             w_reading = weather_map.get(ts_str)
             temp_val, cloud_val = w_reading if w_reading is not None else (None, None)
 
             records.append(
                 CuratedHourRecord(
                     timestamp=ts_str,
-                    generation=format_energy_value(gen_val),
+                    generation=format_energy_value(gen_rows[idx]),
                     cups=cups_readings,
-                    total_consumption=format_energy_value(hour_cons_sum),
+                    total_consumption=format_energy_value(hour_sum_rows[idx]),
                     temperature=temp_val,
                     cloud_cover=cloud_val,
                 )
@@ -848,7 +920,7 @@ class DataCurator:
 
         summary = CuratedSummary(
             total_hours=len(records),
-            reconciled_hours_count=len(reconciled_hours_set),
+            reconciled_hours_count=reconciled_hours_count,
             recovered_kwh=round(recovered_kwh, 2),
             total_generation_kwh=round(total_gen_kwh, 2),
             total_consumption_kwh=round(total_cons_kwh, 2),

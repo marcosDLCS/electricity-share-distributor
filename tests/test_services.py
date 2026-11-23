@@ -78,9 +78,44 @@ def test_calculation_service_execution(tmp_path: Path) -> None:
     )
     res = CalculationService.execute(req)
     assert res.opt_result is not None
+    assert res.opt_result.baselines == {}
     assert res.metadata.cups_count > 0
     assert len(res.exported_paths) > 0
     assert all(p.exists() for p in res.exported_paths)
+
+
+def test_calculation_service_include_baselines_on_demand(tmp_path: Path) -> None:
+    """Verify CalculationService evaluates baseline strategies only when include_baselines=True."""
+    curated_dir = tmp_path / "curated"
+    output_dir = tmp_path / "output"
+    curated_dir.mkdir()
+    output_dir.mkdir()
+
+    c1 = "ES0021000000000001AA"
+    c2 = "ES0021000000000002BB"
+    esd_csv = curated_dir / "esd.csv"
+    esd_csv.write_text(
+        "\n".join(
+            [
+                "timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption;community_demand;generation;self_consumption;exported_energy;imported_energy;temperature;cloud_cover",
+                f"2026-05-01 12:00:00;2026;5;1;12;Friday;False;{c1};Aerotermia;6,0;8,0;10,0;6,0;4,0;0,0;22,0;10",
+                f"2026-05-01 12:00:00;2026;5;1;12;Friday;False;{c2};Garaje;2,0;8,0;10,0;0,0;0,0;0,0;22,0;10",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    req = CalculationRequest(
+        consumption_dir=tmp_path / "missing_cons",
+        generation_dir=tmp_path / "missing_gen",
+        curated_dir=esd_csv,
+        output_dir=output_dir,
+        strategy=OptimizationStrategy.OPTIMAL,
+        precision=0,
+        include_baselines=True,
+    )
+    res = CalculationService.execute(req)
+    assert set(res.opt_result.baselines.keys()) == {"consumption_share", "equal"}
 
 
 def test_calculation_service_progress_callback(tmp_path: Path) -> None:

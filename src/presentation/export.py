@@ -204,7 +204,9 @@ class ReportExporter:
 
         df_out = df.copy()
         if "use" in df_out.columns:
-            df_out["use"] = df_out["use"].apply(sanitize_formula_injection)
+            df_out["use"] = df_out["use"].map(sanitize_formula_injection)
+        if "is_weekend" in df_out.columns:
+            df_out["is_weekend"] = df_out["is_weekend"].astype(bool).map({True: "✅", False: "❌"})
 
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -270,15 +272,10 @@ class ReportExporter:
             col_letter = get_column_letter(col_idx)
             ws.column_dimensions[col_letter].width = col_widths.get(h, 15)
 
-        fill_white = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
         fill_tint = PatternFill(start_color="F4F6F9", end_color="F4F6F9", fill_type="solid")
         thin_side = Side(style="thin", color="E2E8F0")
         cell_border = Border(top=thin_side, bottom=thin_side, left=thin_side, right=thin_side)
         align_center = Alignment(horizontal="center", vertical="center")
-
-        current_hour_key: Any = None
-        hour_toggle = 0
-        rows_data = df_out.to_dict(orient="records")
 
         center_col_indices = {
             col_idx
@@ -296,38 +293,26 @@ class ReportExporter:
             )
         }
 
-        for r_idx, row in enumerate(rows_data, 2):
-            h_key = row.get("timestamp")
+        ts_idx = headers.index("timestamp") if "timestamp" in headers else None
+        df_clean = df_out.astype(object).where(pd.notna(df_out), None)
+
+        current_hour_key: Any = None
+        hour_toggle = 0
+        for r_idx, row_vals in enumerate(df_clean.itertuples(index=False, name=None), 2):
+            h_key = row_vals[ts_idx] if ts_idx is not None else None
             if h_key != current_hour_key:
                 if current_hour_key is not None:
                     hour_toggle = 1 - hour_toggle
                 current_hour_key = h_key
 
-            row_fill = fill_tint if hour_toggle == 1 else fill_white
-
-            row_vals: list[Any] = []
-            for h in headers:
-                val = row.get(h)
-                if h == "is_weekend":
-                    val = "✅" if bool(val) else "❌"
-                elif pd.isna(val):
-                    val = None
-                elif h == "use":
-                    val = sanitize_formula_injection(val)
-                row_vals.append(val)
-
             ws.append(row_vals)
 
             if hour_toggle == 1:
-                for c_idx in range(1, len(headers) + 1):
-                    cell = ws.cell(row=r_idx, column=c_idx)
-                    cell.fill = row_fill
+                for c_idx, cell in enumerate(ws[r_idx], 1):
+                    cell.fill = fill_tint
                     cell.border = cell_border
                     if c_idx in center_col_indices:
                         cell.alignment = align_center
-            else:
-                for c_idx in center_col_indices:
-                    ws.cell(row=r_idx, column=c_idx).alignment = align_center
 
         ws.freeze_panes = "A2"
         ws.auto_filter.ref = ws.dimensions

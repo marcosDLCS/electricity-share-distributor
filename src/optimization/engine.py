@@ -228,31 +228,29 @@ class DistributionOptimizer:
         cups_list: list[str] | None = None,
         constraints: BylawConstraints | None = None,
     ) -> np.ndarray:
-        """Round coefficients to specified percentage precision using Hare-Niemeyer largest remainder method.
+        """Round 1D (N,) or 2D (T, N) coefficients via vectorized Hare-Niemeyer largest remainder.
 
-        Guarantees that:
+        Guarantees per row that:
           1. sum(round(betas * 100, precision)) == 100.0 exactly
           2. sum(betas) == 1.0000 exactly
           3. All betas >= 0.0 and respect bylaw constraints (min_share, max_share).
         """
-        n = len(betas)
-        if n == 0:
-            return betas
+        arr = np.asarray(betas, dtype=float)
+        was_1d = arr.ndim == 1
+        mat = np.atleast_2d(arr)
+        t_rows, n = mat.shape
+        if t_rows == 0 or n == 0:
+            return arr
 
         # Scale factor for target precision:
-        # precision=0 -> scale=100 (integer percentages, sum=100)
-        # precision=1 -> scale=1000 (tenth of percent, sum=1000)
-        # precision=2 -> scale=10000 (hundredth of percent, sum=10000)
+        # precision=0 -> scale=100, precision=1 -> scale=1000, precision=2 -> scale=10000
         scale = 100 * (10**precision)
 
-        # Normalize raw betas to sum to 1.0 before rounding
-        beta_sum = float(np.sum(betas))
-        if beta_sum > 0:
-            norm_betas = betas / beta_sum
-        else:
-            norm_betas = np.full(n, 1.0 / n)
+        # Normalize raw betas per row to sum to 1.0 before rounding
+        row_sums = np.sum(mat, axis=1, keepdims=True)
+        norm_mat = np.where(row_sums > 0, mat / np.where(row_sums > 0, row_sums, 1.0), 1.0 / n)
 
-        exact_alloc = norm_betas * scale
+        exact_alloc = norm_mat * scale
         floors = np.floor(exact_alloc).astype(int)
         remainders = exact_alloc - floors
 
@@ -266,42 +264,80 @@ class DistributionOptimizer:
                 lower_units[i] = max(min_floor_units, int(np.floor(round(l_b * scale, 6))))
                 upper_units[i] = int(np.ceil(round(u_b * scale, 6)))
 
-        # Clamp initial floors
-        floors = np.maximum(floors, lower_units)
-        floors = np.minimum(floors, upper_units)
+        # Clamp initial floors to regulatory / bylaw bounds
+        floors = np.clip(floors, lower_units, upper_units)
+        deficits = scale - np.sum(floors, axis=1)
 
-        deficit = scale - int(np.sum(floors))
+        # Allocate positive deficits to largest remainders not at upper_units
+        while True:
+            pos_rows = np.where(deficits > 0)[0]
+            if len(pos_rows) == 0:
+                break
+            sub_floors = floors[pos_rows]
+            eligible = sub_floors < upper_units
+            elig_counts = np.sum(eligible, axis=1)
+            no_elig = elig_counts == 0
+            if np.any(no_elig):
+                eligible = np.where(no_elig[:, np.newaxis], True, eligible)
+                elig_counts = np.where(no_elig, n, elig_counts)
 
-        if deficit > 0:
-            # Distribute remaining units to items with largest remainders that haven't hit upper_units
-            order = np.lexsort((-exact_alloc, -remainders))
-            for i in range(deficit):
-                allocated = False
-                for step in range(n):
-                    idx = order[(i + step) % n]
-                    if floors[idx] < upper_units[idx]:
-                        floors[idx] += 1
-                        allocated = True
-                        break
-                if not allocated:
-                    floors[order[i % n]] += 1
-        elif deficit < 0:
-            # Deduct units from items with smallest remainders that haven't hit lower_units
-            order = np.lexsort((exact_alloc, remainders))
-            for i in range(abs(deficit)):
-                allocated = False
-                for step in range(n):
-                    idx = order[(i + step) % n]
-                    if floors[idx] > lower_units[idx]:
-                        floors[idx] -= 1
-                        allocated = True
-                        break
-                if not allocated:
-                    if floors[order[i % n]] > lower_units[order[i % n]]:
-                        floors[order[i % n]] -= 1
+            sub_exact = exact_alloc[pos_rows]
+            sub_rem = remainders[pos_rows]
+
+            c1 = np.argsort(-sub_exact, axis=1, kind="mergesort")
+            c2 = np.take_along_axis(
+                c1,
+                np.argsort(-np.take_along_axis(sub_rem, c1, axis=1), axis=1, kind="mergesort"),
+                axis=1,
+            )
+            order = np.take_along_axis(
+                c2,
+                np.argsort(~np.take_along_axis(eligible, c2, axis=1), axis=1, kind="mergesort"),
+                axis=1,
+            )
+            k_p = np.minimum(deficits[pos_rows], elig_counts)
+            p_idx, pos_idx = np.where(np.arange(n)[np.newaxis, :] < k_p[:, np.newaxis])
+            np.add.at(floors, (pos_rows[p_idx], order[p_idx, pos_idx]), 1)
+            deficits[pos_rows] -= k_p
+
+        # Deduct negative deficits from smallest remainders above lower_units
+        while True:
+            neg_rows = np.where(deficits < 0)[0]
+            if len(neg_rows) == 0:
+                break
+            sub_floors = floors[neg_rows]
+            eligible = sub_floors > lower_units
+            elig_counts = np.sum(eligible, axis=1)
+            has_elig = elig_counts > 0
+            if not np.any(has_elig):
+                break
+            if not np.all(has_elig):
+                neg_rows = neg_rows[has_elig]
+                sub_floors = sub_floors[has_elig]
+                eligible = eligible[has_elig]
+                elig_counts = elig_counts[has_elig]
+
+            sub_exact = exact_alloc[neg_rows]
+            sub_rem = remainders[neg_rows]
+
+            c1 = np.argsort(sub_exact, axis=1, kind="mergesort")
+            c2 = np.take_along_axis(
+                c1,
+                np.argsort(np.take_along_axis(sub_rem, c1, axis=1), axis=1, kind="mergesort"),
+                axis=1,
+            )
+            order = np.take_along_axis(
+                c2,
+                np.argsort(~np.take_along_axis(eligible, c2, axis=1), axis=1, kind="mergesort"),
+                axis=1,
+            )
+            k_n = np.minimum(-deficits[neg_rows], elig_counts)
+            p_idx, pos_idx = np.where(np.arange(n)[np.newaxis, :] < k_n[:, np.newaxis])
+            np.add.at(floors, (neg_rows[p_idx], order[p_idx, pos_idx]), -1)
+            deficits[neg_rows] += k_n
 
         rounded_betas = floors / scale
-        return rounded_betas
+        return rounded_betas[0] if was_1d else rounded_betas
 
     @classmethod
     def calculate_betas(
@@ -956,54 +992,58 @@ class DistributionOptimizer:
             raw_betas = np.maximum(raw_betas, 0.01)
             raw_betas = raw_betas / np.sum(raw_betas, axis=1, keepdims=True)
 
-        # Apply exact Hare-Niemeyer rounding row-by-row respecting constraints
+        # Apply exact 2D Hare-Niemeyer rounding respecting constraints
         # In zero-generation hours (e.g. night hours), assign 1% to all and remainder to primary CUPS (bounded by constraints)
-        rounded_betas = np.zeros_like(raw_betas)
-        for t in range(t_steps):
-            if pri_idx is not None and g_arr[t] <= 1e-6:
+        sun_mask = g_arr > 1e-6
+        if pri_idx is not None:
+            rounded_betas = np.empty_like(raw_betas)
+            if np.any(sun_mask):
+                rounded_betas[sun_mask] = cls._round_betas(
+                    raw_betas[sun_mask],
+                    precision=precision,
+                    cups_list=cups_list,
+                    constraints=constraints,
+                )
+            zero_mask = ~sun_mask
+            if np.any(zero_mask):
                 raw_zero = np.full(n_cups, 0.01)
                 raw_zero[pri_idx] = 1.0
-                rounded_betas[t] = cls._round_betas(
+                rounded_betas[zero_mask] = cls._round_betas(
                     raw_zero,
                     precision=precision,
                     cups_list=cups_list,
                     constraints=constraints,
                 )
-            else:
-                rounded_betas[t] = cls._round_betas(
-                    raw_betas[t],
-                    precision=precision,
-                    cups_list=cups_list,
-                    constraints=constraints,
-                )
+        else:
+            rounded_betas = cls._round_betas(
+                raw_betas,
+                precision=precision,
+                cups_list=cups_list,
+                constraints=constraints,
+            )
 
-        # Precompute solar efficiency index once per timestamp
+        # Precompute solar efficiency index in a single vectorized call across sunlit timestamps
         efficiencies = np.zeros(t_steps, dtype=int)
         temp_arr = (
-            aligned_df["temperature"].to_numpy() if "temperature" in aligned_df.columns else None
+            pd.to_numeric(aligned_df["temperature"], errors="coerce").to_numpy(dtype=float)
+            if "temperature" in aligned_df.columns
+            else None
         )
         cloud_arr = (
-            aligned_df["cloud_cover"].to_numpy() if "cloud_cover" in aligned_df.columns else None
+            pd.to_numeric(aligned_df["cloud_cover"], errors="coerce").to_numpy(dtype=float)
+            if "cloud_cover" in aligned_df.columns
+            else None
         )
         months = dt_index.month.to_numpy()
         hours = dt_index.hour.to_numpy()
 
-        for t in range(t_steps):
-            if g_arr[t] > 1e-6:
-                t_temp = (
-                    float(temp_arr[t]) if temp_arr is not None and pd.notna(temp_arr[t]) else None
-                )
-                t_cloud = (
-                    float(cloud_arr[t])
-                    if cloud_arr is not None and pd.notna(cloud_arr[t])
-                    else None
-                )
-                efficiencies[t] = calculate_solar_efficiency(
-                    month=int(months[t]),
-                    hour=int(hours[t]),
-                    temperature=t_temp,
-                    cloud_cover=t_cloud,
-                )
+        if np.any(sun_mask):
+            efficiencies[sun_mask] = calculate_solar_efficiency(
+                month=months[sun_mask],
+                hour=hours[sun_mask],
+                temperature=temp_arr[sun_mask] if temp_arr is not None else None,
+                cloud_cover=cloud_arr[sun_mask] if cloud_arr is not None else None,
+            )
 
         uses_list = [cups_uses.get(c, "") for c in cups_list]
 
@@ -1100,14 +1140,12 @@ class DistributionOptimizer:
             raw_betas = np.maximum(raw_betas, 0.01)
             raw_betas = raw_betas / np.sum(raw_betas, axis=1, keepdims=True)
 
-        rounded_betas = np.zeros_like(raw_betas)
-        for idx in range(len(sun_indices)):
-            rounded_betas[idx] = cls._round_betas(
-                raw_betas[idx],
-                precision=precision,
-                cups_list=cups_list,
-                constraints=constraints,
-            )
+        rounded_betas = cls._round_betas(
+            raw_betas,
+            precision=precision,
+            cups_list=cups_list,
+            constraints=constraints,
+        )
 
         alloc_sun = rounded_betas * g_sun[:, np.newaxis]
         sc_sun = np.minimum(c_sun, alloc_sun)

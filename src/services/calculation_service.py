@@ -29,6 +29,7 @@ class CalculationRequest:
     strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL
     precision: int = 0
     compute_hourly: bool = True
+    include_baselines: bool = False
     lang: str = "en"
 
 
@@ -107,7 +108,7 @@ class CalculationService:
         opt_result = DistributionOptimizer.optimize_dataset(
             aligned,
             strategy=request.strategy,
-            include_baselines=True,
+            include_baselines=request.include_baselines,
             precision=request.precision,
             compute_hourly=request.compute_hourly,
             constraints=constraints,
