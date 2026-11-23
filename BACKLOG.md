@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| **FEAT-01** | `P1` High | `Features` | Migrate `datadis-analyzer` Community Consumption Summary & Fair-Share Analytics (`esd summary`) | `src/analytics/`, `src/services/`, `src/cli.py`, `src/presentation/`, `src/i18n.py` |
 | **FEAT-02** | `P1` High | `Features` | Migrate `datadis-analyzer` Multi-Year Apples-to-Apples Comparison & Visual Charts (`esd compare`) | `src/analytics/`, `src/services/`, `src/cli.py`, `src/presentation/`, `src/i18n.py` |
 | **ARCH-01** | `P1` High | `Architecture` | Domain & Ingestion Accuracy: Multi-Year Scaling, Primary Reconciliation, DST & Consumption-Only Doctor Audit | `src/optimization/engine.py`, `src/curation/curator.py`, `src/ingestion/` |
 | **SIMP-01** | `P1` High | `Simplicity` | Prune Dead Calculation Options, Unreferenced Views, Legacy Fallbacks & Unused Domain Models | `src/domain/`, `src/curation/`, `src/services/`, `src/presentation/views/` |
@@ -44,15 +43,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 ---
 
 ## 🚀 Features
-
-### FEAT-01 (`P1` High): Migrate `datadis-analyzer` Community Consumption Summary & Fair-Share Analytics (`esd summary`)
-- **Goal:** Port `datadis-analyzer`'s `da summary` consumption-only analytics workflow into `esd` so residential communities can audit and distribute pure electricity consumption across CUPS without requiring solar PV generation files.
-- **Target Components:** `src/analytics/`, `src/services/summary_service.py`, `src/cli.py`, `src/presentation/views/`, `src/presentation/export.py`, `src/i18n.py`, `tests/`.
-- **Acceptance Criteria:**
-  1. **Typed Models & Vectorized Aggregator:** Implement typed consumption analytics dataclasses (`CupsConsumptionShare`, `MonthlyConsumptionSummary`, `AnnualConsumptionSummary`, `CommunityConsumptionSummary`) and vectorized `ConsumptionAggregator.aggregate_community()` + `build_monthly_pivot()` (no `.iterrows()`), guaranteeing the 100.00% relative share invariant ($\text{Share}_i = \frac{\text{kWh}_i}{\sum_j \text{kWh}_j} \times 100$, defaulting to `0.0%` when total consumption is zero) and peak/lowest month detection.
-  2. **Consumption-Only Service & CLI Command:** Add `SummaryService` and the `esd summary` CLI command operating on DATADIS consumption CSVs alone (no PV generation Excel required), supporting `--consumption-dir`/`-c`, `--output-dir`/`-o`, `--year`/`-y`, `--view`/`-v` (`all`, `annual`, `monthly`), `--cups` (single-CUPS monthly trajectory), `--cups-file`/`-C`, and `--lang`/`-l`; enriching CUPS with `use` labels from `cups.json` when present while working cleanly without `cups.json`.
-  3. **80-Column Rich Terminal Views:** Render per-file validation warnings (when skipped files exist), Executive Community Overview card, ranked Annual & Monthly CUPS share tables reusing `make_percentage_bar()` from `src/presentation/console.py` with `no_wrap=True` on numeric/CUPS columns, consumer badges (`★` dominant `>30%` rank #1, `(0)` inactive `<1 kWh`), single-CUPS trajectory table, and Key Insights panel (dominant consumer `>50%`, inactive meters, seasonality).
-  4. **Markdown Export, Localization & Tests:** Add `ReportExporter.export_consumption_summary_markdown()` writing timestamped reports (`YYYYMMDD_HHMMSS_community_summary.md`, `*_summary_<year>.md`, or `*_summary_<cups>.md`) with ASCII share bars and CalVer version into `.output/`, complete EN/ES localization keys in `src/i18n.py`, and automated unit/CLI tests in `tests/` using synthetic CUPS (`ES00210000000000XXYY`).
 
 ### FEAT-02 (`P1` High): Migrate `datadis-analyzer` Multi-Year Apples-to-Apples Comparison & Visual Charts (`esd compare`)
 - **Goal:** Port `datadis-analyzer`'s `da compare` multi-year comparison engine, calendar completeness heuristic, and visual charts into `esd` using lightweight zero-dependency SVG output.

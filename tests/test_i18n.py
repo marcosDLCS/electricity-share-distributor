@@ -50,6 +50,7 @@ def test_i18n_namespace_enum() -> None:
     assert I18nNamespace.WEATHER == "weather"
     assert I18nNamespace.TABLES == "tables"
     assert I18nNamespace.EXPORT == "export"
+    assert I18nNamespace.ANALYTICS == "analytics"
 
     for ns in I18nNamespace:
         assert ns in STRUCTURED_TRANSLATIONS["en"]

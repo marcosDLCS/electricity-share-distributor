@@ -31,17 +31,24 @@ from src.i18n import t
 from src.optimization import OptimizationStrategy
 from src.presentation.console import console
 from src.presentation.views import (
+    render_annual_consumption_tables,
     render_cleanup_result,
     render_coefficients_matrix_table,
     render_community_summary,
     render_config_view,
+    render_consumption_insights,
+    render_consumption_overview,
+    render_cups_consumption_trajectory,
     render_curate_summary,
+    render_detailed_monthly_consumption,
     render_doctor_report,
     render_export_success,
     render_help,
     render_init_success,
+    render_monthly_consumption_overview,
     render_monthly_trajectory_table,
     render_not_initialized_warning,
+    render_validation_warnings,
     render_version,
     render_weather_result,
 )
@@ -52,6 +59,8 @@ from src.services import (
     CurationService,
     DoctorRequest,
     DoctorService,
+    SummaryRequest,
+    SummaryService,
     WeatherRequest,
     WeatherService,
 )
@@ -542,6 +551,130 @@ def calculate_command() -> None:
         # File Exports Feedback
         if calc_result.exported_paths:
             render_export_success(calc_result.exported_paths, lang=active_lang)
+
+    except typer.Exit, typer.Abort:
+        raise
+    except EsdError as err:
+        _handle_cli_error(err)
+    except Exception as exc:
+        _handle_cli_error(exc, unexpected=True)
+
+
+@app.command(name="summary")
+def summary_command(
+    consumption_dir: Path | None = typer.Option(
+        None,
+        "--consumption-dir",
+        "-c",
+        help="Path to folder containing DATADIS hourly consumption CSV files. Defaults to configured path.",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        help="Destination folder for generated Markdown reports. Defaults to configured path.",
+    ),
+    year: int | None = typer.Option(
+        None,
+        "--year",
+        "-y",
+        help="Optional calendar year filter (e.g. 2025).",
+    ),
+    view: str = typer.Option(
+        "all",
+        "--view",
+        "-v",
+        help="Output view mode: 'all', 'annual', or 'monthly'.",
+    ),
+    cups: str | None = typer.Option(
+        None,
+        "--cups",
+        help="Filter display to a single CUPS trajectory.",
+    ),
+    cups_file: Path | None = typer.Option(
+        None,
+        "--cups-file",
+        "-C",
+        help="Optional path to cups.json configuration file for CUPS use labels.",
+    ),
+    lang: str | None = typer.Option(
+        None,
+        "--lang",
+        "-l",
+        help="Language override for messages ('en' or 'es').",
+    ),
+) -> None:
+    """Aggregate community consumption by year and month, show fair shares, and export Markdown."""
+    try:
+        try:
+            active_lang = normalize_language_code(lang) if lang else get_language()
+        except ValueError as err:
+            _handle_cli_error(err)
+
+        cfg = load_config()
+        if not is_initialized():
+            render_not_initialized_warning(lang=active_lang)
+
+        target_consumption_dir = consumption_dir or Path(cfg.consumption_dir)
+        target_output_dir = output_dir or Path(cfg.output_dir)
+        cups_path = (
+            resolve_cups_config_path(custom_path=cups_file, config=cfg)
+            if (cups_file is not None or consumption_dir is None)
+            else None
+        )
+
+        req = SummaryRequest(
+            consumption_dir=target_consumption_dir,
+            output_dir=target_output_dir,
+            cups_config_path=cups_path,
+            year=year,
+            cups=cups,
+            view=view,
+            lang=active_lang,
+            export_markdown=True,
+        )
+
+        with console.status(f"[bold cyan]{t('status_summarizing', lang=active_lang)}[/bold cyan]"):
+            result = SummaryService.execute(req)
+
+        render_validation_warnings(result.validation_results, lang=active_lang)
+        render_consumption_overview(
+            result.summary,
+            file_count=result.valid_file_count,
+            lang=active_lang,
+        )
+
+        if cups and cups.strip():
+            render_cups_consumption_trajectory(
+                result.summary,
+                target_cups=cups.strip().upper(),
+                filter_year=year,
+                lang=active_lang,
+            )
+            render_consumption_insights(result.summary, lang=active_lang)
+        else:
+            view_clean = view.lower().strip()
+            if view_clean in ("all", "annual"):
+                render_annual_consumption_tables(
+                    result.summary,
+                    filter_year=year,
+                    lang=active_lang,
+                )
+            if view_clean in ("all", "monthly"):
+                render_monthly_consumption_overview(
+                    result.summary,
+                    filter_year=year,
+                    lang=active_lang,
+                )
+                render_detailed_monthly_consumption(
+                    result.summary,
+                    filter_year=year,
+                    lang=active_lang,
+                )
+            render_consumption_insights(result.summary, lang=active_lang)
+
+        if result.report_path is not None:
+            render_export_success([result.report_path], lang=active_lang)
 
     except typer.Exit, typer.Abort:
         raise

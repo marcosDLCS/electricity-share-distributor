@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 import pandas as pd
 
+from src.i18n import t
 from src.ingestion.schema import AlignedDataset, IngestionSummary
 from src.optimization.models import OptimizationResult
+from src.presentation.console import format_kwh, format_pct
+from src.version import get_version
 
 if TYPE_CHECKING:
+    from src.analytics.models import CommunityConsumptionSummary, CupsConsumptionShare
     from src.curation.models import ConsumptionDataset, CuratedDataset, GenerationDataset
 
 FORMULA_INJECTION_PREFIXES: Final[tuple[str, ...]] = ("=", "+", "-", "@", "\t", "\r")
@@ -38,6 +43,73 @@ def sanitize_formula_injection(value: Any) -> Any:
 def get_export_timestamp() -> str:
     """Generate standardized export timestamp string: YYYYMMDD_HHMMSS."""
     return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def _make_ascii_bar(pct: float, width: int = 12) -> str:
+    """Create a plain-text block bar suitable for Markdown table cells."""
+    pct_clamped = max(0.0, min(100.0, pct))
+    filled_len = round((pct_clamped / 100.0) * width)
+    empty_len = width - filled_len
+    return "`" + "█" * filled_len + "░" * empty_len + "`"
+
+
+def _strip_rich_markup(text: str) -> str:
+    """Remove Rich console markup tags (e.g. [bold], [/]) from localized strings."""
+    return re.sub(r"\[/?[^\]]+\]", "", text)
+
+
+def _append_markdown_shares_table(
+    lines: list[str],
+    shares: list[CupsConsumptionShare],
+    total_kwh: float,
+    include_use: bool,
+    lang: str | None,
+) -> None:
+    """Append a Markdown ranked CUPS share table for an annual or monthly period."""
+    if include_use:
+        lines.append(
+            f"| {t('summary_col_rank', lang=lang)} | {t('summary_col_cups', lang=lang)} | "
+            f"{t('summary_col_use', lang=lang)} | {t('summary_col_consumption', lang=lang)} | "
+            f"{t('summary_col_share', lang=lang)} | {t('summary_col_distribution', lang=lang)} |"
+        )
+        lines.append("| :---: | :--- | :--- | :---: | :---: | :--- |")
+    else:
+        lines.append(
+            f"| {t('summary_col_rank', lang=lang)} | {t('summary_col_cups', lang=lang)} | "
+            f"{t('summary_col_consumption', lang=lang)} | {t('summary_col_share', lang=lang)} | "
+            f"{t('summary_col_distribution', lang=lang)} |"
+        )
+        lines.append("| :---: | :--- | :---: | :---: | :--- |")
+
+    for idx, item in enumerate(shares, start=1):
+        badge = ""
+        if idx == 1 and item.share_pct > 30.0:
+            badge = " ★"
+        elif item.consumption_kwh < 1.0:
+            badge = " (0)"
+
+        if include_use:
+            use_val = item.use or "—"
+            lines.append(
+                f"| {idx} | `{item.cups}`{badge} | {use_val} | {format_kwh(item.consumption_kwh)} | "
+                f"{format_pct(item.share_pct)} | {_make_ascii_bar(item.share_pct)} |"
+            )
+        else:
+            lines.append(
+                f"| {idx} | `{item.cups}`{badge} | {format_kwh(item.consumption_kwh)} | "
+                f"{format_pct(item.share_pct)} | {_make_ascii_bar(item.share_pct)} |"
+            )
+
+    total_pct = "100.00%" if total_kwh > 0.0 else "0.00%"
+    if include_use:
+        lines.append(
+            f"| | **{t('summary_col_total', lang=lang)}** | | **{format_kwh(total_kwh)}** | **{total_pct}** | |"
+        )
+    else:
+        lines.append(
+            f"| | **{t('summary_col_total', lang=lang)}** | **{format_kwh(total_kwh)}** | **{total_pct}** | |"
+        )
+    lines.append("")
 
 
 class ReportExporter:
@@ -716,3 +788,181 @@ class ReportExporter:
         )
         file_path.write_text(html_content, encoding="utf-8")
         return file_path
+
+    def export_consumption_summary_markdown(
+        self,
+        summary: CommunityConsumptionSummary,
+        lang: str | None = None,
+        year_filter: int | None = None,
+        cups_filter: str | None = None,
+        view_mode: str = "all",
+        timestamp: str | None = None,
+    ) -> Path:
+        """Export a timestamped Markdown report for community consumption and fair-share analytics."""
+        ts = timestamp or self.timestamp
+        if year_filter is not None:
+            filename = f"{ts}_summary_{year_filter}.md"
+        elif cups_filter:
+            filename = f"{ts}_summary_{cups_filter}.md"
+        else:
+            filename = f"{ts}_community_summary.md"
+
+        report_path = self.output_dir / filename
+        generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        app_version = get_version()
+        include_use = any(s.use for s in summary.overall_cups_shares) or any(
+            bool(v) for v in summary.cups_uses.values()
+        )
+
+        lines: list[str] = [
+            t("summary_md_doc_title", lang=lang),
+            "",
+            f"> {t('summary_md_generated_at', lang=lang, datetime=generated_at)} | "
+            f"**{t('summary_md_version_label', lang=lang)}:** `{app_version}`",
+            "",
+            t("summary_md_section_overview", lang=lang),
+            "",
+            f"| {t('summary_md_metric_col', lang=lang)} | {t('summary_md_value_col', lang=lang)} |",
+            "| :--- | :--- |",
+            f"| {t('summary_md_version_label', lang=lang)} | `{app_version}` |",
+            f"| {t('summary_total_consumption', lang=lang).rstrip(':')} | **{format_kwh(summary.total_community_kwh)}** |",
+            f"| {t('summary_active_cups', lang=lang).rstrip(':')} | {summary.unique_cups_count} |",
+            f"| {t('summary_date_range', lang=lang).rstrip(':')} | {summary.date_min} to {summary.date_max} |",
+            f"| {t('summary_peak_month', lang=lang).rstrip(':')} | {summary.peak_month_label} ({format_kwh(summary.peak_month_kwh)}) |",
+            f"| {t('summary_total_readings', lang=lang).rstrip(':')} | {summary.total_readings:,} |",
+            "",
+        ]
+
+        if view_mode in ("all", "annual") and not cups_filter:
+            lines.append(t("summary_md_section_annual", lang=lang))
+            lines.append("")
+            years_to_display = (
+                [year_filter]
+                if year_filter is not None and year_filter in summary.annual_summaries
+                else sorted(summary.annual_summaries.keys())
+            )
+            for year in years_to_display:
+                annual = summary.annual_summaries[year]
+                lines.append(f"### {t('summary_annual_title', lang=lang, year=year)}")
+                lines.append(
+                    f"*{t('summary_community_total_label', lang=lang, total=format_kwh(annual.community_total_kwh))}*"
+                )
+                lines.append("")
+                _append_markdown_shares_table(
+                    lines=lines,
+                    shares=annual.cups_shares,
+                    total_kwh=annual.community_total_kwh,
+                    include_use=include_use,
+                    lang=lang,
+                )
+
+        filtered_months = summary.monthly_summaries
+        if year_filter is not None:
+            filtered_months = [m for m in filtered_months if m.year == year_filter]
+
+        if view_mode in ("all", "monthly") and not cups_filter and filtered_months:
+            lines.append(t("summary_md_section_timeline", lang=lang))
+            lines.append("")
+            lines.append(
+                f"| {t('summary_col_period', lang=lang)} | {t('summary_col_community_total', lang=lang)} | "
+                f"{t('summary_col_top_cups', lang=lang)} | {t('summary_col_top_share', lang=lang)} | "
+                f"{t('summary_col_distribution', lang=lang)} |"
+            )
+            lines.append("| :---: | :---: | :--- | :---: | :--- |")
+            for month_data in filtered_months:
+                top = month_data.top_consumer
+                lines.append(
+                    f"| {month_data.period_label} | {format_kwh(month_data.community_total_kwh)} | "
+                    f"`{top.cups}` | {format_pct(top.share_pct)} | {_make_ascii_bar(top.share_pct)} |"
+                )
+            lines.append("")
+
+            lines.append(t("summary_md_section_monthly", lang=lang))
+            lines.append("")
+            for month_data in filtered_months:
+                lines.append(
+                    f"### {t('summary_period_title', lang=lang, period=month_data.period_label)}"
+                )
+                lines.append(
+                    f"*{t('summary_community_total_label', lang=lang, total=format_kwh(month_data.community_total_kwh))}*"
+                )
+                lines.append("")
+                _append_markdown_shares_table(
+                    lines=lines,
+                    shares=month_data.cups_shares,
+                    total_kwh=month_data.community_total_kwh,
+                    include_use=include_use,
+                    lang=lang,
+                )
+
+        if cups_filter:
+            use_label = summary.cups_uses.get(cups_filter, "")
+            title_cups = f"{cups_filter} ({use_label})" if use_label else cups_filter
+            lines.append(f"## {t('summary_cups_trajectory_title', lang=lang, cups=title_cups)}")
+            lines.append("")
+            lines.append(
+                f"| {t('summary_col_period', lang=lang)} | {t('summary_col_cups_kwh', lang=lang)} | "
+                f"{t('summary_col_community_kwh', lang=lang)} | {t('summary_col_share', lang=lang)} | "
+                f"{t('summary_col_distribution', lang=lang)} |"
+            )
+            lines.append("| :---: | :---: | :---: | :---: | :--- |")
+            total_c = 0.0
+            total_comm = 0.0
+            for month_data in filtered_months:
+                match = next((s for s in month_data.cups_shares if s.cups == cups_filter), None)
+                if match:
+                    total_c += match.consumption_kwh
+                    total_comm += month_data.community_total_kwh
+                    lines.append(
+                        f"| {month_data.period_label} | {format_kwh(match.consumption_kwh)} | "
+                        f"{format_kwh(month_data.community_total_kwh)} | {format_pct(match.share_pct)} | "
+                        f"{_make_ascii_bar(match.share_pct)} |"
+                    )
+            ov_share = (total_c / total_comm * 100.0) if total_comm > 0.0 else 0.0
+            lines.append(
+                f"| **{t('summary_col_total', lang=lang)}** | **{format_kwh(total_c)}** | "
+                f"**{format_kwh(total_comm)}** | **{format_pct(ov_share)}** | |"
+            )
+            lines.append("")
+
+        lines.append(t("summary_md_section_insights", lang=lang))
+        lines.append("")
+        top_overall = summary.overall_cups_shares[0] if summary.overall_cups_shares else None
+        zero_consumers = [s.cups for s in summary.overall_cups_shares if s.consumption_kwh < 1.0]
+
+        if top_overall and top_overall.share_pct > 50.0:
+            clean_dom = _strip_rich_markup(
+                t(
+                    "summary_dominant_insight",
+                    lang=lang,
+                    cups=top_overall.cups,
+                    pct=f"{top_overall.share_pct:.2f}",
+                    kwh=format_kwh(top_overall.consumption_kwh),
+                )
+            ).lstrip("• ")
+            lines.append(f"- {clean_dom}")
+        if zero_consumers:
+            clean_zero = _strip_rich_markup(
+                t(
+                    "summary_zero_insight",
+                    lang=lang,
+                    count=len(zero_consumers),
+                    cups=", ".join(zero_consumers),
+                )
+            ).lstrip("• ")
+            lines.append(f"- {clean_zero}")
+        clean_season = _strip_rich_markup(
+            t(
+                "summary_seasonality_insight",
+                lang=lang,
+                peak_month=summary.peak_month_label,
+                peak_kwh=format_kwh(summary.peak_month_kwh),
+                lowest_month=summary.lowest_month_label,
+                lowest_kwh=format_kwh(summary.lowest_month_kwh),
+            )
+        ).lstrip("• ")
+        lines.append(f"- {clean_season}")
+        lines.append("")
+
+        report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return report_path
