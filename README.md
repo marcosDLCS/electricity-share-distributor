@@ -3,7 +3,7 @@
 > Unified Python CLI for residential community energy analytics (*comunidades de propietarios*) and optimal photovoltaic self-consumption distribution coefficients ($\beta_i$) in Spain under **Real Decreto 244/2019** & **Orden TED/1247/2021**.
 
 [![Python](https://img.shields.io/badge/Python-3.14+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.11.018-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.11.019-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-SciPy%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -183,6 +183,7 @@ Performs apples-to-apples multi-year community energy comparison across selected
 ```bash
 esd compare                        # Compare all available years with SVG charts
 esd compare -y 2024 -y 2025        # Compare specific years (--years 2024,2025 also valid)
+esd compare --html                 # Also export interactive HTML comparison dashboard
 esd compare --no-charts            # Skip SVG chart generation
 ```
 
@@ -190,9 +191,10 @@ esd compare --no-charts            # Skip SVG chart generation
 | :--- | :--- | :--- | :--- |
 | `--consumption-dir` | `-c` | Folder containing DATADIS CSVs (flat or `<year>/` trees) | From config |
 | `--years` | `-y` | Years to compare (`-y 2024 -y 2025` or `--years 2024,2025`) | `None` (all) |
-| `--output-dir` | `-o` | Destination folder for Markdown report and `.output/charts/*.svg` | From config |
+| `--output-dir` | `-o` | Destination folder for Markdown report, optional HTML dashboard, and `.output/charts/*.svg` | From config |
 | `--cups-file` | `-C` | Optional path to `cups.json` for functional `use` labels | `.input/cups/cups.json` |
 | `--charts/--no-charts` | — | Generate native monthly SVG comparison bar charts | `True` |
+| `--html` | — | Export standalone interactive comparison HTML dashboard (`*_esd_comparison_report.html`) | `False` |
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |
 
 ### `esd calculate`
@@ -346,7 +348,7 @@ esd version
 | :--- | :--- | :--- |
 | **Initialize Workspace** | `da init` | `esd init` |
 | **Consumption Summary** | `da summary [--year --view --cups]` | `esd summary [--year --view --cups -C cups.json]` |
-| **Multi-Year Comparison** | `da compare [-y 2024 -y 2025 --no-charts]` | `esd compare [-y 2024 -y 2025 --no-charts]` |
+| **Multi-Year Comparison** | `da compare [-y 2024 -y 2025 --no-charts]` | `esd compare [-y 2024 -y 2025 --no-charts --html]` |
 | **Charts Output** | Matplotlib PNG charts in `.output/charts/` | Zero-dependency native SVGs in `.output/charts/*.svg` |
 | **Input CSV Layout** | `.input/<year>/*.csv` | `.input/consumption/<year>/*.csv` (or flat `.input/consumption/*.csv`) |
 | **Clean Generated Files** | `da cleanup` / `da clean` | `esd cleanup` / `esd clean` (cleans `.output`, `.curated`, `.input/weather`) |

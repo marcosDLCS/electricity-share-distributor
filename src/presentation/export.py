@@ -1225,3 +1225,18 @@ class ReportExporter:
 
         report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return report_path
+
+    def export_comparison_html(
+        self,
+        comparison: ComparisonSummary,
+        lang: str | None = None,
+        timestamp: str | None = None,
+    ) -> Path:
+        """Export standalone interactive HTML report for multi-year consumption comparison."""
+        from src.presentation.html_report import generate_comparison_html_report
+
+        ts = timestamp or self.timestamp
+        file_path = self.output_dir / f"{ts}_esd_comparison_report.html"
+        html_content = generate_comparison_html_report(comparison, lang=lang)
+        file_path.write_text(html_content, encoding="utf-8")
+        return file_path

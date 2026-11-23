@@ -190,8 +190,8 @@ Communities without a solar PV installation (or preparing an initial consumption
 # Inspect annual & monthly consumption shares and export Markdown summary
 esd summary [--year 2025] [--view all|annual|monthly] [--cups ES0021000000000001AA]
 
-# Compare multiple years fairly (excludes incomplete months) + native SVG charts
-esd compare [-y 2024 -y 2025] [--no-charts]
+# Compare multiple years fairly (excludes incomplete months) + native SVG charts (+ optional --html dashboard)
+esd compare [-y 2024 -y 2025] [--no-charts] [--html]
 ```
 
 Key analytical guarantees preserved from `datadis-analyzer`:
@@ -273,7 +273,7 @@ Running `esd calculate`, `esd summary`, or `esd compare` generates ready-to-use 
 | `*_esd_fortnight_shares_lite.csv` | CSV (`;` delimited) | `calculate`: Compact fortnight share matrix containing only share percentages ($\beta_i$ %), with CUPS (`cups`, `use`) on the Y axis and calendar fortnights (`01-1`..`12-2`) on the X axis. |
 | `*_esd_hourly_shares.csv` | CSV (`;` delimited) | `calculate`: Full hourly time-series recording consumption, generation, shares (with 1% floor), and the Solar Efficiency Index (integer 1-100 for generation hours, 0 without generation), ordered by timestamp and use. |
 | `*_esd_consumption_summary.md` | Markdown | `summary`: Executive consumption report with annual/monthly 100.00% fair-share rankings, `★` / `(0)` consumer badges, ASCII distribution bars, and seasonality insights. |
-| `*_esd_consumption_comparison.md` & `charts/*.svg` | Markdown + Native SVG | `compare`: Multi-year apples-to-apples comparison report excluding `[Inc]` incomplete months, paired with responsive zero-dependency grouped bar charts in `.output/charts/`. |
+| `*_esd_consumption_comparison.md` & `charts/*.svg` | Markdown + Native SVG | `compare`: Multi-year apples-to-apples comparison report excluding `[Inc]` incomplete months, paired with responsive zero-dependency grouped bar charts in `.output/charts/` (plus optional `--html` export `*_esd_comparison_report.html`). |
 
 ---
 
@@ -285,7 +285,7 @@ Running `esd calculate`, `esd summary`, or `esd compare` generates ready-to-use 
 | :--- | :--- | :--- |
 | `da init` / `da config` | `esd init` / `esd config` | Settings live in `.esd_config.json` (`esd init --lang es`) |
 | `da summary` (`--year`, `--view`, `--cups`) | `esd summary` (`-y`, `-v`, `--cups`, `-C`) | Adds optional `use` label enrichment from `cups.json` |
-| `da compare` (`-y 2024 -y 2025`, `--no-charts`) | `esd compare` (`-y`, `--charts/--no-charts`) | Replaces PNGs with zero-dependency `.output/charts/*.svg` |
+| `da compare` (`-y 2024 -y 2025`, `--no-charts`) | `esd compare` (`-y`, `--charts/--no-charts`, `--html`) | Replaces PNGs with zero-dependency `.output/charts/*.svg` and optional interactive HTML dashboard |
 | `.input/<year>/*.csv` | `.input/consumption/<year>/*.csv` | Supports both nested `<year>/` trees and flat CSVs |
 | `da cleanup` / `da clean` | `esd cleanup` / `esd clean` | Recursively cleans `.output`, `.curated`, and `.input/weather` |
 

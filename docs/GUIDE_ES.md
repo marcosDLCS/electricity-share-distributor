@@ -190,8 +190,8 @@ Las comunidades sin planta solar (o en fase previa de estudio) solo necesitan ex
 # Consultar cuotas anuales/mensuales de consumo y exportar informe Markdown
 esd summary [--year 2025] [--view all|annual|monthly] [--cups ES0021000000000001AA]
 
-# Comparar varios años excluyendo meses incompletos + gráficos SVG nativos
-esd compare [-y 2024 -y 2025] [--no-charts]
+# Comparar varios años excluyendo meses incompletos + gráficos SVG nativos (+ panel --html opcional)
+esd compare [-y 2024 -y 2025] [--no-charts] [--html]
 ```
 
 Garantías analíticas heredadas de `datadis-analyzer`:
@@ -273,7 +273,7 @@ Al ejecutar `esd calculate`, `esd summary` o `esd compare`, se generan automáti
 | `*_esd_fortnight_shares_lite.csv` | CSV (delimitado por `;`) | `calculate`: Matriz quincenal compacta únicamente con el porcentaje de reparto ($\beta_i$ %), con los CUPS (`cups`, `use`) en el eje Y y las quincenas (`01-1`..`12-2`) en el eje X. |
 | `*_esd_hourly_shares.csv` | CSV (delimitado por `;`) | `calculate`: Serie temporal horaria con consumo, producción, cuotas (con suelo mínimo del 1%) y el Índice de Eficiencia Solar (entero 1-100 en horas de generación, 0 sin generación), ordenada por fecha y uso. |
 | `*_esd_consumption_summary.md` | Markdown | `summary`: Informe ejecutivo de consumo con clasificación anual/mensual exacta al 100.00%, insignias `★` / `(0)`, barras ASCII y estacionalidad. |
-| `*_esd_consumption_comparison.md` y `charts/*.svg` | Markdown + SVG Nativo | `compare`: Informe comparativo interanual excluyendo meses incompletos `[Inc]`, acompañado de gráficos vectoriales en `.output/charts/`. |
+| `*_esd_consumption_comparison.md` y `charts/*.svg` | Markdown + SVG Nativo | `compare`: Informe comparativo interanual excluyendo meses incompletos `[Inc]`, acompañado de gráficos vectoriales en `.output/charts/` (y panel HTML interactivo opcional `--html` en `*_esd_comparison_report.html`). |
 
 ---
 
@@ -285,7 +285,7 @@ Al ejecutar `esd calculate`, `esd summary` o `esd compare`, se generan automáti
 | :--- | :--- | :--- |
 | `da init` / `da config` | `esd init` / `esd config` | Ajustes persistidos en `.esd_config.json` (`esd init --lang es`) |
 | `da summary` (`--year`, `--view`, `--cups`) | `esd summary` (`-y`, `-v`, `--cups`, `-C`) | Añade enriquecimiento opcional de columna `use` vía `cups.json` |
-| `da compare` (`-y 2024 -y 2025`, `--no-charts`) | `esd compare` (`-y`, `--charts/--no-charts`) | Sustituye PNGs por gráficos `.output/charts/*.svg` sin dependencias |
+| `da compare` (`-y 2024 -y 2025`, `--no-charts`) | `esd compare` (`-y`, `--charts/--no-charts`, `--html`) | Sustituye PNGs por gráficos `.output/charts/*.svg` sin dependencias y cuadro de mando HTML opcional |
 | `.input/<año>/*.csv` | `.input/consumption/<año>/*.csv` | Soporta carpetas anualizadas `<año>/` y estructura plana |
 | `da cleanup` / `da clean` | `esd cleanup` / `esd clean` | Limpia recursivamente `.output`, `.curated` y `.input/weather` |
 

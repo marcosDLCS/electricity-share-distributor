@@ -372,3 +372,268 @@ def test_cli_compare_command_workflows(tmp_path: Path, monkeypatch: pytest.Monke
     )
     assert res_single.exit_code == 1
     assert "At least two years" in res_single.output
+
+
+def test_polished_svg_gradients_and_excluded_month_highlighting() -> None:
+    """Verify SVG gradient defs, unique ID prefixes, and amber [Inc] slot bands."""
+    from src.analytics.models import ComparisonSummary, CupsComparison, MonthComparison
+    from src.presentation.charts import render_community_bar_svg, render_cups_bar_svgs
+
+    comparison = ComparisonSummary(
+        years=[2024, 2025],
+        monthly_comparisons=[
+            MonthComparison(
+                month=1,
+                yearly_kwh={2024: 100.0, 2025: 80.0},
+                diff_kwh=-20.0,
+                pct_change=-20.0,
+                is_complete=True,
+                year_status={2024: "complete", 2025: "complete"},
+            ),
+            MonthComparison(
+                month=11,
+                yearly_kwh={2024: 90.0, 2025: 15.0},
+                diff_kwh=None,
+                pct_change=None,
+                is_complete=False,
+                year_status={2024: "complete", 2025: "incomplete"},
+            ),
+        ],
+        annual_totals={2024: 190.0, 2025: 95.0},
+        comparable_annual_totals={2024: 100.0, 2025: 80.0},
+        comparable_months=[1],
+        excluded_months=[11],
+        total_diff_kwh=-20.0,
+        total_pct_change=-20.0,
+        max_increase_month=None,
+        max_decrease_month=MonthComparison(
+            month=1, yearly_kwh={2024: 100.0, 2025: 80.0}, diff_kwh=-20.0, pct_change=-20.0
+        ),
+        top_saving_cups=CupsComparison(
+            cups="ES0021000000000001AA",
+            yearly_kwh={2024: 100.0, 2025: 80.0},
+            diff_kwh=-20.0,
+            pct_change=-20.0,
+            use="Aerotermia & Bomba",
+        ),
+        top_increasing_cups=None,
+        cups_comparisons=[
+            CupsComparison(
+                cups="ES0021000000000001AA",
+                yearly_kwh={2024: 100.0, 2025: 80.0},
+                diff_kwh=-20.0,
+                pct_change=-20.0,
+                use="Aerotermia & Bomba",
+            )
+        ],
+        cups_monthly_data={
+            "ES0021000000000001AA": {2024: {1: 100.0, 11: 90.0}, 2025: {1: 80.0, 11: 15.0}}
+        },
+        cups_uses={"ES0021000000000001AA": "Aerotermia & Bomba"},
+    )
+
+    comm_svg = render_community_bar_svg(comparison, lang="en", id_prefix="comm")
+    assert comm_svg.startswith("<svg ")
+    assert comm_svg.strip().endswith("</svg>")
+    assert "<defs>" in comm_svg
+    assert 'id="comm-grad-0"' in comm_svg
+    assert "#10B981" in comm_svg
+    assert "#FEF3C7" in comm_svg
+    assert "Nov*" in comm_svg
+
+    cups_svgs = render_cups_bar_svgs(comparison, lang="en")
+    assert len(cups_svgs) == 1
+    cups_id, cups_svg = cups_svgs[0]
+    assert cups_id == "ES0021000000000001AA"
+    assert "Aerotermia &amp; Bomba" in cups_svg
+    assert 'id="cups-1-ES0021000000000001AA-grad-0"' in cups_svg
+
+
+def test_comparison_views_render_cleanly_at_80_columns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure multi-year comparison Rich views fit inside 80-column terminals cleanly."""
+    from io import StringIO
+
+    from rich.console import Console
+
+    from src.analytics.models import ComparisonSummary, CupsComparison, MonthComparison
+    from src.presentation.console import CUSTOM_THEME
+    from src.presentation.views import comparison as comparison_view
+
+    buf = StringIO()
+    test_console = Console(file=buf, width=80, force_terminal=False, theme=CUSTOM_THEME)
+    monkeypatch.setattr(comparison_view, "console", test_console)
+
+    dec_m = MonthComparison(
+        month=1,
+        yearly_kwh={2024: 200.0, 2025: 150.0},
+        diff_kwh=-50.0,
+        pct_change=-25.0,
+        is_complete=True,
+        year_status={2024: "complete", 2025: "complete"},
+    )
+    inc_m = MonthComparison(
+        month=2,
+        yearly_kwh={2024: 100.0, 2025: 120.0},
+        diff_kwh=20.0,
+        pct_change=20.0,
+        is_complete=True,
+        year_status={2024: "complete", 2025: "complete"},
+    )
+    partial_m = MonthComparison(
+        month=11,
+        yearly_kwh={2024: 90.0, 2025: 10.0},
+        diff_kwh=None,
+        pct_change=None,
+        is_complete=False,
+        year_status={2024: "complete", 2025: "incomplete"},
+    )
+    saver = CupsComparison(
+        cups="ES0021000000000001AA",
+        yearly_kwh={2024: 300.0, 2025: 270.0},
+        diff_kwh=-30.0,
+        pct_change=-10.0,
+        use="Aerotermia",
+    )
+
+    summary = ComparisonSummary(
+        years=[2024, 2025],
+        monthly_comparisons=[dec_m, inc_m, partial_m],
+        annual_totals={2024: 390.0, 2025: 280.0},
+        comparable_annual_totals={2024: 300.0, 2025: 270.0},
+        comparable_months=[1, 2],
+        excluded_months=[11],
+        total_diff_kwh=-30.0,
+        total_pct_change=-10.0,
+        max_increase_month=inc_m,
+        max_decrease_month=dec_m,
+        top_saving_cups=saver,
+        top_increasing_cups=None,
+        cups_comparisons=[saver],
+    )
+
+    comparison_view.render_comparison_overview(summary, lang="en")
+    comparison_view.render_monthly_comparison_table(summary, lang="en")
+    comparison_view.render_cups_comparison_table(summary, lang="en")
+
+    out = buf.getvalue()
+    assert "2024 ➔ 2025" in out
+    assert "█" in out
+    assert "▼" in out
+    assert "▲" in out
+    assert "*" in out
+    assert max(len(line) for line in out.splitlines()) <= 80
+
+
+def test_comparison_html_i18n_parity_exporter_and_cli_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Validate comparison HTML EN/ES parity, SVG embedding, exporter, and esd compare --html."""
+    from src.analytics.models import ComparisonSummary, CupsComparison, MonthComparison
+    from src.presentation.export import ReportExporter
+    from src.presentation.html_report import (
+        _build_comparison_html_i18n,
+        generate_comparison_html_report,
+    )
+    from src.version import get_version
+
+    i18n_dict = _build_comparison_html_i18n(get_version())
+    assert set(i18n_dict.keys()) == {"en", "es"}
+    assert set(i18n_dict["en"].keys()) == set(i18n_dict["es"].keys())
+
+    comparison = ComparisonSummary(
+        years=[2024, 2025],
+        monthly_comparisons=[
+            MonthComparison(
+                month=5,
+                yearly_kwh={2024: 200.0, 2025: 150.0},
+                diff_kwh=-50.0,
+                pct_change=-25.0,
+                is_complete=True,
+                year_status={2024: "complete", 2025: "complete"},
+            ),
+            MonthComparison(
+                month=11,
+                yearly_kwh={2024: 100.0, 2025: None},
+                diff_kwh=None,
+                pct_change=None,
+                is_complete=False,
+                year_status={2024: "complete", 2025: "no_data"},
+            ),
+        ],
+        annual_totals={2024: 300.0, 2025: 150.0},
+        comparable_annual_totals={2024: 200.0, 2025: 150.0},
+        comparable_months=[5],
+        excluded_months=[11],
+        total_diff_kwh=-50.0,
+        total_pct_change=-25.0,
+        max_increase_month=None,
+        max_decrease_month=None,
+        top_saving_cups=CupsComparison(
+            cups="ES0021000000000001AA",
+            yearly_kwh={2024: 200.0, 2025: 150.0},
+            diff_kwh=-50.0,
+            pct_change=-25.0,
+            use="Aerotermia & <Bomba>",
+        ),
+        top_increasing_cups=None,
+        cups_comparisons=[
+            CupsComparison(
+                cups="ES0021000000000001AA",
+                yearly_kwh={2024: 200.0, 2025: 150.0},
+                diff_kwh=-50.0,
+                pct_change=-25.0,
+                use="Aerotermia & <Bomba>",
+            )
+        ],
+        cups_monthly_data={"ES0021000000000001AA": {2024: {5: 200.0}, 2025: {5: 150.0}}},
+        cups_uses={"ES0021000000000001AA": "Aerotermia & <Bomba>"},
+    )
+
+    html_doc = generate_comparison_html_report(comparison, lang="en")
+    assert html_doc.startswith("<!DOCTYPE html>")
+    assert "Aerotermia &amp; &lt;Bomba&gt;" in html_doc
+    assert "[Inc]" in html_doc
+    assert "toggleLang()" in html_doc
+    assert "toggleTheme()" in html_doc
+    assert 'id="cups-search"' in html_doc
+    assert html_doc.count('id="community-grad-0"') == 1
+    assert html_doc.count('id="cups-1-ES0021000000000001AA-grad-0"') == 1
+
+    exporter = ReportExporter(output_dir=tmp_path)
+    out_html = exporter.export_comparison_html(comparison, lang="es")
+    assert out_html.exists()
+    assert out_html.name.endswith("_esd_comparison_report.html")
+    assert "COMPARATIVA INTERANUAL" in out_html.read_text(encoding="utf-8")
+
+    # Exercise optional --html CLI flag vs default omit behavior
+    cons_dir = tmp_path / "cons"
+    out_default = tmp_path / "out_default"
+    out_with_html = tmp_path / "out_html"
+    _write_month_csv(
+        cons_dir / "2024" / "d24.csv",
+        [("ES0021000000000001AA", 2024, 5, 31, 10.0)],
+    )
+    _write_month_csv(
+        cons_dir / "2025" / "d25.csv",
+        [("ES0021000000000001AA", 2025, 5, 31, 8.0)],
+    )
+
+    monkeypatch.setattr("src.cli.is_initialized", lambda: True)
+    runner = CliRunner()
+
+    res_def = runner.invoke(
+        app,
+        ["compare", "-c", str(cons_dir), "-o", str(out_default), "--no-charts"],
+    )
+    assert res_def.exit_code == 0
+    assert any(p.name.endswith("_comparison_2024_2025.md") for p in out_default.iterdir())
+    assert not any(p.name.endswith("_esd_comparison_report.html") for p in out_default.iterdir())
+
+    res_html = runner.invoke(
+        app,
+        ["compare", "-c", str(cons_dir), "-o", str(out_with_html), "--html"],
+    )
+    assert res_html.exit_code == 0
+    assert any(p.name.endswith("_comparison_2024_2025.md") for p in out_with_html.iterdir())
+    assert any(p.name.endswith("_esd_comparison_report.html") for p in out_with_html.iterdir())
+    assert (out_with_html / "charts").exists()

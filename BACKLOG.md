@@ -27,7 +27,7 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| **DES-02** | `P3` Low | `Design` | Cohesive Visual Polish for Consumption Summary & Multi-Year Comparison Views (80-Col UI & Responsive SVG/HTML) | `src/presentation/views/`, `src/presentation/charts.py`, `src/presentation/console.py` |
+| — | — | — | _No pending tasks._ | — |
 
 ---
 
@@ -57,9 +57,4 @@ _No pending tasks._
 
 ## 🎨 Design
 
-### DES-02 (`P3` Low): Cohesive Visual Polish for Consumption Summary & Multi-Year Comparison Views (80-Col UI & Responsive SVG/HTML)
-- **Goal:** Ensure the migrated `summary` and `compare` terminal views, SVG charts, and reports share `esd`'s modern visual hierarchy, palette, and 80-column clarity.
-- **Target Components:** `src/presentation/views/`, `src/presentation/charts.py`, `src/presentation/console.py`, `src/presentation/html_report.py`.
-- **Acceptance Criteria:**
-  1. Unify 80-column Rich styling (`CUSTOM_THEME` tokens, `make_percentage_bar()`, consistent status icons, and `cups.json` `use` labels alongside masked/full CUPS) across `summary`, `compare`, and `calculate` views.
-  2. Style `src/presentation/charts.py` SVGs with `esd`'s modern color palette, clean gridlines, legible value/axis typography, and accessible contrast, with optional standalone interactive HTML comparison dashboard parity (`*_esd_comparison_report.html`).
+_No pending tasks._

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 from xml.sax.saxutils import escape
@@ -12,12 +13,12 @@ if TYPE_CHECKING:
     from src.analytics.models import ComparisonSummary
 
 YEAR_PALETTE: Final[tuple[str, ...]] = (
-    "#2563EB",
     "#10B981",
     "#F59E0B",
-    "#8B5CF6",
-    "#EC4899",
     "#06B6D4",
+    "#8B5CF6",
+    "#F43F5E",
+    "#3B82F6",
 )
 
 
@@ -35,8 +36,11 @@ def _render_grouped_bar_svg(
     legend_labels: dict[int, str],
     x_axis_label: str,
     y_axis_label: str,
+    id_prefix: str = "chart",
+    excluded_months: set[int] | None = None,
 ) -> str:
     """Render a clean, self-contained responsive grouped bar chart as an SVG document."""
+    safe_prefix = re.sub(r"[^a-zA-Z0-9_-]", "-", id_prefix) or "chart"
     width = 960
     height = 440
     pad_left = 84
@@ -56,28 +60,56 @@ def _render_grouped_bar_svg(
     group_w = slot_w * 0.78
     bar_w = group_w / n_years
 
+    grad_defs: list[str] = [
+        f'<linearGradient id="{safe_prefix}-accent" x1="0" y1="0" x2="1" y2="0">'
+        '<stop offset="0%" stop-color="#10B981"/>'
+        '<stop offset="100%" stop-color="#06B6D4"/>'
+        "</linearGradient>"
+    ]
+    for y_idx, _yr in enumerate(years):
+        color = YEAR_PALETTE[y_idx % len(YEAR_PALETTE)]
+        grad_defs.append(
+            f'<linearGradient id="{safe_prefix}-grad-{y_idx}" x1="0" y1="0" x2="0" y2="1">'
+            f'<stop offset="0%" stop-color="{color}" stop-opacity="0.98"/>'
+            f'<stop offset="100%" stop-color="{color}" stop-opacity="0.72"/>'
+            "</linearGradient>"
+        )
+
     parts: list[str] = [
         f'<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
         'xmlns="http://www.w3.org/2000/svg" role="img">',
-        '<rect width="100%" height="100%" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/>',
+        f"<defs>{''.join(grad_defs)}</defs>",
         "<style>"
-        "text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}"
+        "text{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}"
         ".title{font-size:17px;font-weight:700;fill:#0F172A;}"
         ".subtitle{font-size:12px;fill:#475569;}"
         ".axis-title{font-size:12px;font-weight:600;fill:#334155;}"
         ".tick{font-size:11px;fill:#64748B;}"
+        ".tick-excluded{font-size:11px;font-weight:700;fill:#B45309;}"
         ".legend-text{font-size:11px;fill:#1E293B;font-weight:500;}"
         "</style>",
-        f'<text x="{pad_left}" y="34" class="title">{escape(title)}</text>',
-        f'<text x="{pad_left}" y="54" class="subtitle">{escape(subtitle)}</text>',
+        '<rect width="100%" height="100%" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/>',
+        f'<rect x="16" y="0" width="{width - 32}" height="4" rx="2" fill="url(#{safe_prefix}-accent)"/>',
+        f'<text x="{pad_left}" y="36" class="title">{escape(title)}</text>',
+        f'<text x="{pad_left}" y="56" class="subtitle">{escape(subtitle)}</text>',
     ]
+
+    # Excluded [Inc] month highlight bands (rendered behind gridlines and bars)
+    if excluded_months:
+        for m_idx in range(n_months):
+            if (m_idx + 1) in excluded_months:
+                slot_x = pad_left + m_idx * slot_w + 2.0
+                parts.append(
+                    f'<rect x="{slot_x:.1f}" y="{pad_top:.1f}" width="{slot_w - 4.0:.1f}" '
+                    f'height="{chart_h:.1f}" rx="4" fill="#FEF3C7" fill-opacity="0.55"/>'
+                )
 
     # 5-tier horizontal gridlines and Y-axis tick labels
     tiers = 4
     for tier in range(tiers + 1):
         val = (y_max / tiers) * tier
         y_pos = pad_top + chart_h - (chart_h * (tier / tiers))
-        stroke = "#CBD5E1" if tier == 0 else "#E2E8F0"
+        stroke = "#94A3B8" if tier == 0 else "#E2E8F0"
         dash = "" if tier == 0 else ' stroke-dasharray="4 4"'
         parts.append(
             f'<line x1="{pad_left}" y1="{y_pos:.1f}" x2="{width - pad_right}" '
@@ -91,11 +123,11 @@ def _render_grouped_bar_svg(
 
     # Top-right compact legend box
     legend_x = width - pad_right - 220
-    legend_y = 14
+    legend_y = 16
     legend_h = 14 + len(years) * 18
     parts.append(
         f'<rect x="{legend_x}" y="{legend_y}" width="220" height="{legend_h}" '
-        'rx="6" fill="#F8FAFC" stroke="#CBD5E1"/>'
+        'rx="6" fill="#F8FAFC" stroke="#E2E8F0"/>'
     )
     for idx, yr in enumerate(years):
         color = YEAR_PALETTE[idx % len(YEAR_PALETTE)]
@@ -112,23 +144,25 @@ def _render_grouped_bar_svg(
     base_y = pad_top + chart_h
     for m_idx, m_label in enumerate(month_labels):
         cx = pad_left + m_idx * slot_w + slot_w / 2.0
+        is_excluded = excluded_months is not None and (m_idx + 1) in excluded_months
         for y_idx, yr in enumerate(years):
-            color = YEAR_PALETTE[y_idx % len(YEAR_PALETTE)]
             val = float(series_by_year.get(yr, [0.0] * n_months)[m_idx])
             bar_h = max(0.0, (val / y_max) * chart_h)
             x_pos = cx - (group_w / 2.0) + y_idx * bar_w + 1.0
             y_pos = base_y - bar_h
             actual_w = max(2.0, bar_w - 2.0)
-            tooltip = escape(f"{yr} · {m_label}: {val:,.1f} kWh")
+            tooltip = escape(f"{yr} · {m_label}{'*' if is_excluded else ''}: {val:,.1f} kWh")
             parts.append(
                 f'<rect x="{x_pos:.1f}" y="{y_pos:.1f}" width="{actual_w:.1f}" '
-                f'height="{bar_h:.1f}" rx="3" fill="{color}" fill-opacity="0.9">'
+                f'height="{bar_h:.1f}" rx="3" fill="url(#{safe_prefix}-grad-{y_idx})">'
                 f"<title>{tooltip}</title></rect>"
             )
 
+        tick_text = f"{m_label}*" if is_excluded else m_label
+        tick_class = "tick-excluded" if is_excluded else "tick"
         parts.append(
             f'<text x="{cx:.1f}" y="{base_y + 20}" text-anchor="middle" '
-            f'class="tick">{escape(m_label)}</text>'
+            f'class="{tick_class}">{escape(tick_text)}</text>'
         )
 
     # Axis titles
@@ -145,17 +179,12 @@ def _render_grouped_bar_svg(
     return "\n".join(parts)
 
 
-def generate_community_bar_chart(
+def render_community_bar_svg(
     comparison: ComparisonSummary,
-    output_dir: Path,
     lang: str = "en",
-) -> Path:
-    """Generate and save a grouped SVG bar chart comparing community monthly consumption."""
-    charts_dir = output_dir / "charts"
-    charts_dir.mkdir(parents=True, exist_ok=True)
-    years_slug = "_".join(map(str, comparison.years))
-    chart_path = charts_dir / f"community_monthly_{years_slug}.svg"
-
+    id_prefix: str = "community",
+) -> str:
+    """Render a grouped SVG bar chart string comparing community monthly consumption."""
     months = list(range(1, 13))
     month_labels = [get_month_name(m, lang=lang, short=True) for m in months]
     month_map = {m.month: m for m in comparison.monthly_comparisons}
@@ -173,7 +202,8 @@ def generate_community_bar_chart(
         )
 
     years_str = " ➔ ".join(map(str, comparison.years))
-    svg_text = _render_grouped_bar_svg(
+    excluded = set(comparison.excluded_months) if comparison.excluded_months else None
+    return _render_grouped_bar_svg(
         title=t("chart_community_title", lang=lang),
         subtitle=t("chart_subtitle", lang=lang, years=years_str),
         month_labels=month_labels,
@@ -182,31 +212,25 @@ def generate_community_bar_chart(
         legend_labels=legend_labels,
         x_axis_label=t("chart_month_axis", lang=lang),
         y_axis_label=t("chart_kwh_axis", lang=lang),
+        id_prefix=id_prefix,
+        excluded_months=excluded,
     )
-    chart_path.write_text(svg_text, encoding="utf-8")
-    return chart_path
 
 
-def generate_cups_bar_charts(
+def render_cups_bar_svgs(
     comparison: ComparisonSummary,
-    output_dir: Path,
     lang: str = "en",
-) -> list[Path]:
-    """Generate grouped SVG bar charts for each supply point (CUPS) across compared years."""
-    charts_dir = output_dir / "charts"
-    charts_dir.mkdir(parents=True, exist_ok=True)
-    years_slug = "_".join(map(str, comparison.years))
-    years_str = " ➔ ".join(map(str, comparison.years))
-
+) -> list[tuple[str, str]]:
+    """Render grouped SVG bar chart strings for each CUPS across compared years."""
     months = list(range(1, 13))
     month_labels = [get_month_name(m, lang=lang, short=True) for m in months]
+    years_str = " ➔ ".join(map(str, comparison.years))
+    excluded = set(comparison.excluded_months) if comparison.excluded_months else None
 
-    generated_paths: list[Path] = []
-    for cups_id, years_data in comparison.cups_monthly_data.items():
-        chart_path = charts_dir / f"cups_{cups_id}_{years_slug}.svg"
+    rendered: list[tuple[str, str]] = []
+    for idx, (cups_id, years_data) in enumerate(comparison.cups_monthly_data.items(), start=1):
         series_by_year: dict[int, list[float]] = {}
         legend_labels: dict[int, str] = {}
-
         for year in comparison.years:
             monthly_dict = years_data.get(year, {})
             vals = [float(monthly_dict.get(m, 0.0)) for m in months]
@@ -226,7 +250,43 @@ def generate_cups_bar_charts(
             legend_labels=legend_labels,
             x_axis_label=t("chart_month_axis", lang=lang),
             y_axis_label=t("chart_kwh_axis", lang=lang),
+            id_prefix=f"cups-{idx}-{cups_id}",
+            excluded_months=excluded,
         )
+        rendered.append((cups_id, svg_text))
+
+    return rendered
+
+
+def generate_community_bar_chart(
+    comparison: ComparisonSummary,
+    output_dir: Path,
+    lang: str = "en",
+) -> Path:
+    """Generate and save a grouped SVG bar chart comparing community monthly consumption."""
+    charts_dir = output_dir / "charts"
+    charts_dir.mkdir(parents=True, exist_ok=True)
+    years_slug = "_".join(map(str, comparison.years))
+    chart_path = charts_dir / f"community_monthly_{years_slug}.svg"
+
+    svg_text = render_community_bar_svg(comparison, lang=lang, id_prefix="community")
+    chart_path.write_text(svg_text, encoding="utf-8")
+    return chart_path
+
+
+def generate_cups_bar_charts(
+    comparison: ComparisonSummary,
+    output_dir: Path,
+    lang: str = "en",
+) -> list[Path]:
+    """Generate grouped SVG bar charts for each supply point (CUPS) across compared years."""
+    charts_dir = output_dir / "charts"
+    charts_dir.mkdir(parents=True, exist_ok=True)
+    years_slug = "_".join(map(str, comparison.years))
+
+    generated_paths: list[Path] = []
+    for cups_id, svg_text in render_cups_bar_svgs(comparison, lang=lang):
+        chart_path = charts_dir / f"cups_{cups_id}_{years_slug}.svg"
         chart_path.write_text(svg_text, encoding="utf-8")
         generated_paths.append(chart_path)
 

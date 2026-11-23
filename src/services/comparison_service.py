@@ -45,6 +45,7 @@ class ComparisonRequest:
     generate_charts: bool = True
     lang: str = "en"
     export_markdown: bool = True
+    export_html: bool = False
 
 
 @dataclass(frozen=True)
@@ -56,6 +57,7 @@ class ComparisonResult:
     valid_file_count: int
     chart_paths: list[Path]
     report_path: Path | None
+    html_report_path: Path | None = None
 
 
 class ComparisonService:
@@ -90,13 +92,20 @@ class ComparisonService:
             )
 
         report_path: Path | None = None
-        if request.export_markdown:
+        html_report_path: Path | None = None
+        if request.export_markdown or request.export_html:
             exporter = ReportExporter(output_dir=request.output_dir)
-            report_path = exporter.export_comparison_markdown(
-                comparison=comparison,
-                lang=request.lang,
-                chart_paths=chart_paths,
-            )
+            if request.export_markdown:
+                report_path = exporter.export_comparison_markdown(
+                    comparison=comparison,
+                    lang=request.lang,
+                    chart_paths=chart_paths,
+                )
+            if request.export_html:
+                html_report_path = exporter.export_comparison_html(
+                    comparison=comparison,
+                    lang=request.lang,
+                )
 
         valid_file_count = sum(1 for v in validation_results if v.is_valid)
         return ComparisonResult(
@@ -105,4 +114,5 @@ class ComparisonService:
             valid_file_count=valid_file_count,
             chart_paths=chart_paths,
             report_path=report_path,
+            html_report_path=html_report_path,
         )

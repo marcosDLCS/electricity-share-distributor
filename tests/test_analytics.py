@@ -383,3 +383,140 @@ def test_cli_summary_command_workflows(tmp_path: Path, monkeypatch: pytest.Monke
     )
     assert res_bad_cups.exit_code == 1
     assert "was not found" in res_bad_cups.output
+
+
+def test_format_cups_label_and_custom_theme() -> None:
+    """Verify semantic theme tokens in make_percentage_bar and CUPS label formatting."""
+    from src.presentation.console import CUSTOM_THEME, format_cups_label, make_percentage_bar
+
+    for key in (
+        "title",
+        "panel.border",
+        "table.header",
+        "cups",
+        "cups.use",
+        "delta.saving",
+        "delta.increase",
+        "delta.neutral",
+        "badge.dominant",
+        "badge.inactive",
+    ):
+        assert key in CUSTOM_THEME.styles
+
+    assert "[metric]" in make_percentage_bar(75.0)
+    assert "[warning]" in make_percentage_bar(25.0)
+    assert "[highlight]" in make_percentage_bar(5.0)
+    assert "[dimmed]" in make_percentage_bar(0.0)
+
+    full_dom = format_cups_label("ES0021000000000001AA", use="Aerotermia", badge="★")
+    assert "[cups]ES0021000000000001AA[/cups]" in full_dom
+    assert "[cups.use](Aerotermia)[/cups.use]" in full_dom
+    assert "[badge.dominant]★[/badge.dominant]" in full_dom
+
+    masked_zero = format_cups_label("ES0021000000000004DD", mask=True, badge="(0)")
+    assert "[cups]ES0021...04DD[/cups]" in masked_zero
+    assert "[badge.inactive](0)[/badge.inactive]" in masked_zero
+
+
+def test_consumption_views_render_cleanly_at_80_columns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ensure consumption summary Rich views use cohesive theme styling within 80 columns."""
+    from io import StringIO
+
+    from rich.console import Console
+
+    from src.analytics.models import (
+        AnnualConsumptionSummary,
+        CommunityConsumptionSummary,
+        CupsConsumptionShare,
+        MonthlyConsumptionSummary,
+    )
+    from src.ingestion.schema import ValidationResult
+    from src.presentation.console import CUSTOM_THEME
+    from src.presentation.views import consumption as consumption_view
+
+    buf = StringIO()
+    test_console = Console(file=buf, width=80, force_terminal=False, theme=CUSTOM_THEME)
+    monkeypatch.setattr(consumption_view, "console", test_console)
+
+    summary = CommunityConsumptionSummary(
+        total_community_kwh=1200.0,
+        total_readings=744,
+        unique_cups_count=2,
+        cups_list=["ES0021000000000001AA", "ES0021000000000002BB"],
+        date_min="2025-05-01",
+        date_max="2025-05-31",
+        annual_summaries={
+            2025: AnnualConsumptionSummary(
+                year=2025,
+                period_label="2025",
+                community_total_kwh=1200.0,
+                cups_shares=[
+                    CupsConsumptionShare(
+                        "ES0021000000000001AA", 1200.0, 100.0, 744, 1.61, use="Aerotermia"
+                    ),
+                    CupsConsumptionShare("ES0021000000000002BB", 0.0, 0.0, 744, 0.0, use="Garage"),
+                ],
+                monthly_totals={5: 1200.0},
+                top_consumer=CupsConsumptionShare(
+                    "ES0021000000000001AA", 1200.0, 100.0, 744, 1.61, use="Aerotermia"
+                ),
+                lowest_consumer=CupsConsumptionShare(
+                    "ES0021000000000002BB", 0.0, 0.0, 744, 0.0, use="Garage"
+                ),
+            )
+        },
+        monthly_summaries=[
+            MonthlyConsumptionSummary(
+                year=2025,
+                month=5,
+                period_label="2025-05",
+                community_total_kwh=1200.0,
+                cups_shares=[
+                    CupsConsumptionShare(
+                        "ES0021000000000001AA", 1200.0, 100.0, 744, 1.61, use="Aerotermia"
+                    ),
+                    CupsConsumptionShare("ES0021000000000002BB", 0.0, 0.0, 744, 0.0, use="Garage"),
+                ],
+                top_consumer=CupsConsumptionShare(
+                    "ES0021000000000001AA", 1200.0, 100.0, 744, 1.61, use="Aerotermia"
+                ),
+            )
+        ],
+        overall_cups_shares=[
+            CupsConsumptionShare(
+                "ES0021000000000001AA", 1200.0, 100.0, 744, 1.61, use="Aerotermia"
+            ),
+            CupsConsumptionShare("ES0021000000000002BB", 0.0, 0.0, 744, 0.0, use="Garage"),
+        ],
+        peak_month_label="2025-05",
+        peak_month_kwh=1200.0,
+        lowest_month_label="2025-05",
+        lowest_month_kwh=1200.0,
+        cups_uses={"ES0021000000000001AA": "Aerotermia", "ES0021000000000002BB": "Garage"},
+    )
+
+    bad = [
+        ValidationResult(
+            file_path=tmp_path / "bad.csv",
+            is_valid=False,
+            error_message="Missing header",
+        )
+    ]
+
+    consumption_view.render_validation_warnings(bad, lang="en")
+    consumption_view.render_consumption_overview(summary, file_count=1, lang="en")
+    consumption_view.render_annual_consumption_tables(summary, lang="en")
+    consumption_view.render_monthly_consumption_overview(summary, lang="en")
+    consumption_view.render_cups_consumption_trajectory(summary, "ES0021000000000001AA", lang="en")
+    consumption_view.render_consumption_insights(summary, lang="en")
+
+    rendered = buf.getvalue()
+    assert "✗ SKIPPED" in rendered
+    assert "ES0021000000000001AA" in rendered
+    assert "Aerotermia" in rendered
+    assert "★" in rendered
+    assert "(0)" in rendered
+    assert "100.00%" in rendered
+    assert max(len(line) for line in rendered.splitlines()) <= 80

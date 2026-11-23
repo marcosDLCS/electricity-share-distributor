@@ -15,6 +15,16 @@ CUSTOM_THEME = Theme(
         "metric": "bold bright_cyan",
         "dimmed": "dim white",
         "header": "bold white on dark_blue",
+        "title": "bold bright_yellow",
+        "panel.border": "cyan",
+        "table.header": "bold cyan",
+        "cups": "bold white",
+        "cups.use": "dim cyan",
+        "delta.saving": "bold green",
+        "delta.increase": "bold red",
+        "delta.neutral": "dim white",
+        "badge.dominant": "bold yellow",
+        "badge.inactive": "dim yellow",
         "bar.high": "bold green",
         "bar.mid": "bold yellow",
         "bar.low": "bold red",
@@ -54,13 +64,29 @@ def make_percentage_bar(pct: float, width: int = 16) -> str:
     empty_len = width - filled_len
 
     if pct >= 50.0:
-        bar_color = "bright_cyan"
+        bar_color = "metric"
     elif pct >= 20.0:
-        bar_color = "yellow"
+        bar_color = "warning"
     elif pct > 0.0:
-        bar_color = "magenta"
+        bar_color = "highlight"
     else:
-        bar_color = "dim"
+        bar_color = "dimmed"
 
     bar = "█" * filled_len + "░" * empty_len
     return f"[{bar_color}]{bar}[/{bar_color}]"
+
+
+def format_cups_label(cups: str, use: str = "", mask: bool = False, badge: str = "") -> str:
+    """Format a CUPS identifier with optional masking, community use label, and status badge."""
+    display_cups = f"{cups[:6]}...{cups[-4:]}" if (mask and len(cups) > 12) else cups
+    label = f"[cups]{display_cups}[/cups]"
+    if use:
+        label += f" [cups.use]({use})[/cups.use]"
+    if badge:
+        if "★" in badge:
+            label += f" [badge.dominant]{badge}[/badge.dominant]"
+        elif "(0)" in badge:
+            label += f" [badge.inactive]{badge}[/badge.inactive]"
+        else:
+            label += f" [warning]{badge}[/warning]"
+    return label

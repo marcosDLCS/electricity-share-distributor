@@ -713,6 +713,11 @@ def compare_command(
         "--charts/--no-charts",
         help="Generate monthly SVG comparison bar charts in .output/charts/.",
     ),
+    html: bool = typer.Option(
+        False,
+        "--html",
+        help="Export an interactive multi-year HTML comparison report in .output/.",
+    ),
     lang: str | None = typer.Option(
         None,
         "--lang",
@@ -749,6 +754,7 @@ def compare_command(
             generate_charts=charts,
             lang=active_lang,
             export_markdown=True,
+            export_html=html,
         )
 
         with console.status(f"[bold cyan]{t('status_comparing', lang=active_lang)}[/bold cyan]"):
@@ -759,8 +765,13 @@ def compare_command(
         render_monthly_comparison_table(result.comparison, lang=active_lang)
         render_cups_comparison_table(result.comparison, lang=active_lang)
 
+        exported_reports: list[Path] = []
         if result.report_path is not None:
-            render_export_success([result.report_path], lang=active_lang)
+            exported_reports.append(result.report_path)
+        if result.html_report_path is not None:
+            exported_reports.append(result.html_report_path)
+        if exported_reports:
+            render_export_success(exported_reports, lang=active_lang)
 
         if result.chart_paths:
             charts_dir = target_output_dir / "charts"
