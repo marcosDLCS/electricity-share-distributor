@@ -35,9 +35,11 @@ from src.presentation.views import (
     render_cleanup_result,
     render_coefficients_matrix_table,
     render_community_summary,
+    render_comparison_overview,
     render_config_view,
     render_consumption_insights,
     render_consumption_overview,
+    render_cups_comparison_table,
     render_cups_consumption_trajectory,
     render_curate_summary,
     render_detailed_monthly_consumption,
@@ -45,6 +47,7 @@ from src.presentation.views import (
     render_export_success,
     render_help,
     render_init_success,
+    render_monthly_comparison_table,
     render_monthly_consumption_overview,
     render_monthly_trajectory_table,
     render_not_initialized_warning,
@@ -55,6 +58,8 @@ from src.presentation.views import (
 from src.services import (
     CalculationRequest,
     CalculationService,
+    ComparisonRequest,
+    ComparisonService,
     CurationRequest,
     CurationService,
     DoctorRequest,
@@ -63,6 +68,7 @@ from src.services import (
     SummaryService,
     WeatherRequest,
     WeatherService,
+    parse_years_option,
 )
 from src.version import get_version
 
@@ -675,6 +681,101 @@ def summary_command(
 
         if result.report_path is not None:
             render_export_success([result.report_path], lang=active_lang)
+
+    except typer.Exit, typer.Abort:
+        raise
+    except EsdError as err:
+        _handle_cli_error(err)
+    except Exception as exc:
+        _handle_cli_error(exc, unexpected=True)
+
+
+@app.command(name="compare")
+def compare_command(
+    consumption_dir: Path | None = typer.Option(
+        None,
+        "--consumption-dir",
+        "-c",
+        help="Path to folder containing DATADIS hourly consumption CSV files. Defaults to configured path.",
+    ),
+    years: list[str] | None = typer.Option(
+        None,
+        "--years",
+        "-y",
+        help="Years to compare (e.g. -y 2024 -y 2025 or --years 2024,2025). Defaults to all available years.",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        help="Destination folder for Markdown reports and SVG charts. Defaults to configured path.",
+    ),
+    cups_file: Path | None = typer.Option(
+        None,
+        "--cups-file",
+        "-C",
+        help="Optional path to cups.json configuration file for CUPS use labels.",
+    ),
+    charts: bool = typer.Option(
+        True,
+        "--charts/--no-charts",
+        help="Generate monthly SVG comparison bar charts in .output/charts/.",
+    ),
+    lang: str | None = typer.Option(
+        None,
+        "--lang",
+        "-l",
+        help="Language override for messages ('en' or 'es').",
+    ),
+) -> None:
+    """Compare community consumption across multiple years with apples-to-apples completeness."""
+    try:
+        try:
+            active_lang = normalize_language_code(lang) if lang else get_language()
+        except ValueError as err:
+            _handle_cli_error(err)
+
+        target_years = parse_years_option(years)
+
+        cfg = load_config()
+        if not is_initialized():
+            render_not_initialized_warning(lang=active_lang)
+
+        target_consumption_dir = consumption_dir or Path(cfg.consumption_dir)
+        target_output_dir = output_dir or Path(cfg.output_dir)
+        cups_path = (
+            resolve_cups_config_path(custom_path=cups_file, config=cfg)
+            if (cups_file is not None or consumption_dir is None)
+            else None
+        )
+
+        req = ComparisonRequest(
+            consumption_dir=target_consumption_dir,
+            output_dir=target_output_dir,
+            cups_config_path=cups_path,
+            years=target_years,
+            generate_charts=charts,
+            lang=active_lang,
+            export_markdown=True,
+        )
+
+        with console.status(f"[bold cyan]{t('status_comparing', lang=active_lang)}[/bold cyan]"):
+            result = ComparisonService.execute(req)
+
+        render_validation_warnings(result.validation_results, lang=active_lang)
+        render_comparison_overview(result.comparison, lang=active_lang)
+        render_monthly_comparison_table(result.comparison, lang=active_lang)
+        render_cups_comparison_table(result.comparison, lang=active_lang)
+
+        if result.report_path is not None:
+            render_export_success([result.report_path], lang=active_lang)
+
+        if result.chart_paths:
+            charts_dir = target_output_dir / "charts"
+            console.print(
+                f"[bold green]✔[/bold green] "
+                f"{t('compare_charts_generated', lang=active_lang, count=len(result.chart_paths), path=str(charts_dir))}\n"
+            )
 
     except typer.Exit, typer.Abort:
         raise

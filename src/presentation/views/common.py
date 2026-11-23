@@ -95,6 +95,7 @@ def render_help(lang: str | None = None) -> None:
 
     cmd_table.add_row("calculate", t("cmd_calculate_desc", lang=lang))
     cmd_table.add_row("summary", t("cmd_summary_desc", lang=lang))
+    cmd_table.add_row("compare", t("cmd_compare_desc", lang=lang))
     cmd_table.add_row("curate", t("cmd_curate_desc", lang=lang))
     cmd_table.add_row("doctor", t("cmd_doctor_desc", lang=lang))
     cmd_table.add_row("init", t("cmd_init_desc", lang=lang))

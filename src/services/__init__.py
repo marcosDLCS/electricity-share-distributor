@@ -5,6 +5,12 @@ from src.services.calculation_service import (
     CalculationResult,
     CalculationService,
 )
+from src.services.comparison_service import (
+    ComparisonRequest,
+    ComparisonResult,
+    ComparisonService,
+    parse_years_option,
+)
 from src.services.curation_service import (
     CurationRequest,
     CurationResult,
@@ -29,6 +35,9 @@ __all__ = [
     "CalculationRequest",
     "CalculationResult",
     "CalculationService",
+    "ComparisonRequest",
+    "ComparisonResult",
+    "ComparisonService",
     "CurationRequest",
     "CurationResult",
     "CurationService",
@@ -40,4 +49,5 @@ __all__ = [
     "WeatherRequest",
     "WeatherService",
     "WeatherServiceResult",
+    "parse_years_option",
 ]

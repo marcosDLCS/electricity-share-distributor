@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| **FEAT-02** | `P1` High | `Features` | Migrate `datadis-analyzer` Multi-Year Apples-to-Apples Comparison & Visual Charts (`esd compare`) | `src/analytics/`, `src/services/`, `src/cli.py`, `src/presentation/`, `src/i18n.py` |
 | **ARCH-01** | `P1` High | `Architecture` | Domain & Ingestion Accuracy: Multi-Year Scaling, Primary Reconciliation, DST & Consumption-Only Doctor Audit | `src/optimization/engine.py`, `src/curation/curator.py`, `src/ingestion/` |
 | **SIMP-01** | `P1` High | `Simplicity` | Prune Dead Calculation Options, Unreferenced Views, Legacy Fallbacks & Unused Domain Models | `src/domain/`, `src/curation/`, `src/services/`, `src/presentation/views/` |
 | **ARCH-02** | `P2` Medium | `Architecture` | Performance Vectorization: Curation Pipeline, 2D Rounding, Solver Baselines & Excel Export | `src/curation/`, `src/optimization/`, `src/presentation/export.py` |
@@ -44,14 +43,7 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 ## 🚀 Features
 
-### FEAT-02 (`P1` High): Migrate `datadis-analyzer` Multi-Year Apples-to-Apples Comparison & Visual Charts (`esd compare`)
-- **Goal:** Port `datadis-analyzer`'s `da compare` multi-year comparison engine, calendar completeness heuristic, and visual charts into `esd` using lightweight zero-dependency SVG output.
-- **Target Components:** `src/analytics/`, `src/services/comparison_service.py`, `src/cli.py`, `src/presentation/views/comparison.py`, `src/presentation/charts.py`, `src/presentation/export.py`, `src/i18n.py`, `tests/`.
-- **Acceptance Criteria:**
-  1. **Comparative Models & Calendar Completeness Heuristic:** Implement comparative domain models (`MonthComparison`, `CupsComparison`, `ComparisonSummary`) and `ConsumptionAggregator.compare_years(df, target_years=None)` using `calendar.monthrange(year, month)[1]` (leap-year aware, statuses `complete` / `incomplete` / `no_data`), enforcing the apples-to-apples invariant (deltas $\Delta\text{kWh}$, $\%\Delta$, peak increase/decrease months, and per-CUPS shifts computed strictly over months complete in all compared years) and raising `EsdError` when fewer than 2 distinct years exist.
-  2. **Comparison Service & CLI Command:** Add `ComparisonService` and `esd compare` supporting `--consumption-dir`/`-c`, `--years`/`-y` (repeatable `-y 2024 -y 2025` and comma-separated `--years 2024,2025`, defaulting to all available years), `--output-dir`/`-o`, `--cups-file`/`-C`, `--charts/--no-charts` (default `True`), and `--lang`/`-l`.
-  3. **80-Column Comparative Views:** Render validation warnings, Executive Comparison Overview card (comparable period, raw vs comparable totals, net saving/increase, peak decrease/increase months, top saving/increasing CUPS, excluded-months note), Month-by-Month Comparative Table (`*` on incomplete months, color-coded `▼`/`▲` variations), and CUPS-Level Shift Table sorted by savings (enriched with `use` labels from `cups.json` when available).
-  4. **Zero-Dependency SVG Charts, Markdown Export & Tests:** Implement a lightweight SVG chart module (`src/presentation/charts.py` with no `matplotlib` dependency) generating grouped monthly bar charts into `.output/charts/` (`community_monthly_<years>.svg` and `cups_<CUPS>_<years>.svg`), add `ReportExporter.export_comparison_markdown()` writing timestamped `.output/YYYYMMDD_HHMMSS_comparison_<years>.md` with embedded chart image links, plus EN/ES localization and unit/CLI tests in `tests/`.
+_No pending tasks._
 
 ## 🏗️ Architecture
 

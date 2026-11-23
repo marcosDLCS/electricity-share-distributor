@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import calendar
+
 import pandas as pd
 
 from src.analytics.models import (
     AnnualConsumptionSummary,
     CommunityConsumptionSummary,
+    ComparisonSummary,
+    CupsComparison,
     CupsConsumptionShare,
+    MonthComparison,
     MonthlyConsumptionSummary,
 )
 from src.domain.exceptions import EsdError
@@ -200,3 +205,194 @@ class ConsumptionAggregator:
         total_all = float(pivot["Total_kWh"].sum())
         pivot["Share_%"] = (pivot["Total_kWh"] / total_all * 100.0) if total_all > 0.0 else 0.0
         return pivot.sort_values(by="Total_kWh", ascending=False)
+
+    @classmethod
+    def compare_years(
+        cls,
+        df: pd.DataFrame,
+        target_years: list[int] | None = None,
+        cups_uses: dict[str, str] | None = None,
+    ) -> ComparisonSummary:
+        """Compare community consumption across multiple years using calendar completeness."""
+        work = cls._prepare_dataframe(df)
+        uses = dict(cups_uses) if cups_uses else {}
+
+        available_years = sorted(work["year"].unique().tolist())
+        if len(available_years) < 2:
+            raise EsdError(
+                f"At least two years are required for comparison; found only: {', '.join(map(str, available_years))}."
+            )
+
+        if target_years:
+            missing = [y for y in target_years if y not in available_years]
+            if missing:
+                raise EsdError(
+                    f"Requested year(s) {', '.join(map(str, missing))} not found in dataset. "
+                    f"Available years: {', '.join(map(str, available_years))}."
+                )
+            selected_years = sorted(dict.fromkeys(target_years))
+            if len(selected_years) < 2:
+                raise EsdError("At least two distinct years must be selected for comparison.")
+        else:
+            selected_years = available_years
+
+        filtered_df = work[work["year"].isin(selected_years)]
+        earliest_year = selected_years[0]
+        latest_year = selected_years[-1]
+
+        monthly_sums = filtered_df.groupby(["year", "month"])["consumption_kwh"].sum().to_dict()
+        monthly_days = filtered_df.groupby(["year", "month"])["date_str"].nunique().to_dict()
+
+        monthly_comparisons: list[MonthComparison] = []
+        for m in range(1, 13):
+            if not any((y, m) in monthly_sums for y in selected_years):
+                continue
+
+            yearly_kwh: dict[int, float | None] = {}
+            year_status: dict[int, str] = {}
+            year_days: dict[int, tuple[int, int]] = {}
+            all_years_complete = True
+
+            for y in selected_years:
+                expected_days = calendar.monthrange(y, m)[1]
+                actual_days = int(monthly_days.get((y, m), 0))
+                year_days[y] = (actual_days, expected_days)
+
+                if (y, m) not in monthly_sums or actual_days == 0:
+                    yearly_kwh[y] = None
+                    year_status[y] = "no_data"
+                    all_years_complete = False
+                elif actual_days < expected_days:
+                    yearly_kwh[y] = float(monthly_sums[(y, m)])
+                    year_status[y] = "incomplete"
+                    all_years_complete = False
+                else:
+                    yearly_kwh[y] = float(monthly_sums[(y, m)])
+                    year_status[y] = "complete"
+
+            if all_years_complete:
+                base_kwh = float(yearly_kwh[earliest_year] or 0.0)
+                target_kwh = float(yearly_kwh[latest_year] or 0.0)
+                diff_kwh: float | None = target_kwh - base_kwh
+                pct_change: float | None = (
+                    ((diff_kwh / base_kwh) * 100.0)
+                    if base_kwh > 0.0
+                    else (0.0 if target_kwh == 0.0 else None)
+                )
+            else:
+                diff_kwh = None
+                pct_change = None
+
+            monthly_comparisons.append(
+                MonthComparison(
+                    month=m,
+                    yearly_kwh=yearly_kwh,
+                    diff_kwh=diff_kwh,
+                    pct_change=pct_change,
+                    is_complete=all_years_complete,
+                    year_status=year_status,
+                    year_days=year_days,
+                )
+            )
+
+        comparable_months = [m.month for m in monthly_comparisons if m.is_complete]
+        excluded_months = [m.month for m in monthly_comparisons if not m.is_complete]
+
+        raw_year_totals = filtered_df.groupby("year")["consumption_kwh"].sum().to_dict()
+        annual_totals = {y: float(raw_year_totals.get(y, 0.0)) for y in selected_years}
+
+        if comparable_months:
+            comp_df = filtered_df[filtered_df["month"].isin(comparable_months)]
+            comp_year_totals = comp_df.groupby("year")["consumption_kwh"].sum().to_dict()
+            comparable_annual_totals = {
+                y: float(comp_year_totals.get(y, 0.0)) for y in selected_years
+            }
+            total_diff_kwh: float | None = (
+                comparable_annual_totals[latest_year] - comparable_annual_totals[earliest_year]
+            )
+            base_comp = comparable_annual_totals[earliest_year]
+            total_pct_change: float | None = (
+                ((total_diff_kwh / base_comp) * 100.0)
+                if base_comp > 0.0
+                else (0.0 if comparable_annual_totals[latest_year] == 0.0 else None)
+            )
+        else:
+            comp_df = filtered_df
+            comparable_annual_totals = dict.fromkeys(selected_years, 0.0)
+            total_diff_kwh = None
+            total_pct_change = None
+
+        valid_months = [
+            m for m in monthly_comparisons if m.is_complete and m.pct_change is not None
+        ]
+        max_increase_month = (
+            max(valid_months, key=lambda m: m.pct_change or 0.0) if valid_months else None
+        )
+        if max_increase_month and (max_increase_month.pct_change or 0.0) <= 0.0:
+            max_increase_month = None
+
+        max_decrease_month = (
+            min(valid_months, key=lambda m: m.pct_change or 0.0) if valid_months else None
+        )
+        if max_decrease_month and (max_decrease_month.pct_change or 0.0) >= 0.0:
+            max_decrease_month = None
+
+        all_cups = sorted(filtered_df["cups"].unique().tolist())
+        cups_monthly_grouped = (
+            filtered_df.groupby(["cups", "year", "month"])["consumption_kwh"].sum().to_dict()
+        )
+        cups_monthly_data: dict[str, dict[int, dict[int, float]]] = {}
+        for cups_id in all_cups:
+            cups_monthly_data[cups_id] = {
+                y: {m: float(cups_monthly_grouped.get((cups_id, y, m), 0.0)) for m in range(1, 13)}
+                for y in selected_years
+            }
+
+        cups_eval_grouped = comp_df.groupby(["cups", "year"])["consumption_kwh"].sum().to_dict()
+        cups_comparisons: list[CupsComparison] = []
+        for cups_id in all_cups:
+            c_yearly = {y: float(cups_eval_grouped.get((cups_id, y), 0.0)) for y in selected_years}
+            c_base = c_yearly[earliest_year]
+            c_target = c_yearly[latest_year]
+            c_diff = c_target - c_base
+            c_pct = (
+                ((c_diff / c_base) * 100.0) if c_base > 0.0 else (0.0 if c_target == 0.0 else None)
+            )
+            cups_comparisons.append(
+                CupsComparison(
+                    cups=cups_id,
+                    yearly_kwh=c_yearly,
+                    diff_kwh=c_diff,
+                    pct_change=c_pct,
+                    monthly_kwh=cups_monthly_data[cups_id],
+                    use=uses.get(cups_id, ""),
+                )
+            )
+
+        cups_comparisons.sort(key=lambda c: (c.diff_kwh, c.cups))
+        top_saving_cups = (
+            cups_comparisons[0] if cups_comparisons and cups_comparisons[0].diff_kwh < 0.0 else None
+        )
+        top_increasing_cups = (
+            cups_comparisons[-1]
+            if cups_comparisons and cups_comparisons[-1].diff_kwh > 0.0
+            else None
+        )
+
+        return ComparisonSummary(
+            years=selected_years,
+            monthly_comparisons=monthly_comparisons,
+            annual_totals=annual_totals,
+            comparable_annual_totals=comparable_annual_totals,
+            comparable_months=comparable_months,
+            excluded_months=excluded_months,
+            total_diff_kwh=total_diff_kwh,
+            total_pct_change=total_pct_change,
+            max_increase_month=max_increase_month,
+            max_decrease_month=max_decrease_month,
+            top_saving_cups=top_saving_cups,
+            top_increasing_cups=top_increasing_cups,
+            cups_comparisons=cups_comparisons,
+            cups_monthly_data=cups_monthly_data,
+            cups_uses=uses,
+        )

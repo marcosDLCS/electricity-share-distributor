@@ -13,6 +13,11 @@ from src.presentation.views.common import (
     render_version,
     render_weather_result,
 )
+from src.presentation.views.comparison import (
+    render_comparison_overview,
+    render_cups_comparison_table,
+    render_monthly_comparison_table,
+)
 from src.presentation.views.consumption import (
     render_annual_consumption_tables,
     render_consumption_insights,
@@ -43,9 +48,11 @@ __all__ = [
     "render_cleanup_result",
     "render_coefficients_matrix_table",
     "render_community_summary",
+    "render_comparison_overview",
     "render_config_view",
     "render_consumption_insights",
     "render_consumption_overview",
+    "render_cups_comparison_table",
     "render_cups_consumption_trajectory",
     "render_curate_summary",
     "render_detailed_monthly_consumption",
@@ -55,6 +62,7 @@ __all__ = [
     "render_hourly_profile_table",
     "render_init_success",
     "render_monthly_coefficients_table",
+    "render_monthly_comparison_table",
     "render_monthly_consumption_overview",
     "render_monthly_trajectory_table",
     "render_not_initialized_warning",

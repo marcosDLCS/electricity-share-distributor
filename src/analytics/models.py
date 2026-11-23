@@ -60,3 +60,49 @@ class CommunityConsumptionSummary:
     lowest_month_label: str
     lowest_month_kwh: float
     cups_uses: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class MonthComparison:
+    """Monthly multi-year comparison for the community with calendar completeness metadata."""
+
+    month: int
+    yearly_kwh: dict[int, float | None]
+    diff_kwh: float | None
+    pct_change: float | None
+    is_complete: bool = True
+    year_status: dict[int, str] = field(default_factory=dict)
+    year_days: dict[int, tuple[int, int]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class CupsComparison:
+    """Year-over-year consumption comparison for an individual CUPS over comparable months."""
+
+    cups: str
+    yearly_kwh: dict[int, float]
+    diff_kwh: float
+    pct_change: float | None
+    monthly_kwh: dict[int, dict[int, float]] = field(default_factory=dict)
+    use: str = ""
+
+
+@dataclass
+class ComparisonSummary:
+    """Complete multi-year consumption comparison summary for the residential community."""
+
+    years: list[int]
+    monthly_comparisons: list[MonthComparison]
+    annual_totals: dict[int, float]
+    comparable_annual_totals: dict[int, float]
+    comparable_months: list[int]
+    excluded_months: list[int]
+    total_diff_kwh: float | None
+    total_pct_change: float | None
+    max_increase_month: MonthComparison | None
+    max_decrease_month: MonthComparison | None
+    top_saving_cups: CupsComparison | None
+    top_increasing_cups: CupsComparison | None
+    cups_comparisons: list[CupsComparison]
+    cups_monthly_data: dict[str, dict[int, dict[int, float]]] = field(default_factory=dict)
+    cups_uses: dict[str, str] = field(default_factory=dict)

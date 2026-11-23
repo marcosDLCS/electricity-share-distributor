@@ -9,14 +9,18 @@ from typing import TYPE_CHECKING, Any, Final
 
 import pandas as pd
 
-from src.i18n import t
+from src.i18n import get_month_name, t
 from src.ingestion.schema import AlignedDataset, IngestionSummary
 from src.optimization.models import OptimizationResult
 from src.presentation.console import format_kwh, format_pct
 from src.version import get_version
 
 if TYPE_CHECKING:
-    from src.analytics.models import CommunityConsumptionSummary, CupsConsumptionShare
+    from src.analytics.models import (
+        CommunityConsumptionSummary,
+        ComparisonSummary,
+        CupsConsumptionShare,
+    )
     from src.curation.models import ConsumptionDataset, CuratedDataset, GenerationDataset
 
 FORMULA_INJECTION_PREFIXES: Final[tuple[str, ...]] = ("=", "+", "-", "@", "\t", "\r")
@@ -56,6 +60,24 @@ def _make_ascii_bar(pct: float, width: int = 12) -> str:
 def _strip_rich_markup(text: str) -> str:
     """Remove Rich console markup tags (e.g. [bold], [/]) from localized strings."""
     return re.sub(r"\[/?[^\]]+\]", "", text)
+
+
+def _format_signed_kwh(diff: float, include_unit: bool = False) -> str:
+    """Format a signed kWh delta with optional unit."""
+    if diff > 0.0:
+        core = f"+{diff:,.2f}"
+    elif diff < 0.0:
+        core = f"-{abs(diff):,.2f}"
+    else:
+        core = "0.00"
+    return f"{core} kWh" if include_unit else core
+
+
+def _format_signed_pct(pct: float | None, decimals: int = 1) -> str:
+    """Format a signed percentage delta, returning 'N/A' when undefined."""
+    if pct is None:
+        return "N/A"
+    return f"+{pct:.{decimals}f}%" if pct > 0.0 else f"{pct:.{decimals}f}%"
 
 
 def _append_markdown_shares_table(
@@ -962,6 +984,243 @@ class ReportExporter:
             )
         ).lstrip("• ")
         lines.append(f"- {clean_season}")
+        lines.append("")
+
+        report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return report_path
+
+    def export_comparison_markdown(
+        self,
+        comparison: ComparisonSummary,
+        lang: str | None = None,
+        chart_paths: list[Path] | None = None,
+        timestamp: str | None = None,
+    ) -> Path:
+        """Export a timestamped multi-year comparison Markdown report with SVG chart links."""
+        ts = timestamp or self.timestamp
+        years_slug = "_".join(map(str, comparison.years))
+        report_path = self.output_dir / f"{ts}_comparison_{years_slug}.md"
+
+        generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        app_version = get_version()
+        years_title = " vs ".join(map(str, comparison.years))
+
+        lines: list[str] = [
+            t("compare_md_title", lang=lang, years=years_title),
+            "",
+            f"> {t('summary_md_generated_at', lang=lang, datetime=generated_at)} | "
+            f"**{t('summary_md_version_label', lang=lang)}:** `{app_version}`",
+            "",
+            t("compare_md_overview", lang=lang),
+            "",
+            f"| {t('summary_md_metric_col', lang=lang)} | {t('summary_md_value_col', lang=lang)} |",
+            "| :--- | :--- |",
+            f"| {t('summary_md_version_label', lang=lang)} | `{app_version}` |",
+            f"| {t('compare_years_label', lang=lang).rstrip(':')} | **{', '.join(map(str, comparison.years))}** |",
+        ]
+
+        if comparison.comparable_months:
+            first_m = get_month_name(min(comparison.comparable_months), lang=lang, short=True)
+            last_m = get_month_name(max(comparison.comparable_months), lang=lang, short=True)
+            period_str = f"{first_m} - {last_m}"
+            lines.append(
+                f"| {t('compare_comparable_period_note', lang=lang, period=period_str, months=len(comparison.comparable_months)).split(':')[0]} | "
+                f"**{period_str} ({len(comparison.comparable_months)} {t('compare_month_col', lang=lang).lower()})** |"
+            )
+
+        for year in comparison.years:
+            raw_kwh = comparison.annual_totals[year]
+            comp_kwh = comparison.comparable_annual_totals.get(year, raw_kwh)
+            metric_lbl = t("compare_md_community_consumption", lang=lang, year=year)
+            if comparison.excluded_months and comp_kwh != raw_kwh:
+                full_note = t("compare_md_full_year_suffix", lang=lang, total=format_kwh(raw_kwh))
+                lines.append(f"| {metric_lbl} | **{format_kwh(comp_kwh)}** ({full_note}) |")
+            else:
+                lines.append(f"| {metric_lbl} | **{format_kwh(raw_kwh)}** |")
+
+        if comparison.total_diff_kwh is not None and comparison.total_pct_change is not None:
+            lines.append(
+                f"| {t('compare_overall_change', lang=lang).rstrip(':')} | "
+                f"**{_format_signed_kwh(comparison.total_diff_kwh, include_unit=True)} "
+                f"({_format_signed_pct(comparison.total_pct_change, decimals=2)})** |"
+            )
+        lines.append("")
+
+        charts_dir = self.output_dir / "charts"
+        chart_set = {Path(p).resolve() for p in chart_paths} if chart_paths else None
+
+        comm_chart = charts_dir / f"community_monthly_{years_slug}.svg"
+        if comm_chart.exists() and (chart_set is None or comm_chart.resolve() in chart_set):
+            lines.append(
+                f"![{t('chart_community_title', lang=lang)}](charts/community_monthly_{years_slug}.svg)"
+            )
+            lines.append("")
+
+        # Section 2: Month-by-Month Comparison Table
+        lines.append(t("compare_md_monthly", lang=lang))
+        lines.append("")
+        year_headers = " | ".join(f"{y} (kWh)" for y in comparison.years)
+        lines.append(
+            f"| {t('compare_month_col', lang=lang)} | {year_headers} | "
+            f"{t('compare_diff_col', lang=lang)} | {t('compare_var_col', lang=lang)} | "
+            f"{t('compare_trend_col', lang=lang)} |"
+        )
+        col_dashes = " | ".join(
+            ":---:" if idx == 0 else "---:" for idx in range(len(comparison.years) + 4)
+        )
+        lines.append(f"| {col_dashes} |")
+
+        for m in comparison.monthly_comparisons:
+            m_name = get_month_name(m.month, lang=lang, short=True)
+            year_vals: list[str] = []
+            for year in comparison.years:
+                val = m.yearly_kwh.get(year)
+                status = m.year_status.get(year, "complete")
+                if status == "no_data" or val is None:
+                    year_vals.append(t("compare_no_data", lang=lang))
+                elif status == "incomplete":
+                    year_vals.append(f"{val:,.2f}*")
+                else:
+                    year_vals.append(f"{val:,.2f}")
+
+            if m.diff_kwh is not None:
+                m_diff = _format_signed_kwh(m.diff_kwh)
+                m_pct = _format_signed_pct(m.pct_change, decimals=1)
+                m_trend = (
+                    t("compare_trend_reduced", lang=lang)
+                    if (m.pct_change is not None and m.pct_change < 0.0)
+                    else t("compare_trend_increased", lang=lang)
+                    if (m.pct_change is not None and m.pct_change > 0.0)
+                    else t("compare_trend_equal", lang=lang)
+                )
+            else:
+                m_diff = "—"
+                m_pct = "—"
+                m_trend = t("compare_no_data", lang=lang) if not m.is_complete else "—"
+
+            lines.append(f"| {m_name} | {' | '.join(year_vals)} | {m_diff} | {m_pct} | {m_trend} |")
+
+        if comparison.comparable_months:
+            first_m = get_month_name(min(comparison.comparable_months), lang=lang, short=True)
+            last_m = get_month_name(max(comparison.comparable_months), lang=lang, short=True)
+            tot_label = (
+                f"**Total ({first_m}-{last_m})**"
+                if len(comparison.comparable_months) < 12
+                else "**Total**"
+            )
+            total_vals = " | ".join(
+                f"**{comparison.comparable_annual_totals[y]:,.2f}**" for y in comparison.years
+            )
+            tot_diff_str = (
+                f"**{_format_signed_kwh(comparison.total_diff_kwh, include_unit=True)}**"
+                if comparison.total_diff_kwh is not None
+                else "**—**"
+            )
+            tot_pct_str = (
+                f"**{_format_signed_pct(comparison.total_pct_change, decimals=2)}**"
+                if comparison.total_pct_change is not None
+                else "**—**"
+            )
+            lines.append(f"| {tot_label} | {total_vals} | {tot_diff_str} | {tot_pct_str} | |")
+        lines.append("")
+
+        # Section 3: Individual CUPS Evolution
+        if comparison.cups_comparisons:
+            lines.append(t("compare_md_cups", lang=lang))
+            lines.append("")
+            earliest_y = comparison.years[0]
+            latest_y = comparison.years[-1]
+            include_use = any(bool(c.use) for c in comparison.cups_comparisons)
+            if include_use:
+                lines.append(
+                    f"| {t('summary_col_rank', lang=lang)} | {t('compare_cups_col', lang=lang)} | "
+                    f"{t('summary_col_use', lang=lang)} | {earliest_y} (kWh) | {latest_y} (kWh) | "
+                    f"{t('compare_diff_col', lang=lang)} | {t('compare_var_col', lang=lang)} |"
+                )
+                lines.append("| ---: | :--- | :--- | ---: | ---: | ---: | ---: |")
+            else:
+                lines.append(
+                    f"| {t('summary_col_rank', lang=lang)} | {t('compare_cups_col', lang=lang)} | "
+                    f"{earliest_y} (kWh) | {latest_y} (kWh) | "
+                    f"{t('compare_diff_col', lang=lang)} | {t('compare_var_col', lang=lang)} |"
+                )
+                lines.append("| ---: | :--- | ---: | ---: | ---: | ---: |")
+
+            for idx, c in enumerate(comparison.cups_comparisons, start=1):
+                c_base = c.yearly_kwh.get(earliest_y, 0.0)
+                c_target = c.yearly_kwh.get(latest_y, 0.0)
+                c_diff = _format_signed_kwh(c.diff_kwh)
+                c_pct = _format_signed_pct(c.pct_change, decimals=1)
+                if include_use:
+                    lines.append(
+                        f"| {idx} | `{c.cups}` | {c.use or '—'} | {c_base:,.2f} | {c_target:,.2f} | {c_diff} | {c_pct} |"
+                    )
+                else:
+                    lines.append(
+                        f"| {idx} | `{c.cups}` | {c_base:,.2f} | {c_target:,.2f} | {c_diff} | {c_pct} |"
+                    )
+            lines.append("")
+
+        # Section 4: Visual Monthly Trajectories by CUPS
+        cups_charts = [
+            (cups_id, charts_dir / f"cups_{cups_id}_{years_slug}.svg")
+            for cups_id in comparison.cups_monthly_data
+            if (charts_dir / f"cups_{cups_id}_{years_slug}.svg").exists()
+            and (
+                chart_set is None
+                or (charts_dir / f"cups_{cups_id}_{years_slug}.svg").resolve() in chart_set
+            )
+        ]
+        if cups_charts:
+            lines.append(t("compare_md_charts", lang=lang))
+            lines.append("")
+            for cups_id, chart_file in cups_charts:
+                use_val = comparison.cups_uses.get(cups_id, "")
+                heading = f"`{cups_id}` ({use_val})" if use_val else f"`{cups_id}`"
+                lines.append(f"### {heading}")
+                lines.append("")
+                lines.append(f"![{cups_id} Monthly Comparison](charts/{chart_file.name})")
+                lines.append("")
+
+        # Section 5: Key Insights
+        lines.append(t("compare_md_insights", lang=lang))
+        lines.append("")
+        if comparison.max_decrease_month and comparison.max_decrease_month.diff_kwh is not None:
+            m_name = get_month_name(comparison.max_decrease_month.month, lang=lang)
+            pct_val = abs(comparison.max_decrease_month.pct_change or 0.0)
+            lines.append(
+                f"- **{t('compare_max_decrease', lang=lang).rstrip(':')}:** {m_name} "
+                f"(-{pct_val:.1f}% / -{format_kwh(abs(comparison.max_decrease_month.diff_kwh))})"
+            )
+        if comparison.max_increase_month and comparison.max_increase_month.diff_kwh is not None:
+            m_name = get_month_name(comparison.max_increase_month.month, lang=lang)
+            pct_val = comparison.max_increase_month.pct_change or 0.0
+            lines.append(
+                f"- **{t('compare_max_increase', lang=lang).rstrip(':')}:** {m_name} "
+                f"(+{pct_val:.1f}% / +{format_kwh(comparison.max_increase_month.diff_kwh)})"
+            )
+        if comparison.top_saving_cups:
+            saver = comparison.top_saving_cups
+            saver_lbl = f"`{saver.cups}` ({saver.use})" if saver.use else f"`{saver.cups}`"
+            lines.append(
+                f"- **{t('compare_top_saver', lang=lang).rstrip(':')}:** {saver_lbl} "
+                f"(-{format_kwh(abs(saver.diff_kwh))})"
+            )
+        if comparison.top_increasing_cups:
+            inc = comparison.top_increasing_cups
+            inc_lbl = f"`{inc.cups}` ({inc.use})" if inc.use else f"`{inc.cups}`"
+            lines.append(
+                f"- **{t('compare_top_increaser', lang=lang).rstrip(':')}:** {inc_lbl} "
+                f"(+{format_kwh(inc.diff_kwh)})"
+            )
+        if comparison.excluded_months:
+            ex_names = ", ".join(
+                get_month_name(m, lang=lang, short=True) for m in comparison.excluded_months
+            )
+            lines.append(
+                f"- **{t('compare_no_data', lang=lang)}:** "
+                f"{t('compare_excluded_months_note', lang=lang, count=len(comparison.excluded_months), months=ex_names)}"
+            )
         lines.append("")
 
         report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
