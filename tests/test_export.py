@@ -549,10 +549,19 @@ def test_sanitize_formula_injection_helper() -> None:
     assert sanitize_formula_injection("\tTabbed") == "'\tTabbed"
     assert sanitize_formula_injection("\rCarriage") == "'\rCarriage"
 
+    # Leading-whitespace bypass payloads
+    assert sanitize_formula_injection(" =SUM(1,2)") == "' =SUM(1,2)"
+    assert sanitize_formula_injection("  +cmd|' /C calc'!A0") == "'  +cmd|' /C calc'!A0"
+    assert sanitize_formula_injection("   -MinusUse") == "'   -MinusUse"
+    assert sanitize_formula_injection("\n@SUM(A1:A10)") == "'\n@SUM(A1:A10)"
+    assert sanitize_formula_injection(" \t=1+1") == "' \t=1+1"
+
     assert sanitize_formula_injection("Aerotermia") == "Aerotermia"
     assert sanitize_formula_injection("Garaje") == "Garaje"
     assert sanitize_formula_injection("Community Lighting") == "Community Lighting"
     assert sanitize_formula_injection("Ascensor 1") == "Ascensor 1"
+    assert sanitize_formula_injection("   ") == "   "
+    assert sanitize_formula_injection("'=1+1") == "'=1+1"
     assert sanitize_formula_injection("") == ""
 
     assert sanitize_formula_injection(None) is None
@@ -756,3 +765,175 @@ def test_export_interactive_html_includes_total_footer(tmp_path: Path) -> None:
     assert "<tfoot>" in content
     assert "TOTAL (RD 244/2019)" in content
     assert "100.00%" in content
+
+
+def test_formula_injection_neutralized_across_all_string_columns_and_lite_exports(
+    tmp_path: Path,
+) -> None:
+    """Leading-whitespace and multi-column formula payloads are neutralized across all CSV/Excel exports."""
+    import openpyxl
+
+    from src.curation.models import (
+        CuratedCupsReading,
+        CuratedDataset,
+        CuratedHourRecord,
+        CuratedSummary,
+    )
+
+    cups_formula = " =CUPS_FORMULA"
+    c1 = CupsMonthlyMetrics(
+        cups=cups_formula,
+        use=" =2+2",
+        month="2026-05",
+        beta=0.6,
+        consumption_kwh=500.0,
+        generation_allocated_kwh=600.0,
+        self_consumed_kwh=480.0,
+        surplus_kwh=120.0,
+        grid_demand_kwh=20.0,
+        self_consumption_rate=80.0,
+        solar_coverage_rate=96.0,
+    )
+    c2 = CupsMonthlyMetrics(
+        cups="ES0021000000000002BB",
+        use="  +SUM(A1:A2)",
+        month="2026-05",
+        beta=0.4,
+        consumption_kwh=300.0,
+        generation_allocated_kwh=400.0,
+        self_consumed_kwh=270.0,
+        surplus_kwh=130.0,
+        grid_demand_kwh=30.0,
+        self_consumption_rate=67.5,
+        solar_coverage_rate=90.0,
+    )
+    m1 = CommunityMonthlyMetrics(
+        month="2026-05",
+        strategy=OptimizationStrategy.OPTIMAL,
+        total_generation_kwh=1000.0,
+        total_consumption_kwh=800.0,
+        total_self_consumed_kwh=750.0,
+        total_surplus_kwh=250.0,
+        total_grid_demand_kwh=50.0,
+        self_consumption_rate=75.0,
+        solar_coverage_rate=93.75,
+        beta_sum=1.0,
+        cups_metrics=[c1, c2],
+    )
+    f1 = CommunityMonthlyMetrics(
+        month="2026-05-1",
+        strategy=OptimizationStrategy.OPTIMAL,
+        total_generation_kwh=500.0,
+        total_consumption_kwh=400.0,
+        total_self_consumed_kwh=375.0,
+        total_surplus_kwh=125.0,
+        total_grid_demand_kwh=25.0,
+        self_consumption_rate=75.0,
+        solar_coverage_rate=93.75,
+        beta_sum=1.0,
+        cups_metrics=[c1, c2],
+    )
+    time_series_df = pd.DataFrame(
+        [
+            {
+                "timestamp": "2026-05-01 12:00:00",
+                "cups": cups_formula,
+                "use": "\t@cmd|' /C calc'!A0",
+                "share_pct": "60.00",
+                "estimated_share_pct": "60.00",
+            },
+            {
+                "timestamp": "2026-05-01 12:00:00",
+                "cups": "ES0021000000000002BB",
+                "use": "Normal Use",
+                "share_pct": "40.00",
+                "estimated_share_pct": "40.00",
+            },
+        ]
+    )
+    profile_matrix = HourlyProfileMatrix(
+        hours=[f"{h:02d}" for h in range(24)],
+        cups_list=[cups_formula, "ES0021000000000002BB"],
+        matrix={cups_formula: {"12": 0.6}, "ES0021000000000002BB": {"12": 0.4}},
+        hourly_sums={"12": 1.0},
+        average_shares={cups_formula: 0.6, "ES0021000000000002BB": 0.4},
+        average_sum=1.0,
+        cups_uses={cups_formula: " =2+2", "ES0021000000000002BB": "  +SUM(A1:A2)"},
+    )
+    result = OptimizationResult(
+        strategy=OptimizationStrategy.OPTIMAL,
+        monthly_results=[m1],
+        fortnight_results=[f1],
+        total_summary=m1,
+        baselines={},
+        hourly_result=HourlyOptimizationResult(
+            time_series_df=time_series_df,
+            profile_matrix=profile_matrix,
+        ),
+        cups_list=[cups_formula, "ES0021000000000002BB"],
+        cups_uses={cups_formula: " =2+2", "ES0021000000000002BB": "  +SUM(A1:A2)"},
+    )
+
+    exporter = ReportExporter(output_dir=tmp_path, timestamp="20260531_all")
+    for csv_path in (
+        exporter.export_monthly_shares_csv(result),
+        exporter.export_monthly_shares_lite_csv(result),
+        exporter.export_fortnight_shares_csv(result),
+        exporter.export_fortnight_shares_lite_csv(result),
+    ):
+        df = pd.read_csv(csv_path, sep=";", decimal=",")
+        assert "' =CUPS_FORMULA" in df["cups"].tolist()
+        assert "' =2+2" in df["use"].tolist()
+        assert "'  +SUM(A1:A2)" in df["use"].tolist()
+
+    df_hourly = pd.read_csv(exporter.export_hourly_shares_csv(result), sep=";")
+    assert "' =CUPS_FORMULA" in df_hourly["cups"].tolist()
+    assert "'\t@cmd|' /C calc'!A0" in df_hourly["use"].tolist()
+
+    # Curated CSV & Excel must escape string columns (including leading whitespace) without touching negative floats
+    rec = CuratedHourRecord(
+        timestamp="2026-05-01 12:00:00",
+        generation=15.0,
+        cups=[
+            CuratedCupsReading(
+                id=" =CUPS_ID",
+                use=" =LeadingSpaceFormula",
+                consumption=6.0,
+                primary=True,
+                self_consumption=10.0,
+                exported_energy=5.0,
+                imported_energy=0.0,
+            ),
+        ],
+        temperature=-3.5,
+        cloud_cover=20,
+    )
+    curated_ds = CuratedDataset(
+        records=[rec],
+        summary=CuratedSummary(
+            total_hours=1,
+            reconciled_hours_count=0,
+            recovered_kwh=0.0,
+            total_generation_kwh=15.0,
+            total_consumption_kwh=6.0,
+            start_time="2026-05-01 12:00:00",
+            end_time="2026-05-01 12:00:00",
+            cups_count=1,
+            primary_cups=" =CUPS_ID",
+        ),
+        cups_configs={},
+    )
+    curated_csv = exporter.export_curated_dataset(curated_ds)
+    df_curated = pd.read_csv(curated_csv, sep=";", decimal=",")
+    assert df_curated["cups_id"].iloc[0] == "' =CUPS_ID"
+    assert df_curated["use"].iloc[0] == "' =LeadingSpaceFormula"
+    assert df_curated["temperature"].iloc[0] == -3.5
+
+    curated_xlsx = exporter.export_curated_excel(curated_ds)
+    wb = openpyxl.load_workbook(curated_xlsx)
+    ws = wb.active
+    assert ws is not None
+    headers = [cell.value for cell in ws[1]]
+    assert ws.cell(row=2, column=headers.index("cups_id") + 1).value == "' =CUPS_ID"
+    assert ws.cell(row=2, column=headers.index("use") + 1).value == "' =LeadingSpaceFormula"
+    assert ws.cell(row=2, column=headers.index("temperature") + 1).value == -3.5

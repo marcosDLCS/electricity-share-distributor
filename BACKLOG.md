@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| **SEC-01** | `P2` Medium | `Security` | Harden Formula Injection Sanitization & Streamline Git History Privacy Audit | `src/presentation/export.py`, `src/security.py` |
 | **SEC-02** | `P2` Medium | `Security` | Migrate `datadis-analyzer` Credential, Secret & Private Coordinate Leak Scanners | `src/security.py`, `tests/test_security.py`, `tests/test_weather.py` |
 | **DOC-01** | `P2` Medium | `Documentation` | Synchronize `README.md`, Bilingual Guides & CLI Help with Parameterless `calculate` & New Exports | `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `src/presentation/views/common.py` |
 | **DOC-02** | `P2` Medium | `Documentation` | Unified Platform Documentation & `datadis-analyzer` Migration / Retirement Guide | `README.md`, `AGENTS.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `src/presentation/views/common.py` |
@@ -49,13 +48,6 @@ _No pending tasks._
 _No pending tasks._
 
 ## 🛡️ Security
-
-### SEC-01 (`P2` Medium): Harden Formula Injection Sanitization & Streamline Git History Privacy Audit
-- **Goal:** Ensure spreadsheet formula sanitization protects all string columns (including leading-whitespace payloads and lite matrix exports) and optimize `scan_git_history()` to execute in a single streamed `git log` pass.
-- **Target Components:** `src/presentation/export.py`, `src/security.py`, `tests/test_security.py`.
-- **Acceptance Criteria:**
-  1. Update `sanitize_formula_injection()` in `src/presentation/export.py` to detect dangerous spreadsheet prefixes (`=`, `+`, `-`, `@`, `\t`, `\r`) even after leading whitespace (`value.lstrip().startswith(...)`) and apply it consistently across all string columns in CSV and Excel exports.
-  2. Refactor `scan_git_history()` in `src/security.py` to replace the per-commit `git log -1` and `git show` subprocess loop ($2 \times N_{\text{commits}}$ processes) with a single `git log --all --format=... -p` stream parser, maintaining 100% detection parity in `tests/test_security.py` while cutting execution time by >90%.
 
 ### SEC-02 (`P2` Medium): Migrate `datadis-analyzer` Credential, Secret & Private Coordinate Leak Scanners
 - **Goal:** Bring `src/security.py` to full parity with `datadis-analyzer` by adding exposed-secret and private-coordinate detection while preserving `esd`'s synthetic weather test examples.

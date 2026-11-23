@@ -271,3 +271,66 @@ def test_check_privacy_succeeds() -> None:
     """Ensure the check_privacy entry point returns 0 for a clean repository."""
     assert check_privacy(include_history=True) == 0
     assert check_privacy(staged_only=True) == 0
+
+
+def test_scan_git_history_detects_commit_message_and_diff_leaks(tmp_path: Path) -> None:
+    """Verify streamed scan_git_history detects message/diff leaks and exempts security files."""
+    # Non-git directory returns empty cleanly
+    non_repo = tmp_path / "not_a_repo"
+    non_repo.mkdir()
+    assert scan_git_history(non_repo) == []
+
+    repo = tmp_path / "history_repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Tester"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+
+    # 1. Clean commit with synthetic CUPS
+    clean_file = repo / "clean.txt"
+    clean_file.write_text("Synthetic: ES0021000000000001AA\n", encoding="utf-8")
+    subprocess.run(["git", "add", "clean.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "chore: add synthetic fixture"], cwd=repo, check=True)
+    assert scan_git_history(repo) == []
+
+    # 2. Commit adding a file with real CUPS and local path leak
+    dirty_file = repo / "notes.md"
+    fake_path = "/Users" + "/alice/project"
+    dirty_file.write_text(
+        f"Real CUPS: {PROHIBITED_SAMPLE_CUPS}\nPath: {fake_path}\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "notes.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "docs: add sample notes"], cwd=repo, check=True)
+
+    # 3. Commit with prohibited CUPS in commit message
+    clean_file.write_text("Synthetic: ES0021000000000002BB\n", encoding="utf-8")
+    subprocess.run(["git", "add", "clean.txt"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", f"fix: trace {PROHIBITED_SAMPLE_CUPS_2}"],
+        cwd=repo,
+        check=True,
+    )
+
+    # 4. Commit modifying security.py with path pattern (path leaks exempted for security.py)
+    sec_dir = repo / "src"
+    sec_dir.mkdir()
+    (sec_dir / "security.py").write_text(
+        f'PATH_EXAMPLE = "{fake_path}"\n',
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "src/security.py"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "chore: update security regex"], cwd=repo, check=True)
+
+    findings = scan_git_history(repo)
+    leaks_by_location = {(loc, leak): commit_hash for commit_hash, loc, leak in findings}
+
+    assert all(len(commit_hash) == 8 for commit_hash, _, _ in findings)
+    assert any(
+        leak == PROHIBITED_SAMPLE_CUPS and loc != "commit-message" for _, loc, leak in findings
+    )
+    assert ("commit-message", PROHIBITED_SAMPLE_CUPS_2) in leaks_by_location
+    assert any(leak == fake_path and "notes.md" not in loc for _, loc, leak in findings)
+    # Only one path leak (from notes.md), NOT a second one from src/security.py
+    path_findings = [item for item in findings if item[2] == fake_path]
+    assert len(path_findings) == 1

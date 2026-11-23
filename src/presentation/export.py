@@ -30,8 +30,9 @@ def sanitize_formula_injection(value: Any) -> Any:
     """Neutralize spreadsheet formula injection by prefixing risky strings with a single quote.
 
     Prefixes string values starting with '=', '+', '-', '@', '\\t', or '\\r'
-    with a single quote ('), preventing formula execution when opened in Excel/Calc.
-    Non-string values or safe strings are returned unaltered.
+    (either directly or after leading whitespace) with a single quote ('),
+    preventing formula execution when opened in Excel/Calc. Non-string values
+    or safe strings are returned unaltered.
 
     Args:
         value: Any cell value (string, float, int, None, etc.).
@@ -39,9 +40,24 @@ def sanitize_formula_injection(value: Any) -> Any:
     Returns:
         Sanitized value safe for spreadsheet export.
     """
-    if isinstance(value, str) and value.startswith(FORMULA_INJECTION_PREFIXES):
+    if isinstance(value, str) and (
+        value.startswith(FORMULA_INJECTION_PREFIXES)
+        or value.lstrip().startswith(FORMULA_INJECTION_PREFIXES)
+    ):
         return f"'{value}"
     return value
+
+
+def _sanitize_dataframe_strings(df: pd.DataFrame) -> pd.DataFrame:
+    """Neutralize spreadsheet formula injection across all string/object columns."""
+    df_out = df.copy()
+    if df_out.empty:
+        return df_out
+    for col in df_out.columns:
+        dtype = df_out[col].dtype
+        if pd.api.types.is_object_dtype(dtype) or pd.api.types.is_string_dtype(dtype):
+            df_out[col] = df_out[col].map(sanitize_formula_injection)
+    return df_out
 
 
 def get_export_timestamp() -> str:
@@ -166,9 +182,7 @@ class ReportExporter:
         out_dir = Path(target_dir) if target_dir is not None else self.output_dir
         out_dir.mkdir(parents=True, exist_ok=True)
         csv_file = out_dir / f"{base_name}.csv"
-        df_out = df.copy()
-        if "use" in df_out.columns:
-            df_out["use"] = df_out["use"].apply(sanitize_formula_injection)
+        df_out = _sanitize_dataframe_strings(df)
         df_out.to_csv(
             csv_file,
             index=False,
@@ -202,9 +216,7 @@ class ReportExporter:
         out_dir.mkdir(parents=True, exist_ok=True)
         excel_file = out_dir / f"{base_name}.xlsx"
 
-        df_out = df.copy()
-        if "use" in df_out.columns:
-            df_out["use"] = df_out["use"].map(sanitize_formula_injection)
+        df_out = _sanitize_dataframe_strings(df)
         if "is_weekend" in df_out.columns:
             df_out["is_weekend"] = df_out["is_weekend"].astype(bool).map({True: "✅", False: "❌"})
 
@@ -424,7 +436,7 @@ class ReportExporter:
                     {
                         "month": c.month,
                         "cups": c.cups,
-                        "use": sanitize_formula_injection(use_val),
+                        "use": use_val,
                         "consumption_kwh": round(c.consumption_kwh, 2),
                         "generation_kwh": round(m.total_generation_kwh, 2),
                         "share_pct": f"{c.beta * 100:.{prec}f}%".replace(".", self.decimal_char),
@@ -454,6 +466,7 @@ class ReportExporter:
                 ascending=[True] * len(sort_cols),
             ).reset_index(drop=True)
 
+        df = _sanitize_dataframe_strings(df)
         df.to_csv(file_path, index=False, sep=self.delimiter, decimal=self.decimal_char)
         return file_path
 
@@ -498,7 +511,7 @@ class ReportExporter:
             use_val = uses_map.get(cups_id, "")
             row: dict[str, object] = {
                 "cups": cups_id,
-                "use": sanitize_formula_injection(use_val),
+                "use": use_val,
             }
             for m_str in calendar_months:
                 row[m_str] = share_lookup.get((cups_id, m_str), "")
@@ -513,6 +526,7 @@ class ReportExporter:
                 ascending=[True, True],
             ).reset_index(drop=True)
 
+        df = _sanitize_dataframe_strings(df)
         df.to_csv(file_path, index=False, sep=self.delimiter, decimal=self.decimal_char)
         return file_path
 
@@ -567,7 +581,7 @@ class ReportExporter:
                         "month": month_val,
                         "fortnight": fortnight_val,
                         "cups": c.cups,
-                        "use": sanitize_formula_injection(use_val),
+                        "use": use_val,
                         "consumption_kwh": round(c.consumption_kwh, 2),
                         "generation_kwh": round(f_res.total_generation_kwh, 2),
                         "share_pct": f"{c.beta * 100:.{prec}f}%".replace(".", self.decimal_char),
@@ -598,6 +612,7 @@ class ReportExporter:
                 ascending=[True] * len(sort_cols),
             ).reset_index(drop=True)
 
+        df = _sanitize_dataframe_strings(df)
         df.to_csv(file_path, index=False, sep=self.delimiter, decimal=self.decimal_char)
         return file_path
 
@@ -661,7 +676,7 @@ class ReportExporter:
             use_val = uses_map.get(cups_id, "")
             row: dict[str, object] = {
                 "cups": cups_id,
-                "use": sanitize_formula_injection(use_val),
+                "use": use_val,
             }
             for f_str in calendar_fortnights:
                 row[f_str] = share_lookup.get((cups_id, f_str), "")
@@ -676,6 +691,7 @@ class ReportExporter:
                 ascending=[True, True],
             ).reset_index(drop=True)
 
+        df = _sanitize_dataframe_strings(df)
         df.to_csv(file_path, index=False, sep=self.delimiter, decimal=self.decimal_char)
         return file_path
 
@@ -693,8 +709,6 @@ class ReportExporter:
 
         df = opt_result.hourly_result.time_series_df.copy()
         if not df.empty:
-            if "use" in df.columns:
-                df["use"] = df["use"].apply(sanitize_formula_injection)
             sort_cols = [c for c in ["timestamp", "use", "cups"] if c in df.columns]
             df = df.sort_values(
                 by=sort_cols,
@@ -706,6 +720,7 @@ class ReportExporter:
                 if col in df.columns:
                     df[col] = df[col].astype(str).str.replace(".", self.decimal_char, regex=False)
 
+        df = _sanitize_dataframe_strings(df)
         df.to_csv(file_path, index=False, sep=self.delimiter, decimal=self.decimal_char)
         return file_path
 

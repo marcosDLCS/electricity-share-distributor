@@ -330,6 +330,9 @@ def scan_directory(
 def scan_git_history(repo_root: Path | str | None = None) -> list[tuple[str, str, str]]:
     """Scan all git commits in repository history for prohibited real CUPS identifiers or local paths.
 
+    Uses a single streamed ``git log --all --format=... -p`` invocation across all
+    branches and commits rather than spawning per-commit subprocesses.
+
     Args:
         repo_root: Optional repository root path. Defaults to current working directory.
 
@@ -338,46 +341,72 @@ def scan_git_history(repo_root: Path | str | None = None) -> list[tuple[str, str
     """
     root = Path(repo_root) if repo_root else Path.cwd()
     findings: list[tuple[str, str, str]] = []
-
-    try:
-        res = subprocess.run(
-            ["git", "rev-list", "--all"],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        commits = res.stdout.strip().split()
-    except Exception:
-        # Not a git repository or git command unavailable
+    if not root.exists():
         return findings
 
-    for commit in commits:
-        # 1. Scan commit message
-        msg_res = subprocess.run(
-            ["git", "log", "-1", "--format=%B", commit],
-            cwd=root,
-            capture_output=True,
-            text=True,
-        )
-        if msg_res.returncode == 0:
-            for leak in find_cups_leaks(msg_res.stdout) + find_path_leaks(msg_res.stdout):
-                findings.append((commit[:8], "commit-message", leak))
+    commit_marker = "\x1eCOMMIT:"
+    end_msg_marker = "\x1eEND_MSG"
+    cmd = [
+        "git",
+        "log",
+        "--all",
+        "--no-color",
+        "--no-ext-diff",
+        "--cc",
+        "-p",
+        "--format=%x1eCOMMIT:%H%n%B%n%x1eEND_MSG",
+    ]
 
-        # 2. Scan commit diff additions
-        diff_res = subprocess.run(
-            ["git", "show", "--format=", commit],
+    try:
+        with subprocess.Popen(
+            cmd,
             cwd=root,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
+            encoding="utf-8",
             errors="ignore",
-        )
-        if diff_res.returncode == 0:
+        ) as proc:
+            if proc.stdout is None:  # pragma: no cover
+                return findings
+
+            current_commit = ""
             current_diff_file = ""
-            for line in diff_res.stdout.splitlines():
-                if line.startswith("+++ b/"):
+            in_message = False
+            message_lines: list[str] = []
+
+            def _flush_message() -> None:
+                if not current_commit or not message_lines:
+                    message_lines.clear()
+                    return
+                msg_text = "\n".join(message_lines)
+                for leak in find_cups_leaks(msg_text) + find_path_leaks(msg_text):
+                    findings.append((current_commit, "commit-message", leak))
+                message_lines.clear()
+
+            for raw_line in proc.stdout:
+                line = raw_line.rstrip("\r\n")
+
+                if line.startswith(commit_marker):
+                    _flush_message()
+                    current_commit = line[len(commit_marker) : len(commit_marker) + 8]
+                    current_diff_file = ""
+                    in_message = True
+                    continue
+
+                if in_message:
+                    if line == end_msg_marker:
+                        in_message = False
+                        _flush_message()
+                    else:
+                        message_lines.append(line)
+                    continue
+
+                if line.startswith("diff --git "):
+                    current_diff_file = ""
+                elif line.startswith("+++ b/"):
                     current_diff_file = line[6:]
-                elif line.startswith("+") and not line.startswith("+++"):
+                elif line.startswith("+") and not line.startswith("+++") and current_commit:
                     is_sec = current_diff_file.endswith(
                         "security.py"
                     ) or current_diff_file.endswith("test_security.py")
@@ -385,7 +414,12 @@ def scan_git_history(repo_root: Path | str | None = None) -> list[tuple[str, str
                     if not is_sec:
                         leaks += find_path_leaks(line)
                     for leak in leaks:
-                        findings.append((commit[:8], line[:80].strip(), leak))
+                        findings.append((current_commit, line[:80].strip(), leak))
+
+            _flush_message()
+    except Exception:
+        # Not a git repository or git command unavailable
+        return findings
 
     return findings
 
