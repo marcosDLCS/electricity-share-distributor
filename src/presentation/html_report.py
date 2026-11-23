@@ -5,11 +5,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
-import pandas as pd
-
 from src.i18n import t
-from src.ingestion.csv_utils import clean_numeric_series
 from src.optimization.efficiency import calculate_solar_efficiency
 from src.presentation.console import format_kwh
 from src.presentation.views.common import MONTH_ABBR_EN, MONTH_ABBR_ES
@@ -219,13 +215,24 @@ def _calculate_monthly_efficiency(
 
 
 def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any]:
-    """Calculate 3-way comparative prevision: Single CUPS, Fixed Monthly (RD 244/2019), and Dynamic Hourly (TED/1247/2021)."""
+    """Read 4-way self-consumption progression metrics directly from OptimizationResult.
+
+    Covers all four operational modalities without re-parsing time-series DataFrames:
+    1. Current Self-Consumption (single CUPS tied behind inverter meter)
+    2. Fixed Monthly Share (Real Decreto 244/2019)
+    3. Fortnight Share (24 half-month periods)
+    4. Dynamic Hourly Share (Orden TED/1247/2021)
+    """
     tot = opt_result.total_summary
-    monthly_sc = tot.total_self_consumed_kwh
     tot_gen = tot.total_generation_kwh
     tot_dem = tot.total_consumption_kwh
+    monthly_sc = (
+        opt_result.monthly_share_self_consumed_kwh
+        if opt_result.monthly_share_self_consumed_kwh > 0
+        else tot.total_self_consumed_kwh
+    )
 
-    # 1. Identify primary supply point directly from OptimizationResult (or fallback to first CUPS)
+    # 1. Identify primary supply point directly from OptimizationResult
     primary_cups: str | None = opt_result.primary_cups
     if primary_cups and opt_result.cups_list and primary_cups not in opt_result.cups_list:
         primary_cups = None
@@ -233,39 +240,9 @@ def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any
         primary_cups = opt_result.cups_list[0]
     primary_name: str = opt_result.cups_uses.get(primary_cups, "") if primary_cups else ""
 
-    has_hourly = (
-        opt_result.hourly_result is not None
-        and opt_result.hourly_result.time_series_df is not None
-        and not opt_result.hourly_result.time_series_df.empty
-    )
-
-    # 2. Compute "No share at all" (solar PV tied solely to primary CUPS)
+    # 2. Current / No Collective Share (solely tied to primary CUPS)
     if opt_result.current_self_consumed_kwh > 0:
         single_sc_val = opt_result.current_self_consumed_kwh
-    elif has_hourly and opt_result.hourly_result is not None:
-        df = opt_result.hourly_result.time_series_df
-        target_cups = (
-            primary_cups
-            if (primary_cups and "cups" in df.columns and primary_cups in df["cups"].values)
-            else (df["cups"].iloc[0] if "cups" in df.columns and not df.empty else None)
-        )
-        if target_cups is not None:
-            pri_rows = df[df["cups"] == target_cups]
-            pri_c = (
-                pri_rows["consumption_kwh"]
-                if "consumption_kwh" in pri_rows.columns
-                else pd.Series(0.0, index=pri_rows.index)
-            )
-            pri_g = (
-                pri_rows["generation_kwh"]
-                if "generation_kwh" in pri_rows.columns
-                else pd.Series(0.0, index=pri_rows.index)
-            )
-            pri_c_vals = clean_numeric_series(pri_c, fill_na=0.0).to_numpy()
-            pri_g_vals = clean_numeric_series(pri_g, fill_na=0.0).to_numpy()
-            single_sc_val = float(np.sum(np.minimum(pri_c_vals, pri_g_vals)))
-        else:
-            single_sc_val = 0.0
     else:
         pri_metric = (
             next((c for c in tot.cups_metrics if c.cups == primary_cups), None)
@@ -273,92 +250,68 @@ def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any
             else None
         )
         single_sc_val = float(pri_metric.self_consumed_kwh) if pri_metric else 0.0
-
     single_sc = round(max(0.0, min(monthly_sc, single_sc_val)), 1)
 
-    # 3. Compute Dynamic Hourly Share (Orden TED/1247/2021)
-    if opt_result.hourly_share_self_consumed_kwh > 0:
-        hourly_sc = round(
-            max(0.0, min(tot_gen, min(tot_dem, opt_result.hourly_share_self_consumed_kwh))), 1
+    # 3. Fortnight Share (24 half-month periods)
+    has_fortnight = opt_result.fortnight_share_self_consumed_kwh > 0
+    if has_fortnight:
+        fortnight_sc = round(
+            max(0.0, min(tot_gen, min(tot_dem, opt_result.fortnight_share_self_consumed_kwh))),
+            1,
         )
-        is_simulated = True
-    elif has_hourly and opt_result.hourly_result is not None:
-        df = opt_result.hourly_result.time_series_df
-
-        if "share_pct" in df.columns and "estimated_share_pct" in df.columns:
-            act_s = df["share_pct"].replace("", np.nan)
-            raw_shares = pd.Series(
-                np.where(act_s.notna(), act_s, df["estimated_share_pct"]),
-                index=df.index,
-            )
-        elif "share_pct" in df.columns:
-            raw_shares = df["share_pct"]
-        elif "estimated_share_pct" in df.columns:
-            raw_shares = df["estimated_share_pct"]
-        else:
-            raw_shares = pd.Series(0.0, index=df.index)
-
-        if pd.api.types.is_string_dtype(raw_shares.dtype) or raw_shares.dtype == object:
-            str_s = raw_shares.astype(str)
-            had_pct = str_s.str.contains("%")
-            clean_shares = str_s.str.rstrip("%").str.strip()
-            numeric_shares = pd.to_numeric(clean_shares, errors="coerce").fillna(0.0).to_numpy()
-            betas = np.where(
-                had_pct.to_numpy() | (numeric_shares > 1.0),
-                numeric_shares / 100.0,
-                np.maximum(0.0, numeric_shares),
-            )
-        else:
-            numeric_shares = pd.to_numeric(raw_shares, errors="coerce").fillna(0.0).to_numpy()
-            betas = np.where(
-                numeric_shares > 1.0,
-                numeric_shares / 100.0,
-                np.maximum(0.0, numeric_shares),
-            )
-
-        if "consumption_kwh" in df.columns:
-            c_vals = clean_numeric_series(df["consumption_kwh"], fill_na=0.0).to_numpy()
-        else:
-            c_vals = np.zeros(len(df))
-
-        if "generation_kwh" in df.columns:
-            g_vals = clean_numeric_series(df["generation_kwh"], fill_na=0.0).to_numpy()
-        else:
-            g_vals = np.zeros(len(df))
-
-        total_hourly_sc = float(np.sum(np.minimum(c_vals, betas * g_vals)))
-        hourly_sc = round(max(0.0, min(tot_gen, min(tot_dem, total_hourly_sc))), 1)
-        is_simulated = True
     else:
-        hourly_sc = round(max(0.0, min(tot_gen, min(tot_dem, monthly_sc))), 1)
-        is_simulated = False
+        fortnight_sc = round(max(0.0, min(tot_gen, min(tot_dem, monthly_sc))), 1)
 
-    # Rates
+    # 4. Dynamic Hourly Share (Orden TED/1247/2021)
+    is_simulated = opt_result.hourly_share_self_consumed_kwh > 0
+    if is_simulated:
+        hourly_sc = round(
+            max(0.0, min(tot_gen, min(tot_dem, opt_result.hourly_share_self_consumed_kwh))),
+            1,
+        )
+    else:
+        hourly_sc = round(max(0.0, min(tot_gen, min(tot_dem, max(monthly_sc, fortnight_sc)))), 1)
+
+    # Self-consumption rates, surpluses, and solar coverages
     single_sc_rate = (single_sc / max(tot_gen, 1e-6)) * 100.0
     single_surplus_kwh = max(0.0, tot_gen - single_sc)
     single_cov_rate = (single_sc / max(tot_dem, 1e-6)) * 100.0
 
-    monthly_sc_rate = tot.self_consumption_rate
-    monthly_surplus_kwh = tot.total_surplus_kwh
-    monthly_cov_rate = tot.solar_coverage_rate
+    monthly_sc_rate = (
+        (monthly_sc / max(tot_gen, 1e-6)) * 100.0 if tot_gen > 0 else tot.self_consumption_rate
+    )
+    monthly_surplus_kwh = max(0.0, tot_gen - monthly_sc) if tot_gen > 0 else tot.total_surplus_kwh
+    monthly_cov_rate = (
+        (monthly_sc / max(tot_dem, 1e-6)) * 100.0 if tot_dem > 0 else tot.solar_coverage_rate
+    )
+
+    fortnight_sc_rate = (fortnight_sc / max(tot_gen, 1e-6)) * 100.0
+    fortnight_surplus_kwh = max(0.0, tot_gen - fortnight_sc)
+    fortnight_cov_rate = (fortnight_sc / max(tot_dem, 1e-6)) * 100.0
 
     hourly_sc_rate = (hourly_sc / max(tot_gen, 1e-6)) * 100.0
     hourly_surplus_kwh = max(0.0, tot_gen - hourly_sc)
     hourly_cov_rate = (hourly_sc / max(tot_dem, 1e-6)) * 100.0
 
-    # Step-by-step gains
-    gain_monthly_vs_single_kwh = max(0.0, monthly_sc - single_sc)
-    gain_monthly_vs_single_pct = (gain_monthly_vs_single_kwh / max(single_sc, 1e-6)) * 100.0
+    # Step-by-step and cumulative uplift vs baseline
+    gain_monthly_kwh = max(0.0, monthly_sc - single_sc)
+    gain_monthly_pct = (gain_monthly_kwh / max(single_sc, 1e-6)) * 100.0
 
-    gain_hourly_vs_monthly_kwh = max(0.0, hourly_sc - monthly_sc)
-    gain_hourly_vs_monthly_pct = (gain_hourly_vs_monthly_kwh / max(monthly_sc, 1e-6)) * 100.0
+    gain_fortnight_kwh = max(0.0, fortnight_sc - single_sc)
+    gain_fortnight_pct = (gain_fortnight_kwh / max(single_sc, 1e-6)) * 100.0
+
+    gain_fortnight_vs_monthly_kwh = max(0.0, fortnight_sc - monthly_sc)
+    gain_fortnight_vs_monthly_pct = (gain_fortnight_vs_monthly_kwh / max(monthly_sc, 1e-6)) * 100.0
+
+    gain_hourly_kwh = max(0.0, hourly_sc - monthly_sc)
+    gain_hourly_pct = (gain_hourly_kwh / max(monthly_sc, 1e-6)) * 100.0
 
     gain_total_kwh = max(0.0, hourly_sc - single_sc)
     gain_total_pct = (gain_total_kwh / max(single_sc, 1e-6)) * 100.0
 
     return {
         "primary_cups": primary_cups or "",
-        "primary_name": primary_name or "CUPS Principal",
+        "primary_name": primary_name or "Primary CUPS",
         # Scenario 1: Single CUPS (No Collective Share)
         "single_sc_kwh": single_sc,
         "single_sc_rate": round(single_sc_rate, 1),
@@ -369,22 +322,250 @@ def _calculate_hourly_prevision(opt_result: OptimizationResult) -> dict[str, Any
         "monthly_sc_rate": round(monthly_sc_rate, 1),
         "monthly_surplus_kwh": round(monthly_surplus_kwh, 1),
         "monthly_cov_rate": round(monthly_cov_rate, 1),
-        "gain_monthly_kwh": round(gain_monthly_vs_single_kwh, 1),
-        "gain_monthly_pct": round(gain_monthly_vs_single_pct, 1),
-        # Scenario 3: Dynamic Hourly Share (Orden TED/1247/2021)
+        "gain_monthly_kwh": round(gain_monthly_kwh, 1),
+        "gain_monthly_pct": round(gain_monthly_pct, 1),
+        # Scenario 3: Fortnight Share (24 Half-Month Periods)
+        "has_fortnight": has_fortnight,
+        "fortnight_sc_kwh": fortnight_sc,
+        "fortnight_sc_rate": round(fortnight_sc_rate, 1),
+        "fortnight_surplus_kwh": round(fortnight_surplus_kwh, 1),
+        "fortnight_cov_rate": round(fortnight_cov_rate, 1),
+        "gain_fortnight_kwh": round(gain_fortnight_kwh, 1),
+        "gain_fortnight_pct": round(gain_fortnight_pct, 1),
+        "gain_fortnight_vs_monthly_kwh": round(gain_fortnight_vs_monthly_kwh, 1),
+        "gain_fortnight_vs_monthly_pct": round(gain_fortnight_vs_monthly_pct, 1),
+        # Scenario 4: Dynamic Hourly Share (Orden TED/1247/2021)
         "hourly_sc_kwh": hourly_sc,
         "hourly_sc_rate": round(hourly_sc_rate, 1),
         "hourly_surplus_kwh": round(hourly_surplus_kwh, 1),
         "hourly_cov_rate": round(hourly_cov_rate, 1),
-        "gain_hourly_kwh": round(gain_hourly_vs_monthly_kwh, 1),
-        "gain_hourly_pct": round(gain_hourly_vs_monthly_pct, 1),
+        "gain_hourly_kwh": round(gain_hourly_kwh, 1),
+        "gain_hourly_pct": round(gain_hourly_pct, 1),
         # Total Uplift vs Single CUPS
         "gain_total_kwh": round(gain_total_kwh, 1),
         "gain_total_pct": round(gain_total_pct, 1),
         "is_simulated": is_simulated,
         # Backward compatibility aliases
-        "gain_kwh": round(gain_hourly_vs_monthly_kwh, 1),
-        "gain_pct": round(gain_hourly_vs_monthly_pct, 1),
+        "gain_kwh": round(gain_hourly_kwh, 1),
+        "gain_pct": round(gain_hourly_pct, 1),
+    }
+
+
+def _build_html_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
+    """Build unified bilingual (ES/EN) UI dictionary shared by HTML SSR and JS runtime."""
+    return {
+        "es": {
+            "doc_title": "Informe Ejecutivo de Autoconsumo Colectivo — Electricity Share Distributor",
+            "title": "⚡ Informe Ejecutivo de Autoconsumo Colectivo",
+            "subtitle": "Optimización de coeficientes de reparto según Real Decreto 244/2019",
+            "badge_rd": "✓ RD 244/2019",
+            "cups_label": "Suministros (CUPS)",
+            "bylaw_label": "Límites Estatutarios",
+            "mode_simulated": "Simulación Horaria Diurna",
+            "mode_modeled": "Previsión Diurna Modelada",
+            "strat_optimal": "ÓPTIMO",
+            "strat_equal": "EQUITATIVO",
+            "strat_consumption_share": "CONSUMO",
+            "strat_consumption": "CONSUMO",
+            "default_service": "Servicio",
+            "btn_theme": "🌗 Modo",
+            "btn_print": "🖨️ PDF / Imprimir",
+            "kpi_gen_title": "🌞 Producción Solar Total",
+            "kpi_dem_title": "⚡ Demanda Comunitaria",
+            "kpi_surplus_title": "🛡️ Excedente a Red",
+            "kpi_sc_title": "🏆 Energía Autoconsumida",
+            "kpi_solar_hours_gen": "Horas de Sol",
+            "kpi_solar_hours_dem": "Horas de Sol",
+            "kpi_surplus_rate": "Vertido a Red",
+            "kpi_sc_rate": "Aprovechamiento",
+            "kpi_cov_rate": "Cobertura",
+            "prev_box_title": "⚡ Previsión y Comparativa de Autoconsumo",
+            "prev_box_sub": "Progresión comparativa en 4 modalidades: Sin reparto colectivo (1 solo CUPS), Reparto Mensual Fijo (RD 244/2019), Reparto Quincenal (24 quincenas) y Reparto Horario Dinámico (Orden TED/1247/2021)",
+            "hourly_badge_ted": "📜 Orden TED/1247/2021",
+            "prev_card1_title": "Sin Reparto (1 solo CUPS)",
+            "prev_card1_sub": "Aprovechamiento",
+            "prev_card1_tag": "Línea Base",
+            "prev_card2_title": "Reparto Mensual (RD 244/2019)",
+            "prev_card2_vs": "vs 1 CUPS",
+            "prev_card_fortnight_title": "Reparto Quincenal (24 Quincenas)",
+            "prev_card_fortnight_vs": "vs 1 CUPS",
+            "prev_card3_title": "Reparto Horario (Orden TED)",
+            "prev_card3_vs": "vs mensual",
+            "prev_card4_title": "Ganancia Colectiva Total",
+            "prev_card4_sub": "sobre 1 CUPS",
+            "prev_comp_single": "Sin Reparto Colectivo (1 solo CUPS)",
+            "prev_comp_monthly": "Reparto Mensual Fijo (RD 244/2019)",
+            "prev_comp_fortnight": "Reparto Quincenal (24 Quincenas)",
+            "prev_comp_hourly": "Reparto Horario Dinámico (Orden TED/1247/2021)",
+            "prev_note": "Al pasar del autoconsumo individual en 1 solo CUPS al reparto mensual fijo bajo <strong>RD 244/2019</strong> o al reparto quincenal por medias lunas, la comunidad captura la simultaneidad estacional entre servicios comunes. La adopción de coeficientes horarios dinámicos según la <strong>Orden TED/1247/2021</strong> maximiza el aprovechamiento solar y minimiza el excedente vertido a red sin inversión adicional en hardware.",
+            "chart_traj_title": "📊 Trayectoria Anual de Energía (kWh)",
+            "chart_traj_sub": "Generación Solar (ámbar), Demanda Comunitaria (cian) y Autoconsumo Colectivo (verde)",
+            "chart_eff_title": "☀️ Eficiencia Solar Fotovoltaica",
+            "chart_eff_sub": "Índice de Eficiencia Solar (IES, 1-100) modelado con atenuación óptica nubosa, derating térmico y elevación solar estacional",
+            "eff_card1_title": "☁️ Atenuación Óptica Nubosa",
+            "eff_card1_desc": "Transmisión no lineal con retención de ~25% de irradiancia difusa incluso bajo cobertura total.",
+            "eff_card2_title": "🌡️ Derating Térmico FV",
+            "eff_card2_desc": "Coeficiente de potencia de -0,4%/°C respecto a 20°C ambiente (estándar de silicio monocristalino).",
+            "eff_card3_title": "☀️ Elevación Estacional",
+            "eff_card3_desc": "Masa de aire y declinación solar en latitudes ibéricas, con máximo estival y mínimo invernal.",
+            "eff_card4_title": "⏱️ Cenit Solar Diario",
+            "eff_card4_desc": "Trayectoria horaria óptima con pérdidas de reflexión mínimas hacia el mediodía solar (13:00-14:00 h).",
+            "matrix_title": "🗓️ Matriz de Coeficientes Mensuales",
+            "matrix_sub": "Distribución porcentual fija (βi) mensual establecida para cada servicio común bajo RD 244/2019",
+            "search_placeholder": "Buscar servicio o CUPS...",
+            "col_cups": "Suministro / CUPS",
+            "col_avg": "Media Anual",
+            "lbl_total_rd244": "TOTAL (RD 244/2019)",
+            "tip_gen": "Generación",
+            "tip_dem": "Demanda",
+            "tip_solar_dem": "Demanda Horas Sol",
+            "tip_solar_cov": "Cobertura Horas Sol",
+            "tip_sc": "Autoconsumo",
+            "tip_surplus": "Excedente",
+            "tip_coverage": "Cobertura",
+            "tip_efficiency": "Aprovechamiento",
+            "tip_eff_avg": "Media Diurna (08:00-18:00)",
+            "tip_eff_peak": "Eficiencia Cenit (13:00)",
+            "tip_rating": "Calificación",
+            "rating_excellent": "Excelente",
+            "rating_good": "Favorable",
+            "rating_moderate": "Moderada",
+            "footer_text": f"Generado por <strong>Electricity Share Distributor (esd) v{version}</strong> • Real Decreto 244/2019",
+            "months": {
+                "01": "Ene",
+                "02": "Feb",
+                "03": "Mar",
+                "04": "Abr",
+                "05": "May",
+                "06": "Jun",
+                "07": "Jul",
+                "08": "Ago",
+                "09": "Sep",
+                "10": "Oct",
+                "11": "Nov",
+                "12": "Dic",
+            },
+            "months_full": {
+                "01": "Enero",
+                "02": "Febrero",
+                "03": "Marzo",
+                "04": "Abril",
+                "05": "Mayo",
+                "06": "Junio",
+                "07": "Julio",
+                "08": "Agosto",
+                "09": "Septiembre",
+                "10": "Octubre",
+                "11": "Noviembre",
+                "12": "Diciembre",
+            },
+        },
+        "en": {
+            "doc_title": "Executive Collective Solar Distribution Report — Electricity Share Distributor",
+            "title": "⚡ Executive Collective Solar Distribution Report",
+            "subtitle": "Optimal share coefficient allocation under Spanish RD 244/2019",
+            "badge_rd": "✓ RD 244/2019",
+            "cups_label": "Supply Points (CUPS)",
+            "bylaw_label": "Bylaw Limits",
+            "mode_simulated": "Hourly Diurnal Simulation",
+            "mode_modeled": "Modeled Diurnal Prevision",
+            "strat_optimal": "OPTIMAL",
+            "strat_equal": "EQUAL",
+            "strat_consumption_share": "CONSUMPTION",
+            "strat_consumption": "CONSUMPTION",
+            "default_service": "Service",
+            "btn_theme": "🌗 Theme",
+            "btn_print": "🖨️ Print / PDF",
+            "kpi_gen_title": "🌞 Total Solar Generation",
+            "kpi_dem_title": "⚡ Collective Demand",
+            "kpi_surplus_title": "🛡️ Solar Surplus (Grid)",
+            "kpi_sc_title": "🏆 Self-Consumed Energy",
+            "kpi_solar_hours_gen": "Solar Hours",
+            "kpi_solar_hours_dem": "Solar Hours",
+            "kpi_surplus_rate": "Spilled to Grid",
+            "kpi_sc_rate": "Efficiency",
+            "kpi_cov_rate": "Coverage",
+            "prev_box_title": "⚡ Self-Consumption Prevision & Comparison",
+            "prev_box_sub": "4-way comparative solar utilization: No collective share (single CUPS), Fixed Monthly Share (RD 244/2019), Fortnight Share (24 half-month periods), and Dynamic Hourly Share (Order TED/1247/2021)",
+            "hourly_badge_ted": "📜 Spanish Order TED/1247/2021",
+            "prev_card1_title": "No Share (Single CUPS)",
+            "prev_card1_sub": "Utilization",
+            "prev_card1_tag": "Baseline",
+            "prev_card2_title": "Monthly Share (RD 244/2019)",
+            "prev_card2_vs": "vs single CUPS",
+            "prev_card_fortnight_title": "Fortnight Share (24 Periods)",
+            "prev_card_fortnight_vs": "vs single CUPS",
+            "prev_card3_title": "Hourly Share (Order TED)",
+            "prev_card3_vs": "vs monthly",
+            "prev_card4_title": "Total Collective Uplift",
+            "prev_card4_sub": "over single CUPS",
+            "prev_comp_single": "No Collective Share (Single CUPS)",
+            "prev_comp_monthly": "Fixed Monthly Share (RD 244/2019)",
+            "prev_comp_fortnight": "Fortnight Share (24 Half-Month Periods)",
+            "prev_comp_hourly": "Dynamic Hourly Share (Orden TED/1247/2021)",
+            "prev_note": "Moving from single-meter self-consumption to fixed monthly (<strong>RD 244/2019</strong>) or fortnight (half-month) collective shares captures seasonal concurrency across common services. Transitioning further to dynamic hourly schedules under Spanish <strong>Order TED/1247/2021</strong> maximizes solar harvesting and minimizes spilled grid surplus with zero additional hardware costs.",
+            "chart_traj_title": "📊 Annual Energy Trajectory (kWh)",
+            "chart_traj_sub": "Solar Generation (amber), Collective Demand (cyan), and Self-Consumption (green)",
+            "chart_eff_title": "☀️ Photovoltaic Solar Efficiency",
+            "chart_eff_sub": "Solar Efficiency Index (SEI, 1-100) modeled with cloud optical attenuation, thermal derating, and seasonal solar elevation",
+            "eff_card1_title": "☁️ Cloud Optical Attenuation",
+            "eff_card1_desc": "Non-linear optical transmission retaining ~25% diffuse solar irradiance even under 100% overcast.",
+            "eff_card2_title": "🌡️ PV Thermal Derating",
+            "eff_card2_desc": "Power temperature derating coefficient of -0.4%/°C relative to 20°C ambient reference.",
+            "eff_card3_title": "☀️ Seasonal Declination",
+            "eff_card3_desc": "Annual air mass and solar elevation cycle across Iberian latitudes, peaking near summer solstice.",
+            "eff_card4_title": "⏱️ Diurnal Solar Zenith",
+            "eff_card4_desc": "Optimal diurnal solar arc with minimal reflection losses around solar noon (13:00-14:00).",
+            "matrix_title": "🗓️ Monthly Coefficients Matrix",
+            "matrix_sub": "Fixed monthly percentage distribution (βi) established for each common service under RD 244/2019",
+            "search_placeholder": "Search service or CUPS...",
+            "col_cups": "Supply Point / CUPS",
+            "col_avg": "Annual Avg",
+            "lbl_total_rd244": "TOTAL (RD 244/2019)",
+            "tip_gen": "Generation",
+            "tip_dem": "Demand",
+            "tip_solar_dem": "Solar Hours Demand",
+            "tip_solar_cov": "Solar Hours Coverage",
+            "tip_sc": "Self-Consumed",
+            "tip_surplus": "Surplus",
+            "tip_coverage": "Coverage",
+            "tip_efficiency": "Utilization",
+            "tip_eff_avg": "Daytime Avg (08:00-18:00)",
+            "tip_eff_peak": "Solar Noon Peak (13:00)",
+            "tip_rating": "Rating",
+            "rating_excellent": "Excellent",
+            "rating_good": "Good",
+            "rating_moderate": "Moderate",
+            "footer_text": f"Generated by <strong>Electricity Share Distributor (esd) v{version}</strong> • Spanish RD 244/2019",
+            "months": {
+                "01": "Jan",
+                "02": "Feb",
+                "03": "Mar",
+                "04": "Apr",
+                "05": "May",
+                "06": "Jun",
+                "07": "Jul",
+                "08": "Aug",
+                "09": "Sep",
+                "10": "Oct",
+                "11": "Nov",
+                "12": "Dec",
+            },
+            "months_full": {
+                "01": "January",
+                "02": "February",
+                "03": "March",
+                "04": "April",
+                "05": "May",
+                "06": "June",
+                "07": "July",
+                "08": "August",
+                "09": "September",
+                "10": "October",
+                "11": "November",
+                "12": "December",
+            },
+        },
     }
 
 
@@ -514,10 +695,13 @@ def generate_interactive_html_report(
     """Generate self-contained, offline interactive HTML report for property owners and HOA boards."""
     from src.config import get_language, get_precision
 
-    active_lang = (lang or get_language() or "en").lower()
-    is_es = active_lang.startswith("es")
+    active_lang = "es" if (lang or get_language() or "en").lower().startswith("es") else "en"
+    is_es = active_lang == "es"
     prec = get_precision() if precision is None else precision
     version = get_version()
+
+    i18n_catalog = _build_html_i18n(version)
+    ui = i18n_catalog[active_lang]
 
     tot = opt_result.total_summary
     matrix = opt_result.build_matrix()
@@ -537,84 +721,37 @@ def generate_interactive_html_report(
         if c.max_share is not None:
             parts.append(f"Max: {c.max_share * 100:.1f}%")
             bylaw_max_str = f"{c.max_share * 100:.1f}"
-        lbl = "Límites Estatutarios" if is_es else "Bylaw Limits"
-        bylaw_badge = f'<span class="badge badge-bylaw" id="badge-bylaw" data-bylaw-active="true" data-min="{bylaw_min_str}" data-max="{bylaw_max_str}">⚖️ {lbl}: {" | ".join(parts)}</span>'
+        bylaw_badge = (
+            f'<span class="badge badge-bylaw" id="badge-bylaw" data-bylaw-active="true" '
+            f'data-min="{bylaw_min_str}" data-max="{bylaw_max_str}">⚖️ {ui["bylaw_label"]}: {" | ".join(parts)}</span>'
+        )
 
-    # Compute hourly dynamic prevision
+    # Compute 4-way comparative prevision directly from OptimizationResult
     h_prev = _calculate_hourly_prevision(opt_result)
+    hourly_mode_badge_text = ui["mode_simulated"] if h_prev["is_simulated"] else ui["mode_modeled"]
+    strat_badge_text = ui.get(f"strat_{opt_result.strategy.lower()}", opt_result.strategy.upper())
 
     svg_monthly_chart = _generate_svg_monthly_chart(opt_result, is_es)
     svg_eff_chart = _generate_svg_efficiency_chart(opt_result, is_es)
 
-    # Initial localized texts
-    txt_title = (
-        "Informe Ejecutivo de Autoconsumo Colectivo"
-        if is_es
-        else "Executive Collective Solar Distribution Report"
-    )
-    txt_subtitle = (
-        "Optimización de coeficientes de reparto según Real Decreto 244/2019"
-        if is_es
-        else "Optimal share coefficient allocation under Spanish RD 244/2019"
-    )
-    txt_total_gen = "Producción Solar Total" if is_es else "Total Solar Generation"
-    txt_total_dem = "Demanda Comunitaria" if is_es else "Collective Demand"
-    txt_total_surplus = "Excedente a Red" if is_es else "Solar Surplus (Grid)"
-    txt_total_sc = "Energía Autoconsumida" if is_es else "Self-Consumed Energy"
-    txt_solar_hours_gen = "Horas de Sol" if is_es else "Solar Hours"
-    txt_solar_hours_dem = "Horas de Sol" if is_es else "Solar Hours"
-    txt_surplus_rate = "Vertido a Red" if is_es else "Spilled to Grid"
-    txt_sc_rate = "Aprovechamiento" if is_es else "Efficiency"
-    txt_cov_rate = "Cobertura" if is_es else "Coverage"
-
-    txt_prev_box_title = (
-        "Previsión y Comparativa de Autoconsumo"
-        if is_es
-        else "Self-Consumption Prevision & Comparison"
-    )
-    txt_prev_box_sub = (
-        "Comparativa de aprovechamiento solar: Sin reparto colectivo (1 solo CUPS), Reparto Mensual Fijo (RD 244/2019) y Reparto Horario Dinámico (Orden TED/1247/2021)"
-        if is_es
-        else "Comparative solar utilization: No collective share (single CUPS), Fixed Monthly Share (RD 244/2019), and Dynamic Hourly Share (Order TED/1247/2021)"
-    )
-    txt_hourly_mode_badge = (
-        ("Simulación Horaria Diurna" if h_prev["is_simulated"] else "Previsión Diurna Modelada")
-        if is_es
-        else (
-            "Hourly Diurnal Simulation" if h_prev["is_simulated"] else "Modeled Diurnal Prevision"
-        )
-    )
-
-    txt_traj_title = (
-        "Trayectoria Anual de Energía (kWh)" if is_es else "Annual Energy Trajectory (kWh)"
-    )
-    txt_traj_sub = (
-        "Generación Solar (ámbar), Demanda Comunitaria (cian) y Autoconsumo Colectivo (verde)"
-        if is_es
-        else "Solar Generation (amber), Collective Demand (cyan), and Self-Consumption (green)"
-    )
-    txt_eff_title = "Eficiencia Solar Fotovoltaica" if is_es else "Photovoltaic Solar Efficiency"
-    txt_eff_sub = (
-        "Índice de Eficiencia Solar (IES, 1-100) modelado con atenuación óptica nubosa, derating térmico y elevación solar estacional"
-        if is_es
-        else "Solar Efficiency Index (SEI, 1-100) modeled with cloud optical attenuation, thermal derating, and seasonal solar elevation"
-    )
-    txt_matrix_title = (
-        "Matriz de Coeficientes Mensuales" if is_es else "Monthly Coefficients Matrix"
-    )
-    txt_matrix_sub = (
-        "Distribución porcentual fija (βi) mensual establecida para cada servicio común bajo RD 244/2019"
-        if is_es
-        else "Fixed monthly percentage distribution (βi) established for each common service under RD 244/2019"
-    )
-    txt_cups_col = "Suministro / CUPS" if is_es else "Supply Point / CUPS"
-    txt_avg_col = "Media Anual" if is_es else "Annual Avg"
+    # Stacked meter widths for Bar 3 (Fortnight) and Bar 4 (Hourly)
+    monthly_rate = h_prev["monthly_sc_rate"]
+    fortnight_rate = h_prev["fortnight_sc_rate"]
+    hourly_rate = h_prev["hourly_sc_rate"]
+    bar3_base_w = min(monthly_rate, fortnight_rate)
+    bar3_fort_w = max(0.0, fortnight_rate - bar3_base_w)
+    bar4_base_w = min(monthly_rate, hourly_rate)
+    bar4_fort_w = max(0.0, min(fortnight_rate, hourly_rate) - bar4_base_w)
+    bar4_hour_w = max(0.0, hourly_rate - bar4_base_w - bar4_fort_w)
 
     # Build matrix table rows
     matrix_rows: list[str] = []
     for cups in matrix.cups_list:
         use_val = matrix.cups_uses.get(cups, "")
-        label_html = f"<div class='cups-cell'><span class='cups-use'>{use_val or 'Servicio'}</span><span class='cups-id'>…{cups[-8:]}</span></div>"
+        label_html = (
+            f"<div class='cups-cell'><span class='cups-use'>{use_val or ui['default_service']}</span>"
+            f"<span class='cups-id'>…{cups[-8:]}</span></div>"
+        )
         cells = [f"<td>{label_html}</td>"]
         for m in matrix.months:
             raw_val = matrix.matrix.get(cups, {}).get(m)
@@ -658,7 +795,7 @@ def generate_interactive_html_report(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{txt_title} — Electricity Share Distributor</title>
+    <title>{ui["doc_title"]}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
@@ -1009,8 +1146,8 @@ def generate_interactive_html_report(
 
         .hourly-kpi-grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 1.15rem;
+            grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+            gap: 1.05rem;
             margin: 1.25rem 0 1.6rem;
         }}
 
@@ -1120,6 +1257,11 @@ def generate_interactive_html_report(
             background: linear-gradient(90deg, #059669, #10b981);
         }}
 
+        .fill-fortnight {{
+            height: 100%;
+            background: linear-gradient(90deg, #0891b2, #06b6d4);
+        }}
+
         .fill-uplift {{
             height: 100%;
             background: repeating-linear-gradient(
@@ -1144,6 +1286,15 @@ def generate_interactive_html_report(
         .pill-uplift-green {{
             background: rgba(16, 185, 129, 0.2);
             color: var(--accent-sc);
+            padding: 0.15rem 0.45rem;
+            border-radius: 4px;
+            font-weight: 800;
+            font-size: 0.75rem;
+        }}
+
+        .pill-fortnight {{
+            background: rgba(6, 182, 212, 0.2);
+            color: var(--accent-demand);
             padding: 0.15rem 0.45rem;
             border-radius: 4px;
             font-weight: 800;
@@ -1419,12 +1570,12 @@ def generate_interactive_html_report(
         <!-- Header -->
         <header>
             <div class="title-group">
-                <h1 data-i18n="title">⚡ {txt_title}</h1>
-                <p data-i18n="subtitle">{txt_subtitle}</p>
+                <h1 data-i18n="title">{ui["title"]}</h1>
+                <p data-i18n="subtitle">{ui["subtitle"]}</p>
                 <div class="badges-wrap">
-                    <span class="badge badge-rd" id="badge-rd" data-i18n="badge_rd">✓ RD 244/2019</span>
-                    <span class="badge badge-strat" id="badge-strat" data-strat="{opt_result.strategy.lower()}">{opt_result.strategy.upper()}</span>
-                    <span class="badge" id="badge-cups">👥 {ingestion_summary.cups_count} {"Suministros (CUPS)" if is_es else "Supply Points (CUPS)"}</span>
+                    <span class="badge badge-rd" id="badge-rd" data-i18n="badge_rd">{ui["badge_rd"]}</span>
+                    <span class="badge badge-strat" id="badge-strat" data-strat="{opt_result.strategy.lower()}">{strat_badge_text}</span>
+                    <span class="badge" id="badge-cups">👥 {ingestion_summary.cups_count} {ui["cups_label"]}</span>
                     <span class="badge" id="badge-period">📅 {ingestion_summary.start_time[:10]} ➔ {ingestion_summary.end_time[:10]}</span>
                     {bylaw_badge}
                 </div>
@@ -1434,8 +1585,8 @@ def generate_interactive_html_report(
                     <button type="button" class="btn-lang {"active" if is_es else ""}" id="btn-lang-es" onclick="setLang('es')">ES</button>
                     <button type="button" class="btn-lang {"active" if not is_es else ""}" id="btn-lang-en" onclick="setLang('en')">EN</button>
                 </div>
-                <button class="btn" id="btn-theme" onclick="toggleTheme()" data-i18n="btn_theme">{"🌗 Modo" if is_es else "🌗 Theme"}</button>
-                <button class="btn" id="btn-print" onclick="window.print()" data-i18n="btn_print">{"🖨️ PDF / Imprimir" if is_es else "🖨️ Print / PDF"}</button>
+                <button class="btn" id="btn-theme" onclick="toggleTheme()" data-i18n="btn_theme">{ui["btn_theme"]}</button>
+                <button class="btn" id="btn-print" onclick="window.print()" data-i18n="btn_print">{ui["btn_print"]}</button>
             </div>
         </header>
 
@@ -1444,89 +1595,96 @@ def generate_interactive_html_report(
             <!-- Box 1: Production -->
             <div class="kpi-card kpi-gen">
                 <div class="kpi-header">
-                    <span class="kpi-title" data-i18n="kpi_gen_title">🌞 {txt_total_gen}</span>
+                    <span class="kpi-title" data-i18n="kpi_gen_title">{ui["kpi_gen_title"]}</span>
                 </div>
                 <div class="kpi-value text-amber">{format_kwh(tot.total_generation_kwh)}</div>
-                <div class="kpi-meta"><span data-i18n="kpi_solar_hours_gen">{txt_solar_hours_gen}</span>: <strong>{format_kwh(tot.solar_hours_generation_kwh if tot.solar_hours_generation_kwh > 0 else tot.total_generation_kwh)}</strong></div>
+                <div class="kpi-meta"><span data-i18n="kpi_solar_hours_gen">{ui["kpi_solar_hours_gen"]}</span>: <strong>{format_kwh(tot.solar_hours_generation_kwh if tot.solar_hours_generation_kwh > 0 else tot.total_generation_kwh)}</strong></div>
             </div>
 
             <!-- Box 2: Demand -->
             <div class="kpi-card kpi-dem">
                 <div class="kpi-header">
-                    <span class="kpi-title" data-i18n="kpi_dem_title">⚡ {txt_total_dem}</span>
+                    <span class="kpi-title" data-i18n="kpi_dem_title">{ui["kpi_dem_title"]}</span>
                 </div>
                 <div class="kpi-value text-cyan">{format_kwh(tot.total_consumption_kwh)}</div>
-                <div class="kpi-meta"><span data-i18n="kpi_solar_hours_dem">{txt_solar_hours_dem}</span>: <strong>{format_kwh(tot.solar_hours_consumption_kwh)}</strong> ({tot.solar_hours_coverage_rate:.1f}% cov)</div>
+                <div class="kpi-meta"><span data-i18n="kpi_solar_hours_dem">{ui["kpi_solar_hours_dem"]}</span>: <strong>{format_kwh(tot.solar_hours_consumption_kwh)}</strong> ({tot.solar_hours_coverage_rate:.1f}% cov)</div>
             </div>
 
             <!-- Box 3: Surplus -->
             <div class="kpi-card kpi-surplus">
                 <div class="kpi-header">
-                    <span class="kpi-title" data-i18n="kpi_surplus_title">🛡️ {txt_total_surplus}</span>
+                    <span class="kpi-title" data-i18n="kpi_surplus_title">{ui["kpi_surplus_title"]}</span>
                 </div>
                 <div class="kpi-value text-purple">{format_kwh(tot.total_surplus_kwh)}</div>
-                <div class="kpi-meta"><span data-i18n="kpi_surplus_rate">{txt_surplus_rate}</span>: <strong>{tot.total_surplus_kwh / max(tot.total_generation_kwh, 1e-6) * 100:.1f}%</strong></div>
+                <div class="kpi-meta"><span data-i18n="kpi_surplus_rate">{ui["kpi_surplus_rate"]}</span>: <strong>{tot.total_surplus_kwh / max(tot.total_generation_kwh, 1e-6) * 100:.1f}%</strong></div>
             </div>
 
             <!-- Box 4: Autoconsumption -->
             <div class="kpi-card kpi-sc">
                 <div class="kpi-header">
-                    <span class="kpi-title" data-i18n="kpi_sc_title">🏆 {txt_total_sc}</span>
+                    <span class="kpi-title" data-i18n="kpi_sc_title">{ui["kpi_sc_title"]}</span>
                 </div>
                 <div class="kpi-value text-emerald">{format_kwh(tot.total_self_consumed_kwh)}</div>
-                <div class="kpi-meta"><span data-i18n="kpi_sc_rate">{txt_sc_rate}</span>: <strong>{tot.self_consumption_rate:.1f}%</strong> • <span data-i18n="kpi_cov_rate">{txt_cov_rate}</span>: <strong>{tot.solar_coverage_rate:.1f}%</strong></div>
+                <div class="kpi-meta"><span data-i18n="kpi_sc_rate">{ui["kpi_sc_rate"]}</span>: <strong>{tot.self_consumption_rate:.1f}%</strong> • <span data-i18n="kpi_cov_rate">{ui["kpi_cov_rate"]}</span>: <strong>{tot.solar_coverage_rate:.1f}%</strong></div>
             </div>
         </div>
 
-        <!-- Dynamic Prevision & 3-Way Comparative Showcase Box -->
+        <!-- Dynamic Prevision & 4-Way Comparative Showcase Box -->
         <div class="section-box section-hourly-prevision">
             <div class="section-header">
                 <div>
                     <div class="title-with-pill">
-                        <h2 class="section-title" data-i18n="prev_box_title">⚡ {txt_prev_box_title}</h2>
-                        <span class="badge badge-ted" data-i18n="hourly_badge_ted">📜 {"Orden TED/1247/2021" if is_es else "Spanish Order TED/1247/2021"}</span>
-                        <span class="badge badge-mode" id="badge-hourly-mode" data-simulated="{"true" if h_prev["is_simulated"] else "false"}">{txt_hourly_mode_badge}</span>
+                        <h2 class="section-title" data-i18n="prev_box_title">{ui["prev_box_title"]}</h2>
+                        <span class="badge badge-ted" data-i18n="hourly_badge_ted">{ui["hourly_badge_ted"]}</span>
+                        <span class="badge badge-mode" id="badge-hourly-mode" data-simulated="{"true" if h_prev["is_simulated"] else "false"}">{hourly_mode_badge_text}</span>
                     </div>
-                    <p class="section-subtitle" data-i18n="prev_box_sub">{txt_prev_box_sub}</p>
+                    <p class="section-subtitle" data-i18n="prev_box_sub">{ui["prev_box_sub"]}</p>
                 </div>
             </div>
 
             <div class="hourly-kpi-grid">
                 <!-- Scenario 1: No Share (Single CUPS) -->
                 <div class="hourly-kpi-card">
-                    <span class="hourly-kpi-label" data-i18n="prev_card1_title">{"Sin Reparto (1 solo CUPS)" if is_es else "No Share (Single CUPS)"}</span>
+                    <span class="hourly-kpi-label" data-i18n="prev_card1_title">{ui["prev_card1_title"]}</span>
                     <div class="hourly-kpi-val text-dim-blue">{format_kwh(h_prev["single_sc_kwh"])}</div>
-                    <span class="hourly-kpi-sub"><span data-i18n="prev_card1_sub">{"Aprovechamiento" if is_es else "Utilization"}</span>: <strong>{h_prev["single_sc_rate"]:.1f}%</strong> • <span class="pill-dim" data-i18n="prev_card1_tag">{"Línea Base" if is_es else "Baseline"}</span></span>
+                    <span class="hourly-kpi-sub"><span data-i18n="prev_card1_sub">{ui["prev_card1_sub"]}</span>: <strong>{h_prev["single_sc_rate"]:.1f}%</strong> • <span class="pill-dim" data-i18n="prev_card1_tag">{ui["prev_card1_tag"]}</span></span>
                 </div>
 
                 <!-- Scenario 2: Monthly Share (RD 244/2019) -->
                 <div class="hourly-kpi-card">
-                    <span class="hourly-kpi-label" data-i18n="prev_card2_title">{"Reparto Mensual (RD 244/2019)" if is_es else "Monthly Share (RD 244/2019)"}</span>
+                    <span class="hourly-kpi-label" data-i18n="prev_card2_title">{ui["prev_card2_title"]}</span>
                     <div class="hourly-kpi-val text-emerald">{format_kwh(h_prev["monthly_sc_kwh"])}</div>
-                    <span class="hourly-kpi-sub"><strong>{h_prev["monthly_sc_rate"]:.1f}%</strong> • <span class="pill-uplift-green">+{h_prev["gain_monthly_pct"]:.1f}% <span data-i18n="prev_card2_vs">{"vs 1 CUPS" if is_es else "vs single CUPS"}</span></span></span>
+                    <span class="hourly-kpi-sub"><strong>{h_prev["monthly_sc_rate"]:.1f}%</strong> • <span class="pill-uplift-green">+{h_prev["gain_monthly_pct"]:.1f}% <span data-i18n="prev_card2_vs">{ui["prev_card2_vs"]}</span></span></span>
                 </div>
 
-                <!-- Scenario 3: Hourly Share (Orden TED/1247/2021) -->
-                <div class="hourly-kpi-card card-highlight">
-                    <span class="hourly-kpi-label" data-i18n="prev_card3_title">{"Reparto Horario (Orden TED)" if is_es else "Hourly Share (Order TED)"}</span>
-                    <div class="hourly-kpi-val text-amber">{format_kwh(h_prev["hourly_sc_kwh"])}</div>
-                    <span class="hourly-kpi-sub"><strong>{h_prev["hourly_sc_rate"]:.1f}%</strong> • <span class="pill-uplift">+{h_prev["gain_hourly_pct"]:.1f}% <span data-i18n="prev_card3_vs">{"vs mensual" if is_es else "vs monthly"}</span></span></span>
-                </div>
-
-                <!-- Scenario 4: Total Collective Uplift -->
+                <!-- Scenario 3: Fortnight Share (24 Half-Month Periods) -->
                 <div class="hourly-kpi-card">
-                    <span class="hourly-kpi-label" data-i18n="prev_card4_title">{"Ganancia Colectiva Total" if is_es else "Total Collective Uplift"}</span>
+                    <span class="hourly-kpi-label" data-i18n="prev_card_fortnight_title">{ui["prev_card_fortnight_title"]}</span>
+                    <div class="hourly-kpi-val text-cyan">{format_kwh(h_prev["fortnight_sc_kwh"])}</div>
+                    <span class="hourly-kpi-sub"><strong>{h_prev["fortnight_sc_rate"]:.1f}%</strong> • <span class="pill-fortnight">+{h_prev["gain_fortnight_pct"]:.1f}% <span data-i18n="prev_card_fortnight_vs">{ui["prev_card_fortnight_vs"]}</span></span></span>
+                </div>
+
+                <!-- Scenario 4: Hourly Share (Orden TED/1247/2021) -->
+                <div class="hourly-kpi-card card-highlight">
+                    <span class="hourly-kpi-label" data-i18n="prev_card3_title">{ui["prev_card3_title"]}</span>
+                    <div class="hourly-kpi-val text-amber">{format_kwh(h_prev["hourly_sc_kwh"])}</div>
+                    <span class="hourly-kpi-sub"><strong>{h_prev["hourly_sc_rate"]:.1f}%</strong> • <span class="pill-uplift">+{h_prev["gain_hourly_pct"]:.1f}% <span data-i18n="prev_card3_vs">{ui["prev_card3_vs"]}</span></span></span>
+                </div>
+
+                <!-- Total Collective Uplift -->
+                <div class="hourly-kpi-card">
+                    <span class="hourly-kpi-label" data-i18n="prev_card4_title">{ui["prev_card4_title"]}</span>
                     <div class="hourly-kpi-val text-cyan">+{h_prev["gain_total_kwh"]:,.1f} kWh</div>
-                    <span class="hourly-kpi-sub"><span class="pill-cyan">+{h_prev["gain_total_pct"]:.1f}%</span> <span data-i18n="prev_card4_sub">{"sobre 1 CUPS" if is_es else "over single CUPS"}</span></span>
+                    <span class="hourly-kpi-sub"><span class="pill-cyan">+{h_prev["gain_total_pct"]:.1f}%</span> <span data-i18n="prev_card4_sub">{ui["prev_card4_sub"]}</span></span>
                 </div>
             </div>
 
-            <!-- Comparison 3-Way Meter Bar -->
+            <!-- Comparison 4-Way Meter Bar -->
             <div class="comparison-bar-container">
-                <!-- Bar 1: Sin Reparto Colectivo (1 CUPS) -->
+                <!-- Bar 1: Single CUPS -->
                 <div class="comp-bar-row">
                     <div class="comp-bar-meta">
-                        <span class="comp-bar-name" data-i18n="prev_comp_single">{"Sin Reparto Colectivo (1 solo CUPS)" if is_es else "No Collective Share (Single CUPS)"}</span>
+                        <span class="comp-bar-name" data-i18n="prev_comp_single">{ui["prev_comp_single"]}</span>
                         <span class="comp-bar-val">{format_kwh(h_prev["single_sc_kwh"])} ({h_prev["single_sc_rate"]:.1f}%)</span>
                     </div>
                     <div class="comp-bar-track">
@@ -1534,10 +1692,10 @@ def generate_interactive_html_report(
                     </div>
                 </div>
 
-                <!-- Bar 2: Reparto Mensual Fijo (RD 244/2019) -->
+                <!-- Bar 2: Fixed Monthly Share (RD 244/2019) -->
                 <div class="comp-bar-row">
                     <div class="comp-bar-meta">
-                        <span class="comp-bar-name" data-i18n="prev_comp_monthly">{"Reparto Mensual Fijo (RD 244/2019)" if is_es else "Fixed Monthly Share (RD 244/2019)"}</span>
+                        <span class="comp-bar-name" data-i18n="prev_comp_monthly">{ui["prev_comp_monthly"]}</span>
                         <span class="comp-bar-val">{format_kwh(h_prev["monthly_sc_kwh"])} ({h_prev["monthly_sc_rate"]:.1f}%)</span>
                     </div>
                     <div class="comp-bar-track">
@@ -1545,22 +1703,35 @@ def generate_interactive_html_report(
                     </div>
                 </div>
 
-                <!-- Bar 3: Reparto Horario Dinámico (Orden TED/1247/2021) -->
+                <!-- Bar 3: Fortnight Share (24 Half-Month Periods) -->
                 <div class="comp-bar-row">
                     <div class="comp-bar-meta">
-                        <span class="comp-bar-name font-bold text-amber" data-i18n="prev_comp_hourly">{"Reparto Horario Dinámico (Orden TED/1247/2021)" if is_es else "Dynamic Hourly Share (Orden TED/1247/2021)"}</span>
+                        <span class="comp-bar-name text-cyan" data-i18n="prev_comp_fortnight">{ui["prev_comp_fortnight"]}</span>
+                        <span class="comp-bar-val text-cyan">{format_kwh(h_prev["fortnight_sc_kwh"])} ({h_prev["fortnight_sc_rate"]:.1f}%)</span>
+                    </div>
+                    <div class="comp-bar-track">
+                        <div class="comp-bar-fill fill-monthly" style="width: {bar3_base_w:.1f}%;"></div>
+                        <div class="comp-bar-fill fill-fortnight" style="width: {bar3_fort_w:.1f}%;"></div>
+                    </div>
+                </div>
+
+                <!-- Bar 4: Dynamic Hourly Share (Orden TED/1247/2021) -->
+                <div class="comp-bar-row">
+                    <div class="comp-bar-meta">
+                        <span class="comp-bar-name font-bold text-amber" data-i18n="prev_comp_hourly">{ui["prev_comp_hourly"]}</span>
                         <span class="comp-bar-val font-bold text-emerald">{format_kwh(h_prev["hourly_sc_kwh"])} ({h_prev["hourly_sc_rate"]:.1f}%)</span>
                     </div>
                     <div class="comp-bar-track">
-                        <div class="comp-bar-fill fill-monthly" style="width: {h_prev["monthly_sc_rate"]:.1f}%;"></div>
-                        <div class="comp-bar-fill fill-uplift" style="width: {max(0.0, h_prev["hourly_sc_rate"] - h_prev["monthly_sc_rate"]):.1f}%;"></div>
+                        <div class="comp-bar-fill fill-monthly" style="width: {bar4_base_w:.1f}%;"></div>
+                        <div class="comp-bar-fill fill-fortnight" style="width: {bar4_fort_w:.1f}%;"></div>
+                        <div class="comp-bar-fill fill-uplift" style="width: {bar4_hour_w:.1f}%;"></div>
                     </div>
                 </div>
             </div>
 
             <div class="regulatory-callout">
                 <span class="callout-icon">💡</span>
-                <p data-i18n="prev_note">{"Al pasar de un autoconsumo individual ligado a 1 solo CUPS al reparto colectivo mensual bajo <strong>RD 244/2019</strong>, la comunidad aprovecha la simultaneidad de consumos de los distintos servicios comunes. La adopción posterior de coeficientes horarios dinámicos según la <strong>Orden TED/1247/2021</strong> permite maximizar aún más el aprovechamiento solar y reducir el excedente vertido a red sin coste de equipamiento adicional." if is_es else "Moving from individual self-consumption tied to a single supply point to collective monthly sharing under <strong>RD 244/2019</strong> leverages multi-point concurrency across common services. Transitioning further to dynamic hourly schedules under Spanish <strong>Order TED/1247/2021</strong> maximizes solar harvesting and minimizes spilled grid surplus with zero additional hardware costs."}</p>
+                <p data-i18n="prev_note">{ui["prev_note"]}</p>
             </div>
         </div>
 
@@ -1568,8 +1739,8 @@ def generate_interactive_html_report(
         <div class="section-box">
             <div class="section-header">
                 <div>
-                    <h2 class="section-title" data-i18n="chart_traj_title">📊 {txt_traj_title}</h2>
-                    <p class="section-subtitle" data-i18n="chart_traj_sub">{txt_traj_sub}</p>
+                    <h2 class="section-title" data-i18n="chart_traj_title">{ui["chart_traj_title"]}</h2>
+                    <p class="section-subtitle" data-i18n="chart_traj_sub">{ui["chart_traj_sub"]}</p>
                 </div>
             </div>
             <div class="chart-container">
@@ -1581,12 +1752,12 @@ def generate_interactive_html_report(
         <div class="section-box">
             <div class="section-header">
                 <div>
-                    <h2 class="section-title" data-i18n="chart_eff_title">☀️ {txt_eff_title}</h2>
-                    <p class="section-subtitle" data-i18n="chart_eff_sub">{txt_eff_sub}</p>
+                    <h2 class="section-title" data-i18n="chart_eff_title">{ui["chart_eff_title"]}</h2>
+                    <p class="section-subtitle" data-i18n="chart_eff_sub">{ui["chart_eff_sub"]}</p>
                 </div>
                 <div class="eff-legend">
-                    <div class="eff-legend-item"><span class="legend-line line-peak"></span> <span data-i18n="tip_eff_peak">{"Eficiencia Cenit (13:00)" if is_es else "Solar Noon Peak (13:00)"}</span></div>
-                    <div class="eff-legend-item"><span class="legend-line line-avg"></span> <span data-i18n="tip_eff_avg">{"Media Diurna (08:00-18:00)" if is_es else "Daytime Avg (08:00-18:00)"}</span></div>
+                    <div class="eff-legend-item"><span class="legend-line line-peak"></span> <span data-i18n="tip_eff_peak">{ui["tip_eff_peak"]}</span></div>
+                    <div class="eff-legend-item"><span class="legend-line line-avg"></span> <span data-i18n="tip_eff_avg">{ui["tip_eff_avg"]}</span></div>
                 </div>
             </div>
             <div class="chart-container">
@@ -1594,20 +1765,20 @@ def generate_interactive_html_report(
             </div>
             <div class="eff-cards-grid">
                 <div class="eff-card">
-                    <h4 data-i18n="eff_card1_title">☁️ {"Atenuación Óptica Nubosa" if is_es else "Cloud Optical Attenuation"}</h4>
-                    <p data-i18n="eff_card1_desc">{"Transmisión no lineal con retención de ~25% de irradiancia difusa incluso bajo cobertura total." if is_es else "Non-linear optical transmission retaining ~25% diffuse solar irradiance even under 100% overcast."}</p>
+                    <h4 data-i18n="eff_card1_title">{ui["eff_card1_title"]}</h4>
+                    <p data-i18n="eff_card1_desc">{ui["eff_card1_desc"]}</p>
                 </div>
                 <div class="eff-card">
-                    <h4 data-i18n="eff_card2_title">🌡️ {"Derating Térmico FV" if is_es else "PV Thermal Derating"}</h4>
-                    <p data-i18n="eff_card2_desc">{"Coeficiente de potencia de -0,4%/°C respecto a 20°C ambiente (estándar de silicio monocristalino)." if is_es else "Power temperature derating coefficient of -0.4%/°C relative to 20°C ambient reference."}</p>
+                    <h4 data-i18n="eff_card2_title">{ui["eff_card2_title"]}</h4>
+                    <p data-i18n="eff_card2_desc">{ui["eff_card2_desc"]}</p>
                 </div>
                 <div class="eff-card">
-                    <h4 data-i18n="eff_card3_title">☀️ {"Elevación Estacional" if is_es else "Seasonal Declination"}</h4>
-                    <p data-i18n="eff_card3_desc">{"Masa de aire y declinación solar en latitudes ibéricas, con máximo estival y mínimo invernal." if is_es else "Annual air mass and solar elevation cycle across Iberian latitudes, peaking near summer solstice."}</p>
+                    <h4 data-i18n="eff_card3_title">{ui["eff_card3_title"]}</h4>
+                    <p data-i18n="eff_card3_desc">{ui["eff_card3_desc"]}</p>
                 </div>
                 <div class="eff-card">
-                    <h4 data-i18n="eff_card4_title">⏱️ {"Cenit Solar Diario" if is_es else "Diurnal Solar Zenith"}</h4>
-                    <p data-i18n="eff_card4_desc">{"Trayectoria horaria óptima con pérdidas de reflexión mínimas hacia el mediodía solar (13:00-14:00 h)." if is_es else "Optimal diurnal solar arc with minimal reflection losses around solar noon (13:00-14:00)."}</p>
+                    <h4 data-i18n="eff_card4_title">{ui["eff_card4_title"]}</h4>
+                    <p data-i18n="eff_card4_desc">{ui["eff_card4_desc"]}</p>
                 </div>
             </div>
         </div>
@@ -1616,18 +1787,18 @@ def generate_interactive_html_report(
         <div class="section-box">
             <div class="section-header">
                 <div>
-                    <h2 class="section-title" data-i18n="matrix_title">🗓️ {txt_matrix_title}</h2>
-                    <p class="section-subtitle" data-i18n="matrix_sub">{txt_matrix_sub}</p>
+                    <h2 class="section-title" data-i18n="matrix_title">{ui["matrix_title"]}</h2>
+                    <p class="section-subtitle" data-i18n="matrix_sub">{ui["matrix_sub"]}</p>
                 </div>
-                <input type="text" id="searchInput" class="search-box" data-i18n-placeholder="search_placeholder" placeholder="{"Buscar servicio o CUPS..." if is_es else "Search service or CUPS..."}" oninput="filterTable()">
+                <input type="text" id="searchInput" class="search-box" data-i18n-placeholder="search_placeholder" placeholder="{ui["search_placeholder"]}" oninput="filterTable()">
             </div>
             <div class="table-wrap">
                 <table id="matrixTable">
                     <thead>
                         <tr>
-                            <th data-i18n="col_cups">{txt_cups_col}</th>
+                            <th data-i18n="col_cups">{ui["col_cups"]}</th>
                             {month_headers}
-                            <th class="text-right col-avg" data-i18n="col_avg">{txt_avg_col}</th>
+                            <th class="text-right col-avg" data-i18n="col_avg">{ui["col_avg"]}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1639,7 +1810,7 @@ def generate_interactive_html_report(
         </div>
 
         <footer style="margin-top: 3rem; text-align: center; color: var(--text-dim); font-size: 0.8rem;">
-            <span data-i18n="footer_text">{"Generado por" if is_es else "Generated by"} <strong>Electricity Share Distributor (esd) v{version}</strong> • {"Real Decreto 244/2019" if is_es else "Spanish RD 244/2019"}</span>
+            <span data-i18n="footer_text">{ui["footer_text"]}</span>
         </footer>
     </div>
 
@@ -1653,167 +1824,7 @@ def generate_interactive_html_report(
         const periodEnd = "{ingestion_summary.end_time[:10]}";
         const appVersion = "{version}";
 
-        const I18N = {{
-            es: {{
-                doc_title: "Informe Ejecutivo de Autoconsumo Colectivo — Electricity Share Distributor",
-                title: "⚡ Informe Ejecutivo de Autoconsumo Colectivo",
-                subtitle: "Optimización de coeficientes de reparto según Real Decreto 244/2019",
-                badge_rd: "✓ RD 244/2019",
-                btn_theme: "🌗 Modo",
-                btn_print: "🖨️ PDF / Imprimir",
-                kpi_gen_title: "🌞 Producción Solar Total",
-                kpi_gen_sub: "100% Fotovoltaica Comunitaria",
-                kpi_dem_title: "⚡ Demanda Comunitaria",
-                kpi_dem_sub: "Demanda de Red",
-                kpi_surplus_title: "🛡️ Excedente a Red",
-                kpi_surplus_sub: "Vertido a Red",
-                kpi_sc_title: "🏆 Energía Autoconsumida",
-                kpi_solar_hours_gen: "Horas de Sol",
-                kpi_solar_hours_dem: "Horas de Sol",
-                kpi_surplus_rate: "Vertido a Red",
-                kpi_sc_rate: "Aprovechamiento",
-                kpi_cov_rate: "Cobertura",
-                prev_box_title: "⚡ Previsión y Comparativa de Autoconsumo",
-                prev_box_sub: "Comparativa de aprovechamiento solar: Sin reparto colectivo (1 solo CUPS), Reparto Mensual Fijo (RD 244/2019) y Reparto Horario Dinámico (Orden TED/1247/2021)",
-                hourly_box_title: "⚡ Previsión y Comparativa de Autoconsumo",
-                hourly_box_sub: "Comparativa de aprovechamiento solar: Sin reparto colectivo (1 solo CUPS), Reparto Mensual Fijo (RD 244/2019) y Reparto Horario Dinámico (Orden TED/1247/2021)",
-                hourly_badge_ted: "📜 Orden TED/1247/2021",
-                prev_card1_title: "Sin Reparto (1 solo CUPS)",
-                prev_card1_sub: "Aprovechamiento",
-                prev_card1_tag: "Línea Base",
-                prev_card2_title: "Reparto Mensual (RD 244/2019)",
-                prev_card2_vs: "vs 1 CUPS",
-                prev_card3_title: "Reparto Horario (Orden TED)",
-                prev_card3_vs: "vs mensual",
-                prev_card4_title: "Ganancia Colectiva Total",
-                prev_card4_sub: "sobre 1 CUPS",
-                prev_comp_single: "Sin Reparto Colectivo (1 solo CUPS)",
-                prev_comp_monthly: "Reparto Mensual Fijo (RD 244/2019)",
-                prev_comp_hourly: "Reparto Horario Dinámico (Orden TED/1247/2021)",
-                prev_note: "Al pasar de un autoconsumo individual ligado a 1 solo CUPS al reparto colectivo mensual bajo <strong>RD 244/2019</strong>, la comunidad aprovecha la simultaneidad de consumos de los distintos servicios comunes. La adopción posterior de coeficientes horarios dinámicos según la <strong>Orden TED/1247/2021</strong> permite maximizar aún más el aprovechamiento solar y reducir el excedente vertido a red sin coste de equipamiento adicional.",
-                chart_traj_title: "📊 Trayectoria Anual de Energía (kWh)",
-                chart_traj_sub: "Generación Solar (ámbar), Demanda Comunitaria (cian) y Autoconsumo Colectivo (verde)",
-                chart_eff_title: "☀️ Eficiencia Solar Fotovoltaica",
-                chart_eff_sub: "Índice de Eficiencia Solar (IES, 1-100) modelado con atenuación óptica nubosa, derating térmico y elevación solar estacional",
-                eff_card1_title: "☁️ Atenuación Óptica Nubosa",
-                eff_card1_desc: "Transmisión no lineal con retención de ~25% de irradiancia difusa incluso bajo cobertura total.",
-                eff_card2_title: "🌡️ Derating Térmico FV",
-                eff_card2_desc: "Coeficiente de potencia de -0,4%/°C respecto a 20°C ambiente (estándar de silicio monocristalino).",
-                eff_card3_title: "☀️ Elevación Estacional",
-                eff_card3_desc: "Masa de aire y declinación solar en latitudes ibéricas, con máximo estival y mínimo invernal.",
-                eff_card4_title: "⏱️ Cenit Solar Diario",
-                eff_card4_desc: "Trayectoria horaria óptima con pérdidas de reflexión mínimas hacia el mediodía solar (13:00-14:00 h).",
-                matrix_title: "🗓️ Matriz de Coeficientes Mensuales",
-                matrix_sub: "Distribución porcentual fija (βi) mensual establecida para cada servicio común bajo RD 244/2019",
-                search_placeholder: "Buscar servicio o CUPS...",
-                col_cups: "Suministro / CUPS",
-                col_avg: "Media Anual",
-                lbl_total_rd244: "TOTAL (RD 244/2019)",
-                tip_gen: "Generación",
-                tip_dem: "Demanda",
-                tip_solar_dem: "Demanda Horas Sol",
-                tip_solar_cov: "Cobertura Horas Sol",
-                tip_sc: "Autoconsumo",
-                tip_surplus: "Excedente",
-                tip_coverage: "Cobertura",
-                tip_efficiency: "Aprovechamiento",
-                tip_eff_avg: "Media Diurna (08:00-18:00)",
-                tip_eff_peak: "Eficiencia Cenit (13:00)",
-                tip_rating: "Calificación",
-                rating_excellent: "Excelente",
-                rating_good: "Favorable",
-                rating_moderate: "Moderada",
-                footer_text: `Generado por <strong>Electricity Share Distributor (esd) v${{appVersion}}</strong> • Real Decreto 244/2019`,
-                months: {{
-                    "01": "Ene", "02": "Feb", "03": "Mar", "04": "Abr",
-                    "05": "May", "06": "Jun", "07": "Jul", "08": "Ago",
-                    "09": "Sep", "10": "Oct", "11": "Nov", "12": "Dic"
-                }},
-                months_full: {{
-                    "01": "Enero", "02": "Febrero", "03": "Marzo", "04": "Abril",
-                    "05": "Mayo", "06": "Junio", "07": "Julio", "08": "Agosto",
-                    "09": "Septiembre", "10": "Octubre", "11": "Noviembre", "12": "Diciembre"
-                }}
-            }},
-            en: {{
-                doc_title: "Executive Collective Solar Distribution Report — Electricity Share Distributor",
-                title: "⚡ Executive Collective Solar Distribution Report",
-                subtitle: "Optimal share coefficient allocation under Spanish RD 244/2019",
-                badge_rd: "✓ RD 244/2019",
-                btn_theme: "🌗 Theme",
-                btn_print: "🖨️ Print / PDF",
-                kpi_gen_title: "🌞 Total Solar Generation",
-                kpi_dem_title: "⚡ Collective Demand",
-                kpi_surplus_title: "🛡️ Solar Surplus (Grid)",
-                kpi_sc_title: "🏆 Self-Consumed Energy",
-                kpi_solar_hours_gen: "Solar Hours",
-                kpi_solar_hours_dem: "Solar Hours",
-                kpi_surplus_rate: "Spilled to Grid",
-                kpi_sc_rate: "Efficiency",
-                kpi_cov_rate: "Coverage",
-                prev_box_title: "⚡ Self-Consumption Prevision & Comparison",
-                prev_box_sub: "Comparative solar utilization: No collective share (single CUPS), Fixed Monthly Share (RD 244/2019), and Dynamic Hourly Share (Order TED/1247/2021)",
-                hourly_box_title: "⚡ Self-Consumption Prevision & Comparison",
-                hourly_box_sub: "Comparative solar utilization: No collective share (single CUPS), Fixed Monthly Share (RD 244/2019), and Dynamic Hourly Share (Order TED/1247/2021)",
-                hourly_badge_ted: "📜 Spanish Order TED/1247/2021",
-                prev_card1_title: "No Share (Single CUPS)",
-                prev_card1_sub: "Utilization",
-                prev_card1_tag: "Baseline",
-                prev_card2_title: "Monthly Share (RD 244/2019)",
-                prev_card2_vs: "vs single CUPS",
-                prev_card3_title: "Hourly Share (Order TED)",
-                prev_card3_vs: "vs monthly",
-                prev_card4_title: "Total Collective Uplift",
-                prev_card4_sub: "over single CUPS",
-                prev_comp_single: "No Collective Share (Single CUPS)",
-                prev_comp_monthly: "Fixed Monthly Share (RD 244/2019)",
-                prev_comp_hourly: "Dynamic Hourly Share (Orden TED/1247/2021)",
-                prev_note: "Moving from individual self-consumption tied to a single supply point to collective monthly sharing under <strong>RD 244/2019</strong> leverages multi-point concurrency across common services. Transitioning further to dynamic hourly schedules under Spanish <strong>Order TED/1247/2021</strong> maximizes solar harvesting and minimizes spilled grid surplus with zero additional hardware costs.",
-                chart_traj_title: "📊 Annual Energy Trajectory (kWh)",
-                chart_traj_sub: "Solar Generation (amber), Collective Demand (cyan), and Self-Consumption (green)",
-                chart_eff_title: "☀️ Photovoltaic Solar Efficiency",
-                chart_eff_sub: "Solar Efficiency Index (SEI, 1-100) modeled with cloud optical attenuation, thermal derating, and seasonal solar elevation",
-                eff_card1_title: "☁️ Cloud Optical Attenuation",
-                eff_card1_desc: "Non-linear optical transmission retaining ~25% diffuse solar irradiance even under 100% overcast.",
-                eff_card2_title: "🌡️ PV Thermal Derating",
-                eff_card2_desc: "Power temperature derating coefficient of -0.4%/°C relative to 20°C ambient reference.",
-                eff_card3_title: "☀️ Seasonal Declination",
-                eff_card3_desc: "Annual air mass and solar elevation cycle across Iberian latitudes, peaking near summer solstice.",
-                eff_card4_title: "⏱️ Diurnal Solar Zenith",
-                eff_card4_desc: "Optimal diurnal solar arc with minimal reflection losses around solar noon (13:00-14:00).",
-                matrix_title: "🗓️ Monthly Coefficients Matrix",
-                matrix_sub: "Fixed monthly percentage distribution (βi) established for each common service under RD 244/2019",
-                search_placeholder: "Search service or CUPS...",
-                col_cups: "Supply Point / CUPS",
-                col_avg: "Annual Avg",
-                lbl_total_rd244: "TOTAL (RD 244/2019)",
-                tip_gen: "Generation",
-                tip_dem: "Demand",
-                tip_solar_dem: "Solar Hours Demand",
-                tip_solar_cov: "Solar Hours Coverage",
-                tip_sc: "Self-Consumed",
-                tip_surplus: "Surplus",
-                tip_coverage: "Coverage",
-                tip_efficiency: "Utilization",
-                tip_eff_avg: "Daytime Avg (08:00-18:00)",
-                tip_eff_peak: "Solar Noon Peak (13:00)",
-                tip_rating: "Rating",
-                rating_excellent: "Excellent",
-                rating_good: "Good",
-                rating_moderate: "Moderate",
-                footer_text: `Generated by <strong>Electricity Share Distributor (esd) v${{appVersion}}</strong> • Spanish RD 244/2019`,
-                months: {{
-                    "01": "Jan", "02": "Feb", "03": "Mar", "04": "Apr",
-                    "05": "May", "06": "Jun", "07": "Jul", "08": "Aug",
-                    "09": "Sep", "10": "Oct", "11": "Nov", "12": "Dec"
-                }},
-                months_full: {{
-                    "01": "January", "02": "February", "03": "March", "04": "April",
-                    "05": "May", "06": "June", "07": "July", "08": "August",
-                    "09": "September", "10": "October", "11": "November", "12": "December"
-                }}
-            }}
-        }};
+        const I18N = {json.dumps(i18n_catalog, ensure_ascii=False)};
 
         function setLang(lang) {{
             if (!I18N[lang]) return;
@@ -1856,29 +1867,22 @@ def generate_interactive_html_report(
             // Update CUPS badge text
             const cupsBadge = document.getElementById('badge-cups');
             if (cupsBadge) {{
-                cupsBadge.textContent = lang === 'es'
-                    ? `👥 ${{cupsCount}} Suministros (CUPS)`
-                    : `👥 ${{cupsCount}} Supply Points (CUPS)`;
+                cupsBadge.textContent = `👥 ${{cupsCount}} ${{I18N[lang].cups_label}}`;
             }}
 
             // Update hourly simulation badge
             const hourlyModeBadge = document.getElementById('badge-hourly-mode');
             if (hourlyModeBadge) {{
                 const isSim = hourlyModeBadge.getAttribute('data-simulated') === 'true';
-                if (lang === 'es') {{
-                    hourlyModeBadge.textContent = isSim ? 'Simulación Horaria Diurna' : 'Previsión Diurna Modelada';
-                }} else {{
-                    hourlyModeBadge.textContent = isSim ? 'Hourly Diurnal Simulation' : 'Modeled Diurnal Prevision';
-                }}
+                hourlyModeBadge.textContent = isSim ? I18N[lang].mode_simulated : I18N[lang].mode_modeled;
             }}
 
             // Update strategy badge if present
             const stratBadge = document.getElementById('badge-strat');
             if (stratBadge) {{
                 const stratKey = stratBadge.getAttribute('data-strat');
-                if (stratKey === 'optimal') stratBadge.textContent = lang === 'es' ? 'ÓPTIMO' : 'OPTIMAL';
-                else if (stratKey === 'equal') stratBadge.textContent = lang === 'es' ? 'EQUITATIVO' : 'EQUAL';
-                else if (stratKey === 'consumption') stratBadge.textContent = lang === 'es' ? 'CONSUMO' : 'CONSUMPTION';
+                const translatedStrat = I18N[lang][`strat_${{stratKey}}`];
+                if (translatedStrat) stratBadge.textContent = translatedStrat;
             }}
 
             // Update bylaw badge if present
@@ -1889,8 +1893,7 @@ def generate_interactive_html_report(
                 const parts = [];
                 if (minVal) parts.push(`Min: ${{minVal}}%`);
                 if (maxVal) parts.push(`Max: ${{maxVal}}%`);
-                const label = lang === 'es' ? 'Límites Estatutarios' : 'Bylaw Limits';
-                bylawBadge.textContent = `⚖️ ${{label}}: ${{parts.join(' | ')}}`;
+                bylawBadge.textContent = `⚖️ ${{I18N[lang].bylaw_label}}: ${{parts.join(' | ')}}`;
             }}
         }}
 

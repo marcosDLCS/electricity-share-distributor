@@ -755,13 +755,14 @@ def test_formula_injection_neutralized_in_curated_csv_and_excel(tmp_path: Path) 
 
 
 def test_export_interactive_html_includes_total_footer(tmp_path: Path) -> None:
-    """Ensure ReportExporter.export_interactive_html produces matrix table with <tfoot> and 100.00%."""
+    """Ensure ReportExporter.export_interactive_html produces 4-way progression, <tfoot>, and 100.00%."""
     opt_result, meta = create_dummy_optimization_result()
     html_path = ReportExporter(output_dir=tmp_path).export_interactive_html(
         opt_result, meta, precision=2
     )
     assert html_path.exists()
     content = html_path.read_text(encoding="utf-8")
+    assert "Fortnight Share (24 Periods)" in content
     assert "<tfoot>" in content
     assert "TOTAL (RD 244/2019)" in content
     assert "100.00%" in content

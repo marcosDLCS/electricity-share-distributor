@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| **DES-01** | `P3` Low | `Design` | Align Interactive HTML Dashboard with 4-Way Modality Progression & Streamline Template Logic | `src/presentation/html_report.py` |
 | **DES-02** | `P3` Low | `Design` | Cohesive Visual Polish for Consumption Summary & Multi-Year Comparison Views (80-Col UI & Responsive SVG/HTML) | `src/presentation/views/`, `src/presentation/charts.py`, `src/presentation/console.py` |
 
 ---
@@ -57,13 +56,6 @@ _No pending tasks._
 _No pending tasks._
 
 ## 🎨 Design
-
-### DES-01 (`P3` Low): Align Interactive HTML Dashboard with 4-Way Modality Progression & Streamline Template Logic
-- **Goal:** Bring the interactive HTML dashboard into 100% parity with the 4-way self-consumption progression (Current, Monthly RD 244/2019, Fortnight, and Dynamic Hourly Orden TED/1247/2021) while simplifying `src/presentation/html_report.py`.
-- **Target Components:** `src/presentation/html_report.py`, `tests/test_export.py`.
-- **Acceptance Criteria:**
-  1. Refactor `_calculate_hourly_prevision()` in `src/presentation/html_report.py` to read `current_self_consumed_kwh`, `monthly_share_self_consumed_kwh`, `fortnight_share_self_consumed_kwh`, and `hourly_share_self_consumed_kwh` directly from `OptimizationResult` instead of re-parsing formatted percentage strings (`share_pct`, `estimated_share_pct`) from `time_series_df`, and display the 4-way progression in the HTML report.
-  2. Consolidate scattered `if is_es else` string literals in `generate_interactive_html_report()` into a single structured bilingual dictionary.
 
 ### DES-02 (`P3` Low): Cohesive Visual Polish for Consumption Summary & Multi-Year Comparison Views (80-Col UI & Responsive SVG/HTML)
 - **Goal:** Ensure the migrated `summary` and `compare` terminal views, SVG charts, and reports share `esd`'s modern visual hierarchy, palette, and 80-column clarity.

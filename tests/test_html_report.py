@@ -134,18 +134,20 @@ def test_generate_interactive_html_report_structure() -> None:
     assert "kpi-meter-track" not in html_en
     assert "gain-badge" not in html_en
 
-    # Dynamic 3-way comparative prevision showcase box
+    # Dynamic 4-way comparative prevision showcase box
     assert "section-hourly-prevision" in html_en
     assert "TED/1247/2021" in html_en
     assert "Self-Consumption Prevision & Comparison" in html_en
-    # 3 comparative scenarios present
+    # All 4 comparative scenarios + uplift card present
     assert "No Share (Single CUPS)" in html_en
     assert "Monthly Share (RD 244/2019)" in html_en
+    assert "Fortnight Share (24 Periods)" in html_en
     assert "Hourly Share (Order TED)" in html_en
     assert "Total Collective Uplift" in html_en
-    # 3 comparison bar rows
+    # 4 comparison bar rows
     assert "No Collective Share (Single CUPS)" in html_en
     assert "Fixed Monthly Share (RD 244/2019)" in html_en
+    assert "Fortnight Share (24 Half-Month Periods)" in html_en
     assert "Dynamic Hourly Share (Orden TED/1247/2021)" in html_en
 
     # Removed components: simulator and resolution annex
@@ -179,6 +181,7 @@ def test_generate_interactive_html_report_structure() -> None:
     assert "Previsión y Comparativa de Autoconsumo" in html_es
     assert "Sin Reparto (1 solo CUPS)" in html_es
     assert "Reparto Mensual (RD 244/2019)" in html_es
+    assert "Reparto Quincenal (24 Quincenas)" in html_es
     assert "Reparto Horario (Orden TED)" in html_es
     assert "Ganancia Colectiva Total" in html_es
     assert "Sin Reparto Colectivo (1 solo CUPS)" in html_es
@@ -192,30 +195,35 @@ def test_generate_interactive_html_report_structure() -> None:
     assert "Hare-Niemeyer" not in html_es
 
 
-def test_prevision_three_way_comparison() -> None:
-    """Verify that _calculate_hourly_prevision computes consistent metrics across all 3 scenarios."""
+def test_prevision_four_way_progression_fallback_and_ordering() -> None:
+    """Verify _calculate_hourly_prevision computes monotonic 4-way fallback metrics when optional fields are 0."""
     from src.presentation.html_report import _calculate_hourly_prevision
 
     opt_result, _ = _create_mock_optimization_result()
     prev = _calculate_hourly_prevision(opt_result)
 
-    # All 3 scenarios must be present with exact non-cooked values
     assert prev["single_sc_kwh"] == 800.0
     assert prev["monthly_sc_kwh"] == 1100.0
+    assert prev["fortnight_sc_kwh"] == 1100.0
     assert prev["hourly_sc_kwh"] == 1100.0
+    assert prev["has_fortnight"] is False
     assert prev["is_simulated"] is False
 
-    # Physical progression invariant: single_sc <= monthly_sc <= hourly_sc
+    # Physical progression invariant: single <= monthly <= fortnight <= hourly
     assert prev["single_sc_kwh"] <= prev["monthly_sc_kwh"]
-    assert prev["monthly_sc_kwh"] <= prev["hourly_sc_kwh"]
+    assert prev["monthly_sc_kwh"] <= prev["fortnight_sc_kwh"]
+    assert prev["fortnight_sc_kwh"] <= prev["hourly_sc_kwh"]
 
-    # Corresponding self-consumption rate progression
     assert prev["single_sc_rate"] <= prev["monthly_sc_rate"]
-    assert prev["monthly_sc_rate"] <= prev["hourly_sc_rate"]
+    assert prev["monthly_sc_rate"] <= prev["fortnight_sc_rate"]
+    assert prev["fortnight_sc_rate"] <= prev["hourly_sc_rate"]
 
-    # Step-by-step gains
+    # Step-by-step and cumulative gains
     assert round(prev["gain_monthly_kwh"], 1) == round(
         prev["monthly_sc_kwh"] - prev["single_sc_kwh"], 1
+    )
+    assert round(prev["gain_fortnight_kwh"], 1) == round(
+        prev["fortnight_sc_kwh"] - prev["single_sc_kwh"], 1
     )
     assert round(prev["gain_hourly_kwh"], 1) == round(
         prev["hourly_sc_kwh"] - prev["monthly_sc_kwh"], 1
@@ -225,112 +233,32 @@ def test_prevision_three_way_comparison() -> None:
     )
 
 
-def test_prevision_with_hourly_simulation_three_way() -> None:
-    """Verify 3-way calculation when explicit hourly time-series simulation dataframe is present."""
+def test_prevision_reads_four_way_metrics_directly_from_opt_result() -> None:
+    """Verify _calculate_hourly_prevision reads 4-way kWh directly without re-parsing time_series_df strings."""
     import pandas as pd
 
     from src.optimization.models import HourlyOptimizationResult, HourlyProfileMatrix
     from src.presentation.html_report import _calculate_hourly_prevision
 
     opt_result, _ = _create_mock_optimization_result()
+    opt_result.current_self_consumed_kwh = 720.0
+    opt_result.monthly_share_self_consumed_kwh = 1100.0
+    opt_result.fortnight_share_self_consumed_kwh = 1240.0
+    opt_result.hourly_share_self_consumed_kwh = 1360.0
 
-    # Create synthetic hourly time-series df with primary CUPS (Aerotermia) and secondary CUPS (Garaje)
-    df_rows = [
-        # Hour 10: Gen = 5.0 kWh. Primary consumes 1.5, Secondary consumes 2.5
-        {
-            "timestamp": "2026-05-01 10:00:00",
-            "cups": "ES0021000000000001AA",
-            "consumption_kwh": 1.5,
-            "generation_kwh": 5.0,
-            "share_pct": "30.0%",
-            "estimated_share_pct": "30.0%",
-        },
-        {
-            "timestamp": "2026-05-01 10:00:00",
-            "cups": "ES0021000000000002BB",
-            "consumption_kwh": 2.5,
-            "generation_kwh": 5.0,
-            "share_pct": "50.0%",
-            "estimated_share_pct": "50.0%",
-        },
-        # Hour 11: Gen = 10.0 kWh. Primary consumes 2.0, Secondary consumes 4.0
-        {
-            "timestamp": "2026-05-01 11:00:00",
-            "cups": "ES0021000000000001AA",
-            "consumption_kwh": 2.0,
-            "generation_kwh": 10.0,
-            "share_pct": "20.0%",
-            "estimated_share_pct": "20.0%",
-        },
-        {
-            "timestamp": "2026-05-01 11:00:00",
-            "cups": "ES0021000000000002BB",
-            "consumption_kwh": 4.0,
-            "generation_kwh": 10.0,
-            "share_pct": "40.0%",
-            "estimated_share_pct": "40.0%",
-        },
-    ]
-    df = pd.DataFrame(df_rows)
-    empty_profile = HourlyProfileMatrix(
-        cups_list=opt_result.cups_list,
-        hours=[f"{h:02d}" for h in range(24)],
-        matrix={c: {} for c in opt_result.cups_list},
-        hourly_sums={},
-        average_shares={},
-        average_sum=1.0,
+    # Inject deliberately conflicting formatted strings in time_series_df to verify they are NOT re-parsed
+    df = pd.DataFrame(
+        [
+            {
+                "timestamp": "2026-05-01 12:00:00",
+                "cups": "ES0021000000000001AA",
+                "consumption_kwh": "1,0",
+                "generation_kwh": "10,0",
+                "share_pct": "1.0%",
+                "estimated_share_pct": "1.0%",
+            }
+        ]
     )
-    opt_result.hourly_result = HourlyOptimizationResult(
-        profile_matrix=empty_profile,
-        time_series_df=df,
-    )
-
-    prev = _calculate_hourly_prevision(opt_result)
-    assert prev["is_simulated"] is True
-
-    # Single CUPS tied solely to Primary (ES0021000000000001AA, Aerotermia):
-    # Hour 10: min(1.5, 5.0) = 1.5
-    # Hour 11: min(2.0, 10.0) = 2.0
-    # Expected single_sc = 3.5 kWh
-    assert prev["single_sc_kwh"] == 3.5
-
-    # Hourly simulation collective:
-    # Hour 10: min(1.5, 0.3*5.0=1.5) + min(2.5, 0.5*5.0=2.5) = 1.5 + 2.5 = 4.0
-    # Hour 11: min(2.0, 0.2*10.0=2.0) + min(4.0, 0.4*10.0=4.0) = 2.0 + 4.0 = 6.0
-    # Total hourly_sc = 10.0 kWh (exact without max(monthly_sc) clamping)
-    assert prev["hourly_sc_kwh"] == 10.0
-    assert prev["single_sc_kwh"] <= prev["hourly_sc_kwh"]
-
-
-def test_prevision_vectorized_numeric_and_fallback_shares() -> None:
-    """Verify vectorized _calculate_hourly_prevision handles numeric shares and fallback columns cleanly."""
-    import pandas as pd
-
-    from src.optimization.models import HourlyOptimizationResult, HourlyProfileMatrix
-    from src.presentation.html_report import _calculate_hourly_prevision
-
-    opt_result, _ = _create_mock_optimization_result()
-
-    # Time series where estimated_share_pct is empty string or None, falling back to share_pct (numeric 0.40)
-    df_rows = [
-        {
-            "timestamp": "2026-05-01 12:00:00",
-            "cups": "ES0021000000000001AA",
-            "consumption_kwh": 3.0,
-            "generation_kwh": 10.0,
-            "share_pct": 0.40,  # Numeric float fraction
-            "estimated_share_pct": "",  # Empty string fallback
-        },
-        {
-            "timestamp": "2026-05-01 12:00:00",
-            "cups": "ES0021000000000002BB",
-            "consumption_kwh": 5.0,
-            "generation_kwh": 10.0,
-            "share_pct": 60.0,  # Numeric > 1.0 (percentage scale)
-            "estimated_share_pct": None,  # None fallback
-        },
-    ]
-    df = pd.DataFrame(df_rows)
     opt_result.hourly_result = HourlyOptimizationResult(
         profile_matrix=HourlyProfileMatrix(
             cups_list=opt_result.cups_list,
@@ -344,66 +272,38 @@ def test_prevision_vectorized_numeric_and_fallback_shares() -> None:
     )
 
     prev = _calculate_hourly_prevision(opt_result)
+    assert prev["has_fortnight"] is True
     assert prev["is_simulated"] is True
-    # Primary: min(3.0, 0.40 * 10.0 = 4.0) = 3.0
-    # Secondary: min(5.0, 0.60 * 10.0 = 6.0) = 5.0
-    # Expected collective = 8.0 kWh (exact without max(monthly_sc) clamping)
-    assert prev["single_sc_kwh"] == 3.0
-    assert prev["hourly_sc_kwh"] == 8.0
+    assert prev["single_sc_kwh"] == 720.0
+    assert prev["monthly_sc_kwh"] == 1100.0
+    assert prev["fortnight_sc_kwh"] == 1240.0
+    assert prev["hourly_sc_kwh"] == 1360.0
+
+    # Exact self-consumption rates against 2,000 kWh generation: 36%, 55%, 62%, 68%
+    assert prev["single_sc_rate"] == 36.0
+    assert prev["monthly_sc_rate"] == 55.0
+    assert prev["fortnight_sc_rate"] == 62.0
+    assert prev["hourly_sc_rate"] == 68.0
+
+    # Step gains
+    assert prev["gain_monthly_kwh"] == 380.0
+    assert prev["gain_fortnight_kwh"] == 520.0
+    assert prev["gain_fortnight_vs_monthly_kwh"] == 140.0
+    assert prev["gain_hourly_kwh"] == 260.0
+    assert prev["gain_total_kwh"] == 640.0
 
 
-def test_prevision_one_percent_floor_and_string_dtype() -> None:
-    """Verify that _calculate_hourly_prevision parses '1%' floors as 0.01 and handles StringDtype."""
-    import pandas as pd
+def test_html_i18n_dictionary_parity() -> None:
+    """Verify unified EN/ES HTML report dictionary has complete top-level and month key parity."""
+    from src.presentation.html_report import _build_html_i18n
 
-    from src.optimization.models import HourlyOptimizationResult, HourlyProfileMatrix
-    from src.presentation.html_report import _calculate_hourly_prevision
-
-    opt_result, _ = _create_mock_optimization_result()
-
-    df_rows = [
-        {
-            "timestamp": "2026-05-01 12:00:00",
-            "cups": "ES0021000000000001AA",
-            "consumption_kwh": "10,0",
-            "generation_kwh": "100,0",
-            "share_pct": "1.0%",  # 1% floor: MUST be parsed as 0.01, NOT 1.0!
-            "estimated_share_pct": "50.0%",
-        },
-        {
-            "timestamp": "2026-05-01 12:00:00",
-            "cups": "ES0021000000000002BB",
-            "consumption_kwh": "90,0",
-            "generation_kwh": "100,0",
-            "share_pct": "99.0%",
-            "estimated_share_pct": "50.0%",
-        },
-    ]
-    df = pd.DataFrame(df_rows)
-    # Cast to StringDtype to test Pandas 3.0 compatibility
-    for col in ("share_pct", "estimated_share_pct", "consumption_kwh", "generation_kwh"):
-        df[col] = df[col].astype("string")
-
-    opt_result.hourly_result = HourlyOptimizationResult(
-        profile_matrix=HourlyProfileMatrix(
-            cups_list=opt_result.cups_list,
-            hours=[f"{h:02d}" for h in range(24)],
-            matrix={c: {} for c in opt_result.cups_list},
-            hourly_sums={},
-            average_shares={},
-            average_sum=1.0,
-        ),
-        time_series_df=df,
-    )
-
-    prev = _calculate_hourly_prevision(opt_result)
-    assert prev["is_simulated"] is True
-    # If 1% was bugged to 1.0, CUPS 1 would get min(10.0, 1.0 * 100.0) = 10.0
-    # But with 1% = 0.01, CUPS 1 gets min(10.0, 0.01 * 100.0 = 1.0) = 1.0 kWh!
-    # CUPS 2 gets min(90.0, 0.99 * 100.0 = 99.0) = 90.0 kWh.
-    # Total collective = 1.0 + 90.0 = 91.0 kWh!
-    # If dynamic share_pct was ignored and estimated_share_pct (50%) used, total would be min(10, 50) + min(90, 50) = 60.0 kWh.
-    assert prev["hourly_sc_kwh"] == 91.0
+    catalog = _build_html_i18n(version="2026.11.018")
+    assert set(catalog.keys()) == {"es", "en"}
+    assert set(catalog["es"].keys()) == set(catalog["en"].keys())
+    assert set(catalog["es"]["months"].keys()) == set(catalog["en"]["months"].keys())
+    assert set(catalog["es"]["months_full"].keys()) == set(catalog["en"]["months_full"].keys())
+    assert "2026.11.018" in catalog["es"]["footer_text"]
+    assert "2026.11.018" in catalog["en"]["footer_text"]
 
 
 def test_export_interactive_html_file(tmp_path: Path) -> None:
