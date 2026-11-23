@@ -26,18 +26,10 @@ class CalculationRequest:
     output_dir: Path
     weather_dir: Path = DEFAULT_WEATHER_DIR
     cups_config_path: Path | None = None
-    force_curate: bool = False
-    is_custom_input: bool = False
-    is_custom_curated: bool = False
-    year: int | None = None
-    month: int | None = None
     strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL
     precision: int = 0
     compute_hourly: bool = True
-    export_format: str = "all"
     lang: str = "en"
-    min_share: float | None = None
-    max_share: float | None = None
 
 
 @dataclass(frozen=True)
@@ -75,24 +67,10 @@ class CalculationService:
             if request.curated_dir.is_dir() or request.curated_dir.suffix.lower() != ".csv"
             else request.curated_dir
         )
-        if not curated_csv.exists() and request.curated_dir.is_dir() and request.is_custom_curated:
-            legacy_csv = request.curated_dir / "curated.csv"
-            if legacy_csv.exists():
-                curated_csv = legacy_csv
 
-        needs_curation = (
-            request.force_curate
-            or not curated_csv.exists()
-            or (request.is_custom_input and not request.is_custom_curated)
-        )
-
-        if needs_curation:
+        if not curated_csv.exists():
             curated_csv = curator.ensure_curated(force=True)
-        elif (
-            not request.is_custom_curated
-            and request.consumption_dir.exists()
-            and request.generation_dir.exists()
-        ):
+        elif request.consumption_dir.exists() and request.generation_dir.exists():
             curated_csv = curator.ensure_curated(force=False)
 
         if progress_callback:
@@ -100,15 +78,13 @@ class CalculationService:
 
         aligned = curator.load_aligned_dataset(
             curated_csv,
-            year=request.year,
-            month=request.month,
             cups_config_path=curator._resolve_cups_path(),
         )
 
         if progress_callback:
             progress_callback(3, t("status_step_3", lang=request.lang))
 
-        # Resolve bylaw constraints from request parameters and CUPS config (with 1% minimum floor)
+        # Resolve bylaw constraints from CUPS config (with 1% minimum floor)
         cups_cfg = curator.load_cups_config()
         cups_min: dict[str, float] = {
             c.cups: max(0.01, c.min_share)
@@ -120,43 +96,35 @@ class CalculationService:
             for c in cups_cfg.values()
             if getattr(c, "max_share", None) is not None
         }
-        effective_min_share = max(
-            0.01, request.min_share if request.min_share is not None else 0.01
-        )
         constraints = BylawConstraints(
-            min_share=effective_min_share,
-            max_share=request.max_share,
+            min_share=0.01,
             cups_min_shares=cups_min,
             cups_max_shares=cups_max,
         )
         if constraints.is_active:
             constraints.validate_feasibility(aligned.cups_list)
 
-        fmt_clean = request.export_format.lower().strip()
-
         opt_result = DistributionOptimizer.optimize_dataset(
             aligned,
             strategy=request.strategy,
             include_baselines=True,
             precision=request.precision,
-            compute_hourly=True,
+            compute_hourly=request.compute_hourly,
             constraints=constraints,
         )
 
         if progress_callback:
             progress_callback(4, t("status_step_4", lang=request.lang))
 
-        exported_paths: list[Path] = []
-        if fmt_clean not in ("table", "none"):
-            exporter = ReportExporter(output_dir=request.output_dir)
-            exported_paths = exporter.export_all(
-                opt_result,
-                aligned.metadata,
-                formats=fmt_clean,
-                lang=request.lang,
-                precision=request.precision,
-                aligned_dataset=aligned,
-            )
+        exporter = ReportExporter(output_dir=request.output_dir)
+        exported_paths = exporter.export_all(
+            opt_result,
+            aligned.metadata,
+            formats="all",
+            lang=request.lang,
+            precision=request.precision,
+            aligned_dataset=aligned,
+        )
 
         return CalculationResult(
             opt_result=opt_result,

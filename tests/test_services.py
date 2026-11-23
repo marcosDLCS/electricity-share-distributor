@@ -73,11 +73,8 @@ def test_calculation_service_execution(tmp_path: Path) -> None:
         curated_dir=Path(".curated"),
         output_dir=tmp_path,
         cups_config_path=Path(".input/cups/cups.json"),
-        year=2026,
-        month=5,
         strategy=OptimizationStrategy.OPTIMAL,
         precision=1,
-        export_format="csv",
     )
     res = CalculationService.execute(req)
     assert res.opt_result is not None
@@ -99,10 +96,7 @@ def test_calculation_service_progress_callback(tmp_path: Path) -> None:
         curated_dir=Path(".curated"),
         output_dir=tmp_path,
         cups_config_path=Path(".input/cups/cups.json"),
-        year=2026,
-        month=5,
         strategy=OptimizationStrategy.OPTIMAL,
-        export_format="csv",
     )
     CalculationService.execute(req, progress_callback=callback)
     assert [step for step, _ in steps_called] == [1, 2, 3, 4]

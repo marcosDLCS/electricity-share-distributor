@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Final
@@ -17,9 +16,6 @@ from src.domain.exceptions import (
 )
 from src.domain.models import SupplyPoint
 from src.ingestion.csv_utils import clean_numeric_series
-
-# Canonical domain model alias for backward compatibility
-CupsConfig = SupplyPoint
 
 _DAYS_OF_WEEK: Final[tuple[str, ...]] = (
     "Monday",
@@ -155,17 +151,6 @@ class GenerationRecord:
     self_consumption: float | int = 0
     exported_energy: float | int = 0
     imported_energy: float | int = 0
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize record to canonical dictionary."""
-        return {
-            "timestamp": self.timestamp,
-            "generation": self.generation,
-            "consumption": self.consumption,
-            "self_consumption": self.self_consumption,
-            "exported_energy": self.exported_energy,
-            "imported_energy": self.imported_energy,
-        }
 
 
 @dataclass
@@ -374,15 +359,6 @@ class ConsumptionRecord:
     use: str = ""
     consumption: float | int = 0
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize record to canonical dictionary."""
-        return {
-            "timestamp": self.timestamp,
-            "cups_id": self.cups_id,
-            "use": self.use,
-            "consumption": self.consumption,
-        }
-
 
 @dataclass
 class ConsumptionSummary:
@@ -569,71 +545,26 @@ class CuratedCupsReading:
     exported_energy: float | int = 0
     imported_energy: float | int = 0
 
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary matching the target format."""
-        return {
-            "id": self.id,
-            "use": self.use,
-            "consumption": self.consumption,
-            "self_consumption": self.self_consumption,
-            "exported_energy": self.exported_energy,
-            "imported_energy": self.imported_energy,
-            "primary": self.primary,
-            "reconciled": self.reconciled,
-        }
-
 
 @dataclass
 class CuratedHourRecord:
     """Reconciled time-series record for a single hour across all community supply points.
 
     Attributes:
-        date: Calendar date in YYYY-MM-DD format.
-        hour: Hour string in H:00 format (e.g. '7:00').
+        timestamp: Canonical interval-start timestamp (YYYY-MM-DD HH:MM:SS).
         generation: Solar PV generation (in kWh, matching consumption units).
         cups: List of per-CUPS curated readings.
-        timestamp: Canonical interval-start timestamp (YYYY-MM-DD HH:MM:SS).
         total_consumption: Sum of consumption across all participating CUPS for this hour.
-        solar_surplus: Surplus generation exceeding collective demand (kWh).
-        net_grid_demand: Net grid electricity demand exceeding solar generation (kWh).
-        self_consumption: Solar PV physical instantaneous self-consumed electricity (kWh).
-        exported_energy: Solar PV generation exported to grid from inverter meter (kWh).
-        imported_energy: Grid electricity imported from inverter meter (kWh).
         temperature: Ambient temperature in degrees Celsius (°C), if available.
         cloud_cover: Cloud cover percentage (0-100%), if available.
     """
 
-    date: str
-    hour: str
+    timestamp: str
     generation: float | int
     cups: list[CuratedCupsReading] = field(default_factory=list)
-    timestamp: str = ""
     total_consumption: float | int = 0
-    solar_surplus: float | int = 0
-    net_grid_demand: float | int = 0
-    self_consumption: float | int = 0
-    exported_energy: float | int = 0
-    imported_energy: float | int = 0
     temperature: float | None = None
     cloud_cover: int | float | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary conforming to the target JSON specification."""
-        return {
-            "date": self.date,
-            "hour": self.hour,
-            "generation": self.generation,
-            "self_consumption": self.self_consumption,
-            "exported_energy": self.exported_energy,
-            "imported_energy": self.imported_energy,
-            "cups": [c.to_dict() for c in self.cups],
-            "timestamp": self.timestamp,
-            "total_consumption": self.total_consumption,
-            "solar_surplus": self.solar_surplus,
-            "net_grid_demand": self.net_grid_demand,
-            "temperature": self.temperature,
-            "cloud_cover": self.cloud_cover,
-        }
 
 
 @dataclass
@@ -659,12 +590,7 @@ class CuratedDataset:
 
     records: list[CuratedHourRecord]
     summary: CuratedSummary
-    cups_configs: dict[str, CupsConfig]
-
-    def to_json(self, indent: int = 2) -> str:
-        """Serialize curated dataset to formatted JSON string."""
-        data = [r.to_dict() for r in self.records]
-        return json.dumps(data, indent=indent, ensure_ascii=False)
+    cups_configs: dict[str, SupplyPoint]
 
     def to_dataframe(self) -> pd.DataFrame:
         """Flatten hourly records into a tidy master ESD DataFrame for CSV/Excel export.
@@ -677,27 +603,10 @@ class CuratedDataset:
         """
         rows: list[dict[str, Any]] = []
         for r in self.records:
-            year, month, day, hour, day_of_week, is_weekend = extract_temporal_features(
-                r.timestamp,
-                fallback_date=r.date,
-                fallback_hour=r.hour,
-            )
-
+            year, month, day, hour, day_of_week, is_weekend = extract_temporal_features(r.timestamp)
             comm_demand = r.total_consumption
 
             for c in r.cups:
-                self_cons = getattr(c, "self_consumption", 0)
-                if self_cons == 0 and c.primary and getattr(r, "self_consumption", 0):
-                    self_cons = r.self_consumption
-
-                exp_e = getattr(c, "exported_energy", 0)
-                if exp_e == 0 and c.primary and getattr(r, "exported_energy", 0):
-                    exp_e = r.exported_energy
-
-                imp_e = getattr(c, "imported_energy", 0)
-                if imp_e == 0 and c.primary and getattr(r, "imported_energy", 0):
-                    imp_e = r.imported_energy
-
                 rows.append(
                     {
                         "timestamp": r.timestamp,
@@ -712,9 +621,9 @@ class CuratedDataset:
                         "consumption": c.consumption,
                         "community_demand": comm_demand,
                         "generation": r.generation,
-                        "self_consumption": self_cons,
-                        "exported_energy": exp_e,
-                        "imported_energy": imp_e,
+                        "self_consumption": c.self_consumption,
+                        "exported_energy": c.exported_energy,
+                        "imported_energy": c.imported_energy,
                         "temperature": r.temperature,
                         "cloud_cover": r.cloud_cover,
                     }

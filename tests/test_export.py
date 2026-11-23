@@ -680,17 +680,16 @@ def test_formula_injection_neutralized_in_curated_csv_and_excel(tmp_path: Path) 
 
     rec = CuratedHourRecord(
         timestamp="2026-05-01 12:00:00",
-        date="2026-05-01",
-        hour="12:00",
         generation=15.0,
-        self_consumption=10.0,
-        exported_energy=5.0,
-        imported_energy=0.0,
         cups=[
             CuratedCupsReading(
                 id="ES0021000000000001AA",
                 use="=1+1",
                 consumption=6.0,
+                primary=True,
+                self_consumption=10.0,
+                exported_energy=5.0,
+                imported_energy=0.0,
             ),
             CuratedCupsReading(
                 id="ES0021000000000002BB",

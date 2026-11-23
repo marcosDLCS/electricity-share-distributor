@@ -242,7 +242,3 @@ class HuaweiGenerationLoader:
             .reset_index(drop=True)
         )
         return combined
-
-
-# Generic alias for solar inverter generation loader
-SolarGenerationLoader = HuaweiGenerationLoader

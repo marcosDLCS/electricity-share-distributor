@@ -261,7 +261,7 @@ def test_curation_reconciliation_fake_zeros(tmp_path: Path) -> None:
     assert dataset.summary.recovered_kwh > 0
 
     # Check a solar hour (e.g. 12:00)
-    solar_records = [r for r in dataset.records if r.hour == "12:00"]
+    solar_records = [r for r in dataset.records if r.timestamp.endswith(" 12:00:00")]
     assert len(solar_records) == 1
     rec = solar_records[0]
     assert rec.generation == 12
@@ -283,8 +283,6 @@ def test_curation_reconciliation_fake_zeros(tmp_path: Path) -> None:
 
     # Hourly community totals
     assert rec.total_consumption == 9.5
-    assert rec.solar_surplus == 2.5
-    assert rec.net_grid_demand == 0
 
 
 def test_curation_exports_csv(tmp_path: Path) -> None:
@@ -711,7 +709,7 @@ def test_curation_with_existing_weather_data(tmp_path: Path) -> None:
     dataset = curator.curate()
 
     assert dataset.summary.total_hours == 24
-    rec_noon = next(r for r in dataset.records if r.hour == "12:00")
+    rec_noon = next(r for r in dataset.records if r.timestamp.endswith(" 12:00:00"))
     assert rec_noon.temperature == 18.5
     assert rec_noon.cloud_cover == 35
 
@@ -925,13 +923,13 @@ def test_primary_cups_uses_unmodified_raw_inverter_consumption(tmp_path: Path) -
     dataset = curator.curate()
 
     # Hour 12:00: inverter raw consumption is 8.5
-    rec_noon = next(r for r in dataset.records if r.hour == "12:00")
+    rec_noon = next(r for r in dataset.records if r.timestamp.endswith(" 12:00:00"))
     pri_reading_noon = next(c for c in rec_noon.cups if c.id == pri_cups)
     assert pri_reading_noon.consumption == 8.5
     assert pri_reading_noon.reconciled is True
 
     # Hour 22:00: inverter raw consumption is 2.0 (not inflated by max(5.0, 2.0))
-    rec_night = next(r for r in dataset.records if r.hour == "22:00")
+    rec_night = next(r for r in dataset.records if r.timestamp.endswith(" 22:00:00"))
     pri_reading_night = next(c for c in rec_night.cups if c.id == pri_cups)
     assert pri_reading_night.consumption == 2
     assert pri_reading_night.reconciled is False
@@ -1057,8 +1055,6 @@ def test_curated_dataset_calendar_decomposition_and_community_demand() -> None:
     )
 
     rec_sat = CuratedHourRecord(
-        date="2026-10-24",
-        hour="14:00",
         generation=12.5,
         timestamp="2026-10-24 14:00:00",
         total_consumption=8.0,
@@ -1078,8 +1074,6 @@ def test_curated_dataset_calendar_decomposition_and_community_demand() -> None:
         ],
     )
     rec_mon = CuratedHourRecord(
-        date="2026-10-26",
-        hour="09:00",
         generation=4.0,
         timestamp="2026-10-26 09:00:00",
         total_consumption=3.0,
@@ -1634,8 +1628,6 @@ def test_curation_bounds_primary_self_consumption_by_generation_and_demand(
 
     rec_11 = next(r for r in dataset.records if r.timestamp == "2026-05-01 11:00:00")
     rec_12 = next(r for r in dataset.records if r.timestamp == "2026-05-01 12:00:00")
-    assert float(rec_11.self_consumption) == 4.0
-    assert float(rec_12.self_consumption) == 5.0
     assert float(next(c for c in rec_11.cups if c.id == pri_cups).self_consumption) == 4.0
     assert float(next(c for c in rec_12.cups if c.id == pri_cups).self_consumption) == 5.0
     assert float(next(c for c in rec_11.cups if c.id == sec_cups).self_consumption) == 0.0

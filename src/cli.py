@@ -519,18 +519,10 @@ def calculate_command() -> None:
             output_dir=target_output_dir,
             weather_dir=target_weather_dir,
             cups_config_path=cups_path,
-            force_curate=False,
-            is_custom_input=False,
-            is_custom_curated=False,
-            year=None,
-            month=None,
             strategy=OptimizationStrategy.OPTIMAL,
             precision=active_precision,
             compute_hourly=True,
-            export_format="all",
             lang=active_lang,
-            min_share=None,
-            max_share=None,
         )
 
         with console.status(

@@ -29,16 +29,9 @@ from src.presentation.views.consumption import (
 )
 from src.presentation.views.curate import render_curate_summary
 from src.presentation.views.doctor import render_doctor_report
-from src.presentation.views.matrix import (
-    render_coefficients_matrix_table,
-    render_hourly_profile_table,
-    render_monthly_coefficients_table,
-)
+from src.presentation.views.matrix import render_coefficients_matrix_table
 from src.presentation.views.summary import render_community_summary
-from src.presentation.views.trajectory import (
-    render_monthly_trajectory_table,
-    render_strategy_comparison_table,
-)
+from src.presentation.views.trajectory import render_monthly_trajectory_table
 
 __all__ = [
     "MONTH_ABBR_EN",
@@ -59,14 +52,11 @@ __all__ = [
     "render_doctor_report",
     "render_export_success",
     "render_help",
-    "render_hourly_profile_table",
     "render_init_success",
-    "render_monthly_coefficients_table",
     "render_monthly_comparison_table",
     "render_monthly_consumption_overview",
     "render_monthly_trajectory_table",
     "render_not_initialized_warning",
-    "render_strategy_comparison_table",
     "render_validation_warnings",
     "render_version",
     "render_weather_result",

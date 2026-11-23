@@ -8,7 +8,7 @@ from src.ingestion.csv_utils import (
     sniff_csv_delimiter,
 )
 from src.ingestion.doctor import DataDoctor, DoctorReport, GapInterval, SeriesCheckResult
-from src.ingestion.generation import HuaweiGenerationLoader, SolarGenerationLoader
+from src.ingestion.generation import HuaweiGenerationLoader
 from src.ingestion.schema import (
     AlignedDataset,
     AlignmentError,
@@ -50,7 +50,6 @@ __all__ = [
     "OpenMeteoWeatherDownloader",
     "ParseError",
     "SeriesCheckResult",
-    "SolarGenerationLoader",
     "TimeSeriesAligner",
     "ValidationError",
     "ValidationResult",

@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| **SIMP-01** | `P1` High | `Simplicity` | Prune Dead Calculation Options, Unreferenced Views, Legacy Fallbacks & Unused Domain Models | `src/domain/`, `src/curation/`, `src/services/`, `src/presentation/views/` |
 | **ARCH-02** | `P2` Medium | `Architecture` | Performance Vectorization: Curation Pipeline, 2D Rounding, Solver Baselines & Excel Export | `src/curation/`, `src/optimization/`, `src/presentation/export.py` |
 | **SIMP-02** | `P2` Medium | `Simplicity` | Prune Orphaned Localization Keys & Simplify Translation Catalog Builder | `src/i18n.py`, `tests/` |
 | **COH-01** | `P2` Medium | `Cohesion` | Unify `cups.json` Configuration, Primary Supply Point, Coordinate Resolution & Recursive Output Cleanup | `src/curation/curator.py`, `src/services/weather_service.py`, `src/cli.py`, `src/optimization/engine.py`, `src/presentation/html_report.py` |
@@ -99,15 +98,6 @@ _No pending tasks._
   2. Replace "sibling utility to `datadis-analyzer`" positioning with unified platform framing covering both consumption-only residential analytics and collective PV optimization under RD 244/2019, and include a concise bilingual `da` ➔ `esd` command/input migration table in `README.md`, `docs/GUIDE_EN.md`, and `docs/GUIDE_ES.md`.
 
 ## 🧹 Simplicity
-
-### SIMP-01 (`P1` High): Prune Dead Calculation Options, Unreferenced Views, Legacy Fallbacks & Unused Domain Models
-- **Goal:** Remove dead domain classes, unreferenced terminal views, obsolete `CalculationRequest` fields, legacy `curated.csv` fallbacks, and redundant attributes in curation models.
-- **Target Components:** `src/domain/models.py`, `src/domain/__init__.py`, `src/curation/models.py`, `src/curation/curator.py`, `src/services/calculation_service.py`, `src/presentation/views/matrix.py`, `src/presentation/views/trajectory.py`, `src/presentation/views/__init__.py`.
-- **Acceptance Criteria:**
-  1. Remove unused `ShareAllocation` and `EnergyBalance` classes from `src/domain/models.py` and `src/domain/__init__.py`.
-  2. Remove unreferenced terminal table renderers (`render_monthly_coefficients_table`, `render_hourly_profile_table`, `render_strategy_comparison_table`) and dead sparkline helpers (`_coverage_sparkline`, `SPARK_BLOCKS`) along with their orphaned exports in `src/presentation/views/`.
-  3. Simplify `CalculationRequest` and `CalculationService.execute()` by removing obsolete fields (`force_curate`, `is_custom_input`, `is_custom_curated`, `year`, `month`, `export_format`, `min_share`, `max_share`) and legacy `curated.csv` fallback checks in `DataCurator.load_aligned_dataset()` and `CalculationService.execute()`.
-  4. Simplify `CuratedHourRecord` and `CuratedCupsReading` by removing unused attributes (`date`, `hour`, `solar_surplus`, `net_grid_demand`), eliminating duplicated `self_consumption`, `exported_energy`, and `imported_energy` storage across parent and child records, and deleting unused `.to_dict()` / `.to_json()` methods and aliases (`CupsConfig`, `SolarGenerationLoader`).
 
 ### SIMP-02 (`P2` Medium): Prune Orphaned Localization Keys & Simplify Translation Catalog Builder
 - **Goal:** Delete ~55 orphaned translation keys from `src/i18n.py` and remove unnecessary prefix-stripping key multiplication in `_build_translation_catalog()`.

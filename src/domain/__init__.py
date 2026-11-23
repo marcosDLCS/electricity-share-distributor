@@ -9,8 +9,6 @@ from src.domain.exceptions import (
 )
 from src.domain.models import (
     BylawConstraints,
-    EnergyBalance,
-    ShareAllocation,
     SupplyPoint,
     parse_share_fraction,
 )
@@ -19,11 +17,9 @@ __all__ = [
     "AlignmentError",
     "BylawConstraints",
     "CurationError",
-    "EnergyBalance",
     "EsdError",
     "IngestionError",
     "OptimizationError",
-    "ShareAllocation",
     "SupplyPoint",
     "parse_share_fraction",
 ]

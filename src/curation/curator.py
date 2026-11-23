@@ -767,12 +767,6 @@ class DataCurator:
 
         for ts in aligned.data.index:
             ts_str = str(ts)
-            date_str = ts_str.split(" ")[0]
-            try:
-                hour_int = int(ts_str[11:13])
-            except ValueError, IndexError:
-                hour_int = 0
-            hour_str = f"{hour_int}:00"
 
             gen_val = float(aligned.data.loc[ts, "generation_kwh"])
             total_gen_kwh += gen_val
@@ -789,7 +783,6 @@ class DataCurator:
 
             cups_readings: list[CuratedCupsReading] = []
             hour_cons_sum = 0.0
-            primary_sc_val: float | None = None
 
             for cups_id in aligned.cups_list:
                 cfg = cups_configs.get(cups_id, SupplyPoint(cups=cups_id, use="", primary=False))
@@ -814,11 +807,7 @@ class DataCurator:
                         cups_reconciled_counts[cups_id] += 1
 
                 # Self-consumed electricity: primary CUPS receives physical reading bounded by min(generation, final_cons)
-                if cfg.primary:
-                    c_self_cons = max(0.0, min(hw_sc_val, gen_val, final_cons))
-                    primary_sc_val = c_self_cons
-                else:
-                    c_self_cons = 0.0
+                c_self_cons = max(0.0, min(hw_sc_val, gen_val, final_cons)) if cfg.primary else 0.0
                 c_exp = hw_exp_val if cfg.primary else 0.0
                 c_imp = hw_imp_val if cfg.primary else 0.0
 
@@ -841,13 +830,6 @@ class DataCurator:
             cups_readings.sort(key=lambda c: (str(c.use or "").strip().lower(), str(c.id).lower()))
 
             total_cons_kwh += hour_cons_sum
-            surplus = max(0.0, gen_val - hour_cons_sum)
-            grid_demand = max(0.0, hour_cons_sum - gen_val)
-            bounded_hour_sc = (
-                primary_sc_val
-                if primary_sc_val is not None
-                else max(0.0, min(hw_sc_val, gen_val, hour_cons_sum))
-            )
 
             # Weather readings for this interval if present
             w_reading = weather_map.get(ts_str)
@@ -855,17 +837,10 @@ class DataCurator:
 
             records.append(
                 CuratedHourRecord(
-                    date=date_str,
-                    hour=hour_str,
+                    timestamp=ts_str,
                     generation=format_energy_value(gen_val),
                     cups=cups_readings,
-                    timestamp=ts_str,
                     total_consumption=format_energy_value(hour_cons_sum),
-                    solar_surplus=format_energy_value(surplus),
-                    net_grid_demand=format_energy_value(grid_demand),
-                    self_consumption=format_energy_value(bounded_hour_sc),
-                    exported_energy=format_energy_value(hw_exp_val),
-                    imported_energy=format_energy_value(hw_imp_val),
                     temperature=temp_val,
                     cloud_cover=cloud_val,
                 )
@@ -1104,11 +1079,8 @@ class DataCurator:
         path = Path(curated_path)
         if path.is_dir():
             esd_candidate = path / "esd.csv"
-            legacy_candidate = path / "curated.csv"
             if esd_candidate.exists():
                 path = esd_candidate
-            elif legacy_candidate.exists():
-                path = legacy_candidate
             else:
                 csvs = [
                     f
