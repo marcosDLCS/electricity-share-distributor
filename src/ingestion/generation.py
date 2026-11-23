@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.ingestion.csv_utils import clean_numeric_series
+from src.ingestion.csv_utils import clean_numeric_series, is_autumn_dst_date
 from src.ingestion.schema import IngestionError, ParseError, ValidationError
 
 
@@ -171,6 +171,46 @@ class HuaweiGenerationLoader:
 
         return result_df
 
+    @staticmethod
+    def consolidate_autumn_dst(df: pd.DataFrame) -> pd.DataFrame:
+        """Sum the repeated 02:00 interval on 25-hour European autumn DST days within a single file."""
+        if df.empty or "timestamp" not in df.columns:
+            return df
+
+        ts_str = df["timestamp"].astype(str)
+        is_oct_02 = ts_str.str.slice(5, 7).eq("10") & ts_str.str.endswith(" 02:00:00")
+        if not is_oct_02.any():
+            return df
+
+        dates = ts_str.str.slice(0, 10)
+        ts_counts = df.groupby("timestamp", sort=False)["generation_kwh"].transform("size")
+        day_counts = (
+            df.assign(_d=dates).groupby("_d", sort=False)["generation_kwh"].transform("size")
+        )
+        dst_dates = {str(d) for d in dates[is_oct_02].unique() if is_autumn_dst_date(str(d))}
+        dst_mask = is_oct_02 & (ts_counts == 2) & (dates.isin(dst_dates) | (day_counts == 25))
+        if not dst_mask.any():
+            return df
+
+        energy_cols = [
+            col
+            for col in (
+                "generation_kwh",
+                "consumption_kwh",
+                "self_consumption_kwh",
+                "exported_energy_kwh",
+                "imported_energy_kwh",
+            )
+            if col in df.columns
+        ]
+        non_dst = df.loc[~dst_mask]
+        dst_summed = (
+            df.loc[dst_mask]
+            .groupby("timestamp", as_index=False, sort=False)[energy_cols]
+            .sum(min_count=1)
+        )
+        return pd.concat([non_dst, dst_summed], ignore_index=True)[df.columns]
+
     def load_all(self) -> pd.DataFrame:
         """Load, validate, and deduplicate all generation reports in the directory.
 
@@ -180,9 +220,7 @@ class HuaweiGenerationLoader:
             if present in the reports) sorted chronologically.
         """
         files = self.discover_files()
-        dfs = []
-        for f in files:
-            dfs.append(self.parse_file(f))
+        dfs = [self.consolidate_autumn_dst(self.parse_file(f)) for f in files]
 
         combined = pd.concat(dfs, ignore_index=True)
 

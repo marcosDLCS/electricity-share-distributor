@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -79,3 +80,13 @@ def clean_numeric_series(series: pd.Series, fill_na: float | None = None) -> pd.
     if fill_na is not None:
         return numeric.fillna(fill_na)
     return numeric
+
+
+def is_autumn_dst_date(date_str: str) -> bool:
+    """Return True if ISO date string (YYYY-MM-DD) is the European autumn DST date."""
+    try:
+        parsed = date.fromisoformat(date_str)
+    except ValueError:
+        return False
+    # European DST ends on the last Sunday of October (Oct 25-31, weekday == 6)
+    return parsed.month == 10 and parsed.day >= 25 and parsed.weekday() == 6

@@ -311,3 +311,162 @@ def test_doctor_detects_prolonged_inverter_telemetry_outage(tmp_path: Path) -> N
     assert report.generation_result is not None
     assert report.generation_result.status == "warning"
     assert any("inverter telemetry outage" in n for n in report.generation_result.notes)
+
+
+def test_doctor_filters_unconfigured_cups_and_logs_summary_message(tmp_path: Path) -> None:
+    """Filter consumption diagnostics to active CUPS in cups.json and record excluded CUPS."""
+    c_dir = tmp_path / "consumption"
+    g_dir = tmp_path / "generation"
+    c_dir.mkdir()
+    g_dir.mkdir()
+
+    active_cups = "ES0021000000000001AA"
+    extra_cups = "ES0021000000000099ZZ"
+    dates = pd.date_range("2026-05-01 00:00:00", "2026-05-01 23:00:00", freq="h")
+
+    for cups_id in (active_cups, extra_cups):
+        rows = [
+            f"{cups_id};{dt.strftime('%Y/%m/%d')};{dt.hour + 1:02d}:00;1,000;IBERDROLA;R"
+            for dt in dates
+        ]
+        (c_dir / f"{cups_id}.csv").write_text(
+            "CUPS;Fecha;Hora;Consumo_kWh;Metodo;Tipo\n" + "\n".join(rows),
+            encoding="utf-8",
+        )
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Informe de plantas", "", ""])
+    ws.append(["Período estadístico", "Rendimiento FV (kWh)", "Rendimiento del inversor (kWh)"])
+    for dt in dates:
+        ws.append([dt.strftime("%Y-%m-%d %H:%M:%S"), 2.0, 2.0])
+    wb.save(g_dir / "gen.xlsx")
+
+    cups_file = tmp_path / "cups.json"
+    cups_file.write_text(
+        f'[{{"cups": "{active_cups}", "use": "Aerotermia", "primary": true}}]',
+        encoding="utf-8",
+    )
+
+    doc = DataDoctor(
+        consumption_dir=c_dir,
+        generation_dir=g_dir,
+        weather_dir=None,
+        cups_config_path=cups_file,
+    )
+    report = doc.diagnose()
+
+    assert [c.identifier for c in report.consumption_results] == [active_cups]
+    assert report.overlap.participating_cups == [active_cups]
+    assert report.can_calculate is True
+    assert any(extra_cups in msg for msg in report.summary_messages)
+
+
+def test_doctor_reports_duplicates_pre_dedup_and_clean_autumn_dst(tmp_path: Path) -> None:
+    """Count pre-deduplication duplicates cleanly while keeping single-file autumn DST duplicate_records == 0."""
+    c_dir = tmp_path / "consumption"
+    g_dir = tmp_path / "generation"
+    c_dir.mkdir()
+    g_dir.mkdir()
+
+    cups = "ES0021000000000001AA"
+    # File 1 covers autumn DST Sunday 2026-10-25 (25 hours in CSV -> consolidated to 24 canonical hours)
+    dst_rows = [f"{cups};2026/10/25;{h:02d}:00;0,500;IBERDROLA;R" for h in range(1, 26)]
+    (c_dir / "a_oct25.csv").write_text(
+        "CUPS;Fecha;Hora;Consumo_kWh;Metodo;Tipo\n" + "\n".join(dst_rows),
+        encoding="utf-8",
+    )
+
+    # First check clean autumn DST (no overlapping file): duplicate_records == 0
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Informe de plantas", "", ""])
+    ws.append(["Período estadístico", "Rendimiento FV (kWh)"])
+    for h in range(24):
+        if h == 2:
+            ws.append(["2026-10-25 02:00:00 DST", 0.0])
+            ws.append(["2026-10-25 02:00:00", 0.0])
+        else:
+            ws.append([f"2026-10-25 {h:02d}:00:00", 1.5 if 9 <= h <= 17 else 0.0])
+    wb.save(g_dir / "gen_a.xlsx")
+
+    doc_clean = DataDoctor(consumption_dir=c_dir, generation_dir=g_dir, weather_dir=None)
+    report_clean = doc_clean.diagnose()
+    assert report_clean.consumption_results[0].duplicate_records == 0
+    assert report_clean.generation_result is not None
+    assert report_clean.generation_result.duplicate_records == 0
+    assert report_clean.can_calculate is True
+
+    # Now add overlapping partial export for 2026-10-25 -> real duplicate timestamps across files!
+    overlap_rows = [f"{cups};2026/10/25;{h:02d}:00;0,500;IBERDROLA;R" for h in range(1, 6)]
+    (c_dir / "b_oct25_overlap.csv").write_text(
+        "CUPS;Fecha;Hora;Consumo_kWh;Metodo;Tipo\n" + "\n".join(overlap_rows),
+        encoding="utf-8",
+    )
+    wb.save(g_dir / "gen_b.xlsx")
+
+    doc_dup = DataDoctor(consumption_dir=c_dir, generation_dir=g_dir, weather_dir=None)
+    report_dup = doc_dup.diagnose()
+    assert report_dup.consumption_results[0].duplicate_records == 5
+    assert report_dup.consumption_results[0].status == "warning"
+    assert report_dup.generation_result is not None
+    assert report_dup.generation_result.duplicate_records == 24
+    assert report_dup.generation_result.status == "warning"
+    assert report_dup.overlap.common_hours == 24
+    assert report_dup.can_calculate is True
+
+
+def test_doctor_empty_directories_handled_without_exception(tmp_path: Path) -> None:
+    """Empty consumption and generation directories should return a graceful error report without raising."""
+    c_dir = tmp_path / "consumption"
+    g_dir = tmp_path / "generation"
+    c_dir.mkdir()
+    g_dir.mkdir()
+
+    doc = DataDoctor(consumption_dir=c_dir, generation_dir=g_dir, weather_dir=None)
+    report = doc.diagnose()
+
+    assert report.consumption_results == []
+    assert report.generation_result is None
+    assert report.overall_status == "error"
+    assert report.can_calculate is False
+    assert len(report.summary_messages) >= 2
+
+
+def test_doctor_consumption_only_audit_without_generation(tmp_path: Path) -> None:
+    """Allow consumption diagnostics when generation_dir is missing or empty, setting can_calculate=False."""
+    c_dir = tmp_path / "consumption"
+    c_dir.mkdir()
+    missing_g_dir = tmp_path / "missing_generation"
+
+    cups = "ES0021000000000001AA"
+    dates = pd.date_range("2026-05-01 00:00:00", "2026-05-02 23:00:00", freq="h")
+    rows = []
+    for dt in dates:
+        if dt.day == 2 and dt.hour in (10, 11):
+            continue  # 2-hour gap
+        rows.append(f"{cups};{dt.strftime('%Y/%m/%d')};{dt.hour + 1:02d}:00;0,750;IBERDROLA;R")
+    (c_dir / f"{cups}.csv").write_text(
+        "CUPS;Fecha;Hora;Consumo_kWh;Metodo;Tipo\n" + "\n".join(rows),
+        encoding="utf-8",
+    )
+
+    doc_missing = DataDoctor(consumption_dir=c_dir, generation_dir=missing_g_dir, weather_dir=None)
+    report_missing = doc_missing.diagnose()
+
+    assert len(report_missing.consumption_results) == 1
+    assert report_missing.consumption_results[0].missing_hours == 2
+    assert report_missing.generation_result is None
+    assert report_missing.overlap.status == "warning"
+    assert report_missing.can_calculate is False
+    assert report_missing.overall_status == "warning"
+
+    # Also test when generation_dir exists but is empty
+    empty_g_dir = tmp_path / "empty_generation"
+    empty_g_dir.mkdir()
+    doc_empty = DataDoctor(consumption_dir=c_dir, generation_dir=empty_g_dir, weather_dir=None)
+    report_empty = doc_empty.diagnose()
+    assert len(report_empty.consumption_results) == 1
+    assert report_empty.generation_result is None
+    assert report_empty.can_calculate is False
+    assert report_empty.overall_status == "warning"

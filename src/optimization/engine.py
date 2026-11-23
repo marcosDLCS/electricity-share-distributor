@@ -481,6 +481,46 @@ class DistributionOptimizer:
 
         return True
 
+    @staticmethod
+    def is_complete_fortnight(df: pd.DataFrame, year: int, month: int, fortnight: int) -> bool:
+        """Determine whether an aligned dataset for a year-month-fortnight is complete (>= 90% hours)."""
+        if df.empty or fortnight not in (1, 2):
+            return False
+
+        days_in_month = calendar.monthrange(year, month)[1]
+        days_in_fortnight = 15 if fortnight == 1 else (days_in_month - 15)
+        expected_hours = days_in_fortnight * 24
+        return len(df) >= int(expected_hours * 0.90)
+
+    @classmethod
+    def _collect_calendar_month_dfs(
+        cls,
+        aligned_dataset: AlignedDataset,
+        month: int,
+        require_full_month: bool = False,
+    ) -> list[tuple[int, pd.DataFrame]]:
+        """Collect (year, DataFrame) entries matching calendar month, optionally filtering complete months."""
+        monthly_groups = aligned_dataset.monthly_groups
+        if not monthly_groups and not aligned_dataset.data.empty:
+            monthly_groups = {
+                str(ym): group
+                for ym, group in aligned_dataset.data.groupby(
+                    aligned_dataset.data.index.astype(str).str.slice(0, 7)
+                )
+            }
+
+        entries: list[tuple[int, pd.DataFrame]] = []
+        for ym, group_df in monthly_groups.items():
+            try:
+                parts = ym.split("-")
+                y_val, m_val = int(parts[0]), int(parts[1])
+                if m_val == month and not group_df.empty:
+                    if not require_full_month or cls.is_complete_month(group_df, y_val, month):
+                        entries.append((y_val, group_df))
+            except ValueError, IndexError:
+                continue
+        return entries
+
     @classmethod
     def _evaluate_calendar_months(
         cls,
@@ -498,17 +538,12 @@ class DistributionOptimizer:
 
         for m in range(1, 13):
             m_str = f"{m:02d}"
-            complete_dfs: list[pd.DataFrame] = []
-
-            for ym, group_df in aligned_dataset.monthly_groups.items():
-                try:
-                    parts = ym.split("-")
-                    y_val, m_val = int(parts[0]), int(parts[1])
-                    if m_val == m:
-                        if not require_full_month or cls.is_complete_month(group_df, y_val, m):
-                            complete_dfs.append(group_df)
-                except ValueError, IndexError:
-                    continue
+            complete_dfs = [
+                df
+                for _, df in cls._collect_calendar_month_dfs(
+                    aligned_dataset, m, require_full_month=require_full_month
+                )
+            ]
 
             if not complete_dfs:
                 # Month does not have complete data: skip calculation
@@ -610,18 +645,10 @@ class DistributionOptimizer:
 
         for m in range(1, 13):
             m_str = f"{m:02d}"
-            month_dfs: list[pd.DataFrame] = []
-            for ym, group_df in aligned_dataset.monthly_groups.items():
-                try:
-                    parts = ym.split("-")
-                    y_val, m_val = int(parts[0]), int(parts[1])
-                    if m_val == m:
-                        if require_full_month and not cls.is_complete_month(group_df, y_val, m):
-                            continue
-                        if not group_df.empty:
-                            month_dfs.append(group_df)
-                except ValueError, IndexError:
-                    continue
+            month_entries = cls._collect_calendar_month_dfs(
+                aligned_dataset, m, require_full_month=require_full_month
+            )
+            month_dfs = [df for _, df in month_entries]
 
             month_solar_days = cls._count_active_solar_days(month_dfs)
             month_fallback_betas: np.ndarray | None = None
@@ -630,11 +657,14 @@ class DistributionOptimizer:
                 period_str = f"{m_str}-{f}"
                 fortnight_dfs: list[pd.DataFrame] = []
 
-                for group_df in month_dfs:
+                for y_val, group_df in month_entries:
                     ts_days = pd.to_datetime(group_df.index).day
                     f_df = group_df[ts_days <= 15] if f == 1 else group_df[ts_days >= 16]
-                    if not f_df.empty:
-                        fortnight_dfs.append(f_df)
+                    if f_df.empty:
+                        continue
+                    if require_full_month and not cls.is_complete_fortnight(f_df, y_val, m, f):
+                        continue
+                    fortnight_dfs.append(f_df)
 
                 if not fortnight_dfs:
                     fortnight_results.append(
@@ -1027,34 +1057,21 @@ class DistributionOptimizer:
         )
 
     @classmethod
-    def evaluate_hourly_self_consumption(
+    def _evaluate_hourly_df_self_consumption(
         cls,
-        aligned_dataset: AlignedDataset,
+        df: pd.DataFrame,
+        cups_list: list[str],
         strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL,
         precision: int = 0,
-        primary_cups: str | None = None,
         constraints: BylawConstraints | None = None,
     ) -> float:
-        """Calculate exact collective self-consumption under dynamic hourly allocation (Orden TED/1247/2021).
-
-        Args:
-            aligned_dataset: Ingested and aligned dataset containing hourly timestamps.
-            strategy: Primary optimization strategy.
-            precision: Share percentage precision (0, 1, or 2 decimal places).
-            primary_cups: Optional identifier of primary CUPS.
-            constraints: Optional regulatory or community bylaw constraints.
-
-        Returns:
-            Total kilowatt-hours self-consumed collectively across all timestamps.
-        """
-        aligned_df = aligned_dataset.data
-        cups_list = aligned_dataset.cups_list
+        """Compute total collective dynamic hourly self-consumption (kWh) over a single DataFrame."""
         n_cups = len(cups_list)
-        if aligned_df.empty or n_cups == 0 or "generation_kwh" not in aligned_df.columns:
+        if df.empty or n_cups == 0 or "generation_kwh" not in df.columns:
             return 0.0
 
-        c_arr = aligned_df[cups_list].to_numpy(dtype=float)
-        g_arr = aligned_df["generation_kwh"].to_numpy(dtype=float)
+        c_arr = df[cups_list].to_numpy(dtype=float)
+        g_arr = df["generation_kwh"].to_numpy(dtype=float)
 
         # Only hours with non-zero generation contribute to self-consumption
         sun_mask = g_arr > 1e-6
@@ -1095,6 +1112,128 @@ class DistributionOptimizer:
         alloc_sun = rounded_betas * g_sun[:, np.newaxis]
         sc_sun = np.minimum(c_sun, alloc_sun)
         return float(np.sum(sc_sun))
+
+    @classmethod
+    def evaluate_hourly_self_consumption(
+        cls,
+        aligned_dataset: AlignedDataset,
+        strategy: OptimizationStrategy = OptimizationStrategy.OPTIMAL,
+        precision: int = 0,
+        primary_cups: str | None = None,
+        constraints: BylawConstraints | None = None,
+        require_full_month: bool = False,
+    ) -> float:
+        """Calculate exact collective self-consumption under dynamic hourly allocation (Orden TED/1247/2021).
+
+        Applies per-calendar-month completeness filtering and 1/k_m multi-year scaling
+        matching the monthly and fortnight previsions.
+
+        Args:
+            aligned_dataset: Ingested and aligned dataset containing hourly timestamps.
+            strategy: Primary optimization strategy.
+            precision: Share percentage precision (0, 1, or 2 decimal places).
+            primary_cups: Optional identifier of primary CUPS.
+            constraints: Optional regulatory or community bylaw constraints.
+            require_full_month: If True, excludes incomplete calendar months (<90% days/hours).
+
+        Returns:
+            Scaled expected annual kilowatt-hours self-consumed collectively.
+        """
+        del (
+            primary_cups
+        )  # Unused by dynamic hourly proportionality; retained for API compatibility.
+        aligned_df = aligned_dataset.data
+        cups_list = aligned_dataset.cups_list
+        if aligned_df.empty or not cups_list or "generation_kwh" not in aligned_df.columns:
+            return 0.0
+
+        total_hourly_sc = 0.0
+        for m in range(1, 13):
+            month_entries = cls._collect_calendar_month_dfs(
+                aligned_dataset, m, require_full_month=require_full_month
+            )
+            if not month_entries:
+                continue
+
+            month_dfs = [df for _, df in month_entries]
+            pooled_df = month_dfs[0] if len(month_dfs) == 1 else pd.concat(month_dfs)
+            month_sc = cls._evaluate_hourly_df_self_consumption(
+                pooled_df,
+                cups_list=cups_list,
+                strategy=strategy,
+                precision=precision,
+                constraints=constraints,
+            )
+            total_hourly_sc += month_sc / len(month_entries)
+
+        return float(total_hourly_sc)
+
+    @classmethod
+    def _evaluate_current_self_consumption(
+        cls,
+        aligned_dataset: AlignedDataset,
+        effective_primary: str | None,
+        total_summary: CommunityMonthlyMetrics,
+        require_full_month: bool = False,
+    ) -> float:
+        """Evaluate bounded physical behind-the-meter self-consumption with 1/k_m calendar scaling."""
+        aligned_df = aligned_dataset.data
+        has_curated_sc = (
+            "self_consumption" in aligned_df.columns
+            and float(aligned_df["self_consumption"].sum()) > 0
+        )
+        has_primary_series = bool(
+            effective_primary
+            and effective_primary in aligned_df.columns
+            and "generation_kwh" in aligned_df.columns
+        )
+
+        if has_curated_sc or has_primary_series:
+            total_current_sc = 0.0
+            for m in range(1, 13):
+                month_entries = cls._collect_calendar_month_dfs(
+                    aligned_dataset, m, require_full_month=require_full_month
+                )
+                if not month_entries:
+                    continue
+
+                month_dfs = [df for _, df in month_entries]
+                pooled_df = month_dfs[0] if len(month_dfs) == 1 else pd.concat(month_dfs)
+
+                g_val = (
+                    np.clip(pooled_df["generation_kwh"].to_numpy(dtype=float), 0.0, None)
+                    if "generation_kwh" in pooled_df.columns
+                    else None
+                )
+                c_pri = (
+                    np.clip(pooled_df[effective_primary].to_numpy(dtype=float), 0.0, None)
+                    if effective_primary and effective_primary in pooled_df.columns
+                    else None
+                )
+
+                if has_curated_sc and "self_consumption" in pooled_df.columns:
+                    sc_vals = np.clip(
+                        pooled_df["self_consumption"].to_numpy(dtype=float), 0.0, None
+                    )
+                    if g_val is not None:
+                        sc_vals = np.minimum(sc_vals, g_val)
+                    if c_pri is not None:
+                        sc_vals = np.minimum(sc_vals, c_pri)
+                    month_sc = float(np.sum(sc_vals))
+                elif c_pri is not None and g_val is not None:
+                    month_sc = float(np.sum(np.minimum(c_pri, g_val)))
+                else:
+                    month_sc = 0.0
+
+                total_current_sc += month_sc / len(month_entries)
+            return float(total_current_sc)
+
+        pri_metric = (
+            next((c for c in total_summary.cups_metrics if c.cups == effective_primary), None)
+            if effective_primary
+            else (total_summary.cups_metrics[0] if total_summary.cups_metrics else None)
+        )
+        return float(pri_metric.self_consumed_kwh) if pri_metric else 0.0
 
     @classmethod
     def optimize_dataset(
@@ -1178,27 +1317,12 @@ class DistributionOptimizer:
         )
 
         # 1. Current Self-Consumption (physical baseline prior to collective distribution)
-        aligned_df = aligned_dataset.data
-        if (
-            "self_consumption" in aligned_df.columns
-            and float(aligned_df["self_consumption"].sum()) > 0
-        ):
-            current_sc = float(aligned_df["self_consumption"].sum())
-        elif (
-            effective_primary
-            and effective_primary in aligned_df.columns
-            and "generation_kwh" in aligned_df.columns
-        ):
-            c_pri = aligned_df[effective_primary].to_numpy(dtype=float)
-            g_val = aligned_df["generation_kwh"].to_numpy(dtype=float)
-            current_sc = float(np.sum(np.minimum(c_pri, g_val)))
-        else:
-            pri_metric = (
-                next((c for c in total_summary.cups_metrics if c.cups == effective_primary), None)
-                if effective_primary
-                else (total_summary.cups_metrics[0] if total_summary.cups_metrics else None)
-            )
-            current_sc = float(pri_metric.self_consumed_kwh) if pri_metric else 0.0
+        current_sc = cls._evaluate_current_self_consumption(
+            aligned_dataset=aligned_dataset,
+            effective_primary=effective_primary,
+            total_summary=total_summary,
+            require_full_month=require_full_month,
+        )
 
         # 2. Monthly Share Self-Consumption (RD 244/2019 fixed monthly betas)
         monthly_sc = float(total_summary.total_self_consumed_kwh)
@@ -1215,6 +1339,7 @@ class DistributionOptimizer:
             precision=active_precision,
             primary_cups=effective_primary,
             constraints=constraints,
+            require_full_month=require_full_month,
         )
 
         baselines: dict[str, OptimizationResult] = {}
@@ -1260,6 +1385,7 @@ class DistributionOptimizer:
                             precision=active_precision,
                             primary_cups=effective_primary,
                             constraints=constraints,
+                            require_full_month=require_full_month,
                         ),
                     )
 

@@ -10,7 +10,12 @@ import numpy as np
 import pandas as pd
 
 from src.config import REQUIRED_CONSUMPTION_COLUMNS
-from src.ingestion.csv_utils import clean_numeric_series, detect_file_encoding, sniff_csv_delimiter
+from src.ingestion.csv_utils import (
+    clean_numeric_series,
+    detect_file_encoding,
+    is_autumn_dst_date,
+    sniff_csv_delimiter,
+)
 from src.ingestion.schema import IngestionError, ParseError, ValidationError, ValidationResult
 
 CONSUMPTION_COLUMN_ALIASES: Final[dict[str, str]] = {
@@ -264,9 +269,43 @@ class DatadisConsumptionLoader:
         return clean_df[["cups", "timestamp", "consumption_kwh"]]
 
     @staticmethod
+    def consolidate_autumn_dst(df: pd.DataFrame) -> pd.DataFrame:
+        """Sum the repeated 02:00 interval on 25-hour European autumn DST days within a single file."""
+        if df.empty or "timestamp" not in df.columns:
+            return df
+
+        ts_str = df["timestamp"].astype(str)
+        is_oct_02 = ts_str.str.slice(5, 7).eq("10") & ts_str.str.endswith(" 02:00:00")
+        if not is_oct_02.any():
+            return df
+
+        dates = ts_str.str.slice(0, 10)
+        ts_counts = df.groupby(["cups", "timestamp"], sort=False)["consumption_kwh"].transform(
+            "size"
+        )
+        day_counts = (
+            df.assign(_d=dates)
+            .groupby(["cups", "_d"], sort=False)["consumption_kwh"]
+            .transform("size")
+        )
+        dst_dates = {str(d) for d in dates[is_oct_02].unique() if is_autumn_dst_date(str(d))}
+        dst_mask = is_oct_02 & (ts_counts == 2) & (dates.isin(dst_dates) | (day_counts == 25))
+        if not dst_mask.any():
+            return df
+
+        non_dst = df.loc[~dst_mask]
+        dst_summed = (
+            df.loc[dst_mask]
+            .groupby(["cups", "timestamp"], as_index=False, sort=False)["consumption_kwh"]
+            .sum()
+        )
+        return pd.concat([non_dst, dst_summed], ignore_index=True)[df.columns]
+
+    @staticmethod
     def _combine_and_filter(dfs: list[pd.DataFrame], year: int | None = None) -> pd.DataFrame:
-        """Concatenate parsed DataFrames, deduplicate by (cups, timestamp), sort, and filter by year."""
-        combined = pd.concat(dfs, ignore_index=True)
+        """Concatenate parsed DataFrames, conserve autumn DST energy, deduplicate, and filter."""
+        consolidated = [DatadisConsumptionLoader.consolidate_autumn_dst(df) for df in dfs]
+        combined = pd.concat(consolidated, ignore_index=True)
         combined = combined.drop_duplicates(subset=["cups", "timestamp"], keep="last")
         combined = combined.sort_values(by=["cups", "timestamp"]).reset_index(drop=True)
         if year is not None:

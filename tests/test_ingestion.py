@@ -549,3 +549,95 @@ def test_clean_numeric_series_and_sniff_csv_delimiter(tmp_path: Path) -> None:
     assert sniff_csv_delimiter(semicolon_csv) == ";"
     assert sniff_csv_delimiter(comma_csv) == ","
     assert sniff_csv_delimiter(tab_csv) == "\t"
+
+
+def test_consumption_loader_autumn_dst_conserves_energy_and_dedups_overlaps(
+    tmp_path: Path,
+) -> None:
+    """Sum the 25th hour energy within an autumn DST file without double-counting overlapping exports."""
+    cups = "ES0021000000000001AA"
+    # 2026-10-25 is the last Sunday of October (25-hour autumn DST transition)
+    lines = ["cups;fecha;hora;consumo_kWh;metodoObtencion"]
+    for h in range(1, 26):
+        # Hour 03:00 (first 02:00 slot) = 1.250, Hour 04:00 (second 02:00 slot) = 0.750, others = 0.500
+        if h == 3:
+            val_str = "1,250"
+        elif h == 4:
+            val_str = "0,750"
+        else:
+            val_str = "0,500"
+        lines.append(f'"{cups}";"2026/10/25";"{h:02d}:00";"{val_str}";Real')
+
+    file_a = tmp_path / "a_oct.csv"
+    file_b = tmp_path / "b_oct_overlap.csv"
+    file_a.write_text("\n".join(lines), encoding="utf-8")
+    file_b.write_text("\n".join(lines), encoding="utf-8")
+
+    # Single-file load_all sums both 02:00:00 slots -> 23 * 0.5 + 1.25 + 0.75 = 13.5 kWh across 24 canonical hours
+    single_dir = tmp_path / "single"
+    single_dir.mkdir()
+    (single_dir / "oct.csv").write_text("\n".join(lines), encoding="utf-8")
+    df_single = DatadisConsumptionLoader(single_dir).load_all()
+    assert len(df_single) == 24
+    row_02 = df_single[df_single["timestamp"] == "2026-10-25 02:00:00"].iloc[0]
+    assert row_02["consumption_kwh"] == pytest.approx(2.0)
+    assert df_single["consumption_kwh"].sum() == pytest.approx(13.5)
+
+    # Overlapping files containing the same 2026-10-25 export do NOT double-count (still 13.5 kWh)
+    df_overlap = DatadisConsumptionLoader(tmp_path).load_all()
+    assert len(df_overlap) == 24
+    assert df_overlap["consumption_kwh"].sum() == pytest.approx(13.5)
+
+
+def test_generation_loader_autumn_dst_conserves_energy_and_dedups_overlaps(
+    tmp_path: Path,
+) -> None:
+    """Sum the repeated '02:00:00 DST' + '02:00:00' autumn transition hour per file without double-counting."""
+
+    def _write_oct_dst_xlsx(path: Path) -> None:
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["Informe de plantas_MOCK", "", "", "", "", "", ""])
+        ws.append(
+            [
+                "Período estadístico",
+                "Rendimiento FV (kWh)",
+                "Consumo (kWh)",
+                "Autoconsumo (kWh)",
+                "Energía exportada (kWh)",
+                "Importación (kWh)",
+            ]
+        )
+        for h in range(24):
+            if h == 2:
+                # Two distinct intervals at 02:00 on autumn DST Sunday 2026-10-25
+                ws.append(["2026-10-25 02:00:00 DST", 1.5, 2.0, 1.2, 0.3, 0.8])
+                ws.append(["2026-10-25 02:00:00", 2.5, 3.0, 1.8, 0.7, 1.2])
+            else:
+                ws.append([f"2026-10-25 {h:02d}:00:00", 1.0, 1.0, 0.5, 0.5, 0.5])
+        wb.save(path)
+
+    single_dir = tmp_path / "single_gen"
+    single_dir.mkdir()
+    _write_oct_dst_xlsx(single_dir / "oct.xlsx")
+
+    df_single = HuaweiGenerationLoader(single_dir).load_all()
+    assert len(df_single) == 24
+    row_02 = df_single[df_single["timestamp"] == "2026-10-25 02:00:00"].iloc[0]
+    assert row_02["generation_kwh"] == pytest.approx(4.0)
+    assert row_02["consumption_kwh"] == pytest.approx(5.0)
+    assert row_02["self_consumption_kwh"] == pytest.approx(3.0)
+    assert row_02["exported_energy_kwh"] == pytest.approx(1.0)
+    assert row_02["imported_energy_kwh"] == pytest.approx(2.0)
+
+    # Total daily energy: 23 * 1.0 + 4.0 = 27.0 kWh
+    assert df_single["generation_kwh"].sum() == pytest.approx(27.0)
+
+    # Overlapping generation files must NOT double-count
+    overlap_dir = tmp_path / "overlap_gen"
+    overlap_dir.mkdir()
+    _write_oct_dst_xlsx(overlap_dir / "oct_a.xlsx")
+    _write_oct_dst_xlsx(overlap_dir / "oct_b.xlsx")
+    df_overlap = HuaweiGenerationLoader(overlap_dir).load_all()
+    assert len(df_overlap) == 24
+    assert df_overlap["generation_kwh"].sum() == pytest.approx(27.0)

@@ -11,6 +11,7 @@ import pandas as pd
 from src.config import DEFAULT_CONSUMPTION_DIR, DEFAULT_GENERATION_DIR, DEFAULT_WEATHER_DIR
 from src.ingestion.consumption import DatadisConsumptionLoader
 from src.ingestion.generation import HuaweiGenerationLoader
+from src.ingestion.schema import IngestionError
 from src.ingestion.weather import WeatherLoader
 
 if TYPE_CHECKING:
@@ -114,7 +115,7 @@ class DataDoctor:
         except Exception:
             cups_configs = {}
 
-        # 1. Check directories existence
+        # 1. Check consumption directory existence
         if not self.consumption_dir.exists():
             return DoctorReport(
                 consumption_results=[],
@@ -129,66 +130,92 @@ class DataDoctor:
                 summary_messages=[f"Consumption directory not found: {self.consumption_dir}"],
             )
 
-        if not self.generation_dir.exists():
-            return DoctorReport(
-                consumption_results=[],
-                generation_result=None,
-                overlap=OverlapCheckResult(
-                    status="error",
-                    notes=[f"Generation directory not found: {self.generation_dir}"],
-                ),
-                overall_status="error",
-                can_calculate=False,
-                weather_result=None,
-                summary_messages=[f"Generation directory not found: {self.generation_dir}"],
-            )
-
         # 2. Check Consumption Files
         c_loader = DatadisConsumptionLoader(self.consumption_dir)
-        c_files = c_loader.discover_files()
+        try:
+            c_files = c_loader.discover_files()
+        except IngestionError as err:
+            c_files = []
+            summary_messages.append(str(err))
         c_df_all: pd.DataFrame | None = None
 
-        if not c_files:
-            summary_messages.append(f"No consumption CSV files found in {self.consumption_dir}")
-        else:
+        if c_files:
             try:
-                c_df_all = c_loader.load_all()
-                cups_groups = c_df_all.groupby("cups")
-                for cups, group in cups_groups:
-                    cups_str = str(cups)
-                    c_cfg = cups_configs.get(cups_str)
-                    diag = self._audit_time_series(
-                        df=group,
-                        identifier=cups_str,
-                        source_type="consumption",
-                        value_col="consumption_kwh",
-                        files_count=len(c_files),
-                        use=c_cfg.use if c_cfg else "",
-                        is_primary=c_cfg.primary if c_cfg else False,
+                c_raw_dfs = [
+                    c_loader.consolidate_autumn_dst(c_loader.parse_file(f)) for f in c_files
+                ]
+                c_raw_df = pd.concat(c_raw_dfs, ignore_index=True)
+                c_raw_df["cups"] = c_raw_df["cups"].astype(str).str.strip()
+
+                if cups_configs:
+                    active_cups = set(cups_configs.keys())
+                    unconfigured_cups = sorted(set(c_raw_df["cups"].unique()) - active_cups)
+                    if unconfigured_cups:
+                        summary_messages.append(
+                            f"Ignored {len(unconfigured_cups)} unconfigured CUPS not in cups.json: "
+                            f"{', '.join(unconfigured_cups)}."
+                        )
+                    c_raw_df = c_raw_df[c_raw_df["cups"].isin(active_cups)].reset_index(drop=True)
+                    if c_raw_df.empty:
+                        summary_messages.append(
+                            "No consumption records found matching active CUPS in cups.json."
+                        )
+
+                if not c_raw_df.empty:
+                    for cups, raw_group in c_raw_df.groupby("cups"):
+                        cups_str = str(cups)
+                        c_cfg = cups_configs.get(cups_str)
+                        diag = self._audit_time_series(
+                            df=raw_group,
+                            identifier=cups_str,
+                            source_type="consumption",
+                            value_col="consumption_kwh",
+                            files_count=len(c_files),
+                            use=c_cfg.use if c_cfg else "",
+                            is_primary=c_cfg.primary if c_cfg else False,
+                        )
+                        consumption_results.append(diag)
+
+                    c_df_all = (
+                        c_raw_df.drop_duplicates(subset=["cups", "timestamp"], keep="last")
+                        .sort_values(by=["cups", "timestamp"])
+                        .reset_index(drop=True)
                     )
-                    consumption_results.append(diag)
             except Exception as err:
                 summary_messages.append(f"Failed parsing consumption files: {err}")
 
-        # 3. Check Generation Files
-        g_loader = HuaweiGenerationLoader(self.generation_dir)
-        g_files = g_loader.discover_files()
+        # 3. Check Generation Files (graceful if missing/empty for consumption-only workflows)
         g_df: pd.DataFrame | None = None
-
-        if not g_files:
-            summary_messages.append(f"No generation Excel files found in {self.generation_dir}")
+        if not self.generation_dir.exists():
+            summary_messages.append(f"Generation directory not found: {self.generation_dir}")
         else:
+            g_loader = HuaweiGenerationLoader(self.generation_dir)
             try:
-                g_df = g_loader.load_all()
-                gen_result = self._audit_time_series(
-                    df=g_df,
-                    identifier="Huawei FusionSolar Generation",
-                    source_type="generation",
-                    value_col="generation_kwh",
-                    files_count=len(g_files),
-                )
-            except Exception as err:
-                summary_messages.append(f"Failed parsing generation files: {err}")
+                g_files = g_loader.discover_files()
+            except IngestionError as err:
+                g_files = []
+                summary_messages.append(str(err))
+
+            if g_files:
+                try:
+                    g_raw_dfs = [
+                        g_loader.consolidate_autumn_dst(g_loader.parse_file(f)) for f in g_files
+                    ]
+                    g_raw_df = pd.concat(g_raw_dfs, ignore_index=True)
+                    gen_result = self._audit_time_series(
+                        df=g_raw_df,
+                        identifier="Huawei FusionSolar Generation",
+                        source_type="generation",
+                        value_col="generation_kwh",
+                        files_count=len(g_files),
+                    )
+                    g_df = (
+                        g_raw_df.drop_duplicates(subset=["timestamp"], keep="last")
+                        .sort_values("timestamp")
+                        .reset_index(drop=True)
+                    )
+                except Exception as err:
+                    summary_messages.append(f"Failed parsing generation files: {err}")
 
         # 4. Check Weather Files
         if self.weather_dir and self.weather_dir.exists():
@@ -256,7 +283,14 @@ class DataDoctor:
         overall_status = "ok"
         can_calculate = True
 
-        if not consumption_results or gen_result is None or overlap.common_hours == 0:
+        if not consumption_results:
+            overall_status = "error"
+            can_calculate = False
+        elif gen_result is None:
+            can_calculate = False
+            has_errors = any(c.status == "error" for c in consumption_results)
+            overall_status = "error" if has_errors else "warning"
+        elif overlap.common_hours == 0:
             overall_status = "error"
             can_calculate = False
         else:
@@ -346,19 +380,25 @@ class DataDoctor:
 
         # Prolonged inverter telemetry outage check (>=48 consecutive zero-generation hours)
         if source_type == "generation" and len(df) >= 48:
-            ordered = df.sort_values("timestamp")
-            gen_series = pd.to_numeric(ordered[value_col], errors="coerce").fillna(0.0)
-            is_zero = gen_series <= 0.0
-            run_ids = (~is_zero).cumsum()
-            zero_runs = is_zero.groupby(run_ids).sum()
-            long_outages = zero_runs[zero_runs >= 48]
-            if not long_outages.empty:
-                outage_hours = int(long_outages.sum())
-                notes.append(
-                    f"{len(long_outages)} inverter telemetry outage(s) detected (>=48h zero generation, {outage_hours}h total)."
-                )
-                if status != "error":
-                    status = "warning"
+            ordered = (
+                df.assign(_val=pd.to_numeric(df[value_col], errors="coerce").fillna(0.0))
+                .groupby("timestamp", as_index=False)["_val"]
+                .max()
+                .sort_values("timestamp")
+            )
+            if len(ordered) >= 48:
+                gen_series = ordered["_val"]
+                is_zero = gen_series <= 0.0
+                run_ids = (~is_zero).cumsum()
+                zero_runs = is_zero.groupby(run_ids).sum()
+                long_outages = zero_runs[zero_runs >= 48]
+                if not long_outages.empty:
+                    outage_hours = int(long_outages.sum())
+                    notes.append(
+                        f"{len(long_outages)} inverter telemetry outage(s) detected (>=48h zero generation, {outage_hours}h total)."
+                    )
+                    if status != "error":
+                        status = "warning"
 
         # Timestamps analysis
         ts_clean = df["timestamp"].astype(str)
@@ -456,16 +496,32 @@ class DataDoctor:
         cups_list = [c.identifier for c in c_results]
         cups_count = len(cups_list)
 
-        if not c_results or g_result is None or c_df is None or g_df is None:
+        if not c_results or c_df is None:
             return OverlapCheckResult(
                 status="error",
                 cups_count=cups_count,
                 participating_cups=cups_list,
-                notes=["Cannot compute overlap: missing either consumption or generation data."],
+                notes=["Cannot compute overlap: missing consumption data."],
             )
 
         c_starts = [pd.to_datetime(c.date_start) for c in c_results if c.date_start]
         c_ends = [pd.to_datetime(c.date_end) for c in c_results if c.date_end]
+
+        if g_result is None or g_df is None:
+            cons_start_str = min(c_starts).strftime("%Y-%m-%d %H:%M:%S") if c_starts else None
+            cons_end_str = max(c_ends).strftime("%Y-%m-%d %H:%M:%S") if c_ends else None
+            return OverlapCheckResult(
+                consumption_start=cons_start_str,
+                consumption_end=cons_end_str,
+                common_hours=0,
+                participating_cups=cups_list,
+                cups_count=cups_count,
+                status="warning",
+                notes=[
+                    "Generation data unavailable: consumption-only diagnostics completed "
+                    "(PV calculation requires generation files)."
+                ],
+            )
 
         if not c_starts or not c_ends or not g_result.date_start or not g_result.date_end:
             return OverlapCheckResult(

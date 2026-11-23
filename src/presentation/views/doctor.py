@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from rich import box
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -316,6 +317,9 @@ def render_doctor_report(
                 else ""
             )
             advice_items.append(t("doc_adv_weather_coverage", lang=lang, period=period_str))
+
+    for msg in report.summary_messages:
+        advice_items.append(f"[yellow]ℹ[/yellow] {escape(msg)}")
 
     if not advice_items:
         advice_items.append(t("doc_adv_clean", lang=lang))

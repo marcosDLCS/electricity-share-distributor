@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| **ARCH-01** | `P1` High | `Architecture` | Domain & Ingestion Accuracy: Multi-Year Scaling, Primary Reconciliation, DST & Consumption-Only Doctor Audit | `src/optimization/engine.py`, `src/curation/curator.py`, `src/ingestion/` |
 | **SIMP-01** | `P1` High | `Simplicity` | Prune Dead Calculation Options, Unreferenced Views, Legacy Fallbacks & Unused Domain Models | `src/domain/`, `src/curation/`, `src/services/`, `src/presentation/views/` |
 | **ARCH-02** | `P2` Medium | `Architecture` | Performance Vectorization: Curation Pipeline, 2D Rounding, Solver Baselines & Excel Export | `src/curation/`, `src/optimization/`, `src/presentation/export.py` |
 | **SIMP-02** | `P2` Medium | `Simplicity` | Prune Orphaned Localization Keys & Simplify Translation Catalog Builder | `src/i18n.py`, `tests/` |
@@ -46,15 +45,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 _No pending tasks._
 
 ## 🏗️ Architecture
-
-### ARCH-01 (`P1` High): Domain & Ingestion Accuracy: Multi-Year Scaling, Primary Reconciliation, DST & Consumption-Only Doctor Audit
-- **Goal:** Guarantee strict mathematical, physical, and regulatory accuracy across multi-year datasets, behind-the-meter primary CUPS reconciliation, 25-hour autumn DST transitions, and `DataDoctor` pre-flight diagnostics (including consumption-only workspaces).
-- **Target Components:** `src/optimization/engine.py`, `src/curation/curator.py`, `src/ingestion/consumption.py`, `src/ingestion/generation.py`, `src/ingestion/doctor.py`, `tests/`.
-- **Acceptance Criteria:**
-  1. **Multi-Year Modality Scaling & Fortnight Completeness:** In `DistributionOptimizer.optimize_dataset()` and `evaluate_hourly_self_consumption()`, scale `current_self_consumed_kwh` (physical no-share baseline) and `hourly_share_self_consumed_kwh` (Orden TED/1247/2021) using the exact same per-calendar-month $1/k_m$ multi-year pooling and completeness filtering applied in `_evaluate_calendar_months()`. In `_evaluate_calendar_fortnights()`, validate half-month completeness ($\ge 90\%$ of expected hours in the fortnight when `require_full_month=True`). Guarantee the domain invariant $0 \le \text{Current SC} \le \text{Monthly SC} \le \text{Fortnight SC} \le \text{Hourly SC} \le G_{\text{total}}$.
-  2. **Primary Self-Consumption Bounding:** In `DataCurator.curate()`, bound hourly `self_consumption` on the primary CUPS by $\min(\text{generation}, \text{final\_cons})$ so physical behind-the-meter self-consumption never exceeds hourly solar generation or demand.
-  3. **Autumn DST Energy Conservation:** In `DatadisConsumptionLoader` (`src/ingestion/consumption.py`) and `HuaweiGenerationLoader` (`src/ingestion/generation.py`), preserve the full 25 hours of energy during the October autumn DST transition (summing the repeated `02:00:00` / `02:00:00 DST` transition hour energy instead of dropping the first hour via `drop_duplicates` or discarding load via `max`), ensuring daily kWh totals match fiscal meters.
-  4. **Accurate `DataDoctor` Pre-Flight Diagnostics:** In `DataDoctor.diagnose()` (`src/ingestion/doctor.py`), filter consumption series to the active CUPS in `cups.json` (reporting any unconfigured CUPS in a diagnostic note), count raw duplicate timestamps before deduplication so `duplicate_records` is accurately reported, handle empty input directories cleanly without uncaught `IngestionError`, and handle missing/empty generation directories gracefully so consumption diagnostics still run and report data health (setting `can_calculate=False` for PV optimization) for consumption-only `summary`/`compare` users.
 
 ### ARCH-02 (`P2` Medium): Performance Vectorization: Curation Pipeline, 2D Rounding, Solver Baselines & Excel Export
 - **Goal:** Eliminate tens of thousands of Python loop iterations and redundant LP/heuristic solves across time-series curation, hourly share optimization, solar efficiency calculation, and styled Excel generation.

@@ -1161,3 +1161,172 @@ def test_fortnight_outage_resilience_fallback_to_full_month() -> None:
     assert c1_f1.beta == c1_m.beta
     assert c1_f1.beta >= 0.75
     assert c1_f2.beta >= 0.75
+
+
+def test_multi_year_modality_scaling_and_hierarchy_invariant() -> None:
+    """Verify 1/k_m scaling across all 4 modalities and 0 <= Current <= Monthly <= Fortnight <= Hourly <= G_total."""
+    c1 = "ES0021000000000001AA"
+    c2 = "ES0021000000000002BB"
+    cups_list = [c1, c2]
+
+    def _build_may(year: int) -> pd.DataFrame:
+        dates = pd.date_range(f"{year}-05-01 00:00:00", f"{year}-05-31 23:00:00", freq="h")
+        is_q1 = dates.day <= 15
+        return pd.DataFrame(
+            {
+                c1: np.where(is_q1, 8.0, 2.0),
+                c2: np.where(is_q1, 2.0, 8.0),
+                "generation_kwh": np.full(len(dates), 10.0),
+                "self_consumption": np.where(is_q1, 2.0, 1.0),
+            },
+            index=dates.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+
+    df_2025 = _build_may(2025)
+    df_2026 = _build_may(2026)
+    combined = pd.concat([df_2025, df_2026])
+
+    dataset = AlignedDataset(
+        data=combined,
+        cups_list=cups_list,
+        metadata=IngestionSummary(
+            cups_count=2,
+            cups_list=cups_list,
+            consumption_files_loaded=2,
+            generation_files_loaded=2,
+            start_time=str(combined.index[0]),
+            end_time=str(combined.index[-1]),
+            total_hours=len(combined),
+        ),
+        monthly_groups={"2025-05": df_2025, "2026-05": df_2026},
+        cups_uses={c1: "Aerotermia", c2: "Piscina"},
+        primary_cups=c1,
+    )
+
+    opt_result = DistributionOptimizer.optimize_dataset(
+        dataset,
+        strategy=OptimizationStrategy.OPTIMAL,
+        include_baselines=False,
+        require_full_month=True,
+        compute_hourly=False,
+    )
+
+    single_year_gen = float(df_2026["generation_kwh"].sum())  # 7440.0 kWh
+    expected_single_year_current = 15 * 24 * 2.0 + 16 * 24 * 1.0  # 1104.0 kWh
+
+    assert np.isclose(opt_result.total_summary.total_generation_kwh, single_year_gen)
+    assert np.isclose(opt_result.current_self_consumed_kwh, expected_single_year_current)
+    assert np.isclose(opt_result.fortnight_share_self_consumed_kwh, single_year_gen)
+    assert np.isclose(opt_result.hourly_share_self_consumed_kwh, single_year_gen)
+
+    # Strict domain hierarchy invariant & bounded <= 100% rates
+    assert 0.0 <= opt_result.current_self_consumed_kwh
+    assert opt_result.current_self_consumed_kwh <= opt_result.monthly_share_self_consumed_kwh
+    assert (
+        opt_result.monthly_share_self_consumed_kwh <= opt_result.fortnight_share_self_consumed_kwh
+    )
+    assert opt_result.fortnight_share_self_consumed_kwh <= opt_result.hourly_share_self_consumed_kwh
+    assert opt_result.hourly_share_self_consumed_kwh <= single_year_gen
+    assert opt_result.current_self_consumption_rate <= 100.0
+    assert opt_result.hourly_share_self_consumption_rate <= 100.0
+
+
+def test_require_full_month_filters_all_modalities_and_incomplete_fortnight() -> None:
+    """Verify require_full_month excludes incomplete months from current/hourly SC and checks fortnight completeness."""
+    c1 = "ES0021000000000001AA"
+    c2 = "ES0021000000000002BB"
+    cups_list = [c1, c2]
+
+    # Partial May: only 5 days -> incomplete month (120h < 90% of 744h)
+    may_ts = (
+        pd.date_range("2026-05-01 00:00:00", "2026-05-05 23:00:00", freq="h")
+        .strftime("%Y-%m-%d %H:%M:%S")
+        .tolist()
+    )
+    may_df = pd.DataFrame(
+        {
+            c1: [6.0] * len(may_ts),
+            c2: [4.0] * len(may_ts),
+            "generation_kwh": [10.0] * len(may_ts),
+            "self_consumption": [3.0] * len(may_ts),
+        },
+        index=may_ts,
+    )
+
+    # Full June (30 days): Q1 complete (360h), Q2 complete (360h)
+    june_ts = (
+        pd.date_range("2026-06-01 00:00:00", "2026-06-30 23:00:00", freq="h")
+        .strftime("%Y-%m-%d %H:%M:%S")
+        .tolist()
+    )
+    june_df = pd.DataFrame(
+        {
+            c1: [5.0] * len(june_ts),
+            c2: [5.0] * len(june_ts),
+            "generation_kwh": [10.0] * len(june_ts),
+            "self_consumption": [2.0] * len(june_ts),
+        },
+        index=june_ts,
+    )
+
+    # July: passes is_complete_month (28 unique days out of 31 >= 27, min=1, max=31, 672h >= 669h),
+    # YET Q2 (days 16..31) misses 3 days (312h < int(384*0.9)=345h) -> fails is_complete_fortnight!
+    july_all = pd.date_range("2026-07-01 00:00:00", "2026-07-31 23:00:00", freq="h")
+    july_keep = july_all[~july_all.day.isin([28, 29, 30])]
+    july_ts = july_keep.strftime("%Y-%m-%d %H:%M:%S").tolist()
+    july_df = pd.DataFrame(
+        {
+            c1: [5.0] * len(july_ts),
+            c2: [5.0] * len(july_ts),
+            "generation_kwh": [10.0] * len(july_ts),
+            "self_consumption": [2.0] * len(july_ts),
+        },
+        index=july_ts,
+    )
+
+    combined = pd.concat([may_df, june_df, july_df])
+    dataset = AlignedDataset(
+        data=combined,
+        cups_list=cups_list,
+        metadata=IngestionSummary(
+            cups_count=2,
+            cups_list=cups_list,
+            consumption_files_loaded=2,
+            generation_files_loaded=1,
+            start_time=str(combined.index[0]),
+            end_time=str(combined.index[-1]),
+            total_hours=len(combined),
+        ),
+        monthly_groups={"2026-05": may_df, "2026-06": june_df, "2026-07": july_df},
+        cups_uses={c1: "Aerotermia", c2: "Piscina"},
+        primary_cups=c1,
+    )
+
+    assert DistributionOptimizer.is_complete_fortnight(may_df, 2026, 5, 1) is False
+    july_q2 = july_df[pd.to_datetime(july_df.index).day >= 16]
+    assert DistributionOptimizer.is_complete_fortnight(july_q2, 2026, 7, 2) is False
+    assert DistributionOptimizer.is_complete_month(july_df, 2026, 7) is True
+
+    opt_result = DistributionOptimizer.optimize_dataset(
+        dataset,
+        strategy=OptimizationStrategy.OPTIMAL,
+        include_baselines=False,
+        require_full_month=True,
+        compute_hourly=False,
+    )
+
+    # Partial May (3.0 kWh/h * 120h = 360 kWh) must be excluded from Current SC & Hourly SC
+    expected_current_sc = float(
+        june_df["self_consumption"].sum() + july_df["self_consumption"].sum()
+    )
+    expected_hourly_sc = float(june_df["generation_kwh"].sum() + july_df["generation_kwh"].sum())
+    assert np.isclose(opt_result.current_self_consumed_kwh, expected_current_sc)
+    assert np.isclose(opt_result.hourly_share_self_consumed_kwh, expected_hourly_sc)
+
+    # Fortnight 07-1 is complete, while incomplete 07-2 and 05-1 are skipped
+    f_07_1 = next(f for f in opt_result.fortnight_results if f.month == "07-1")
+    f_07_2 = next(f for f in opt_result.fortnight_results if f.month == "07-2")
+    f_05_1 = next(f for f in opt_result.fortnight_results if f.month == "05-1")
+    assert f_07_1.has_data is True
+    assert f_07_2.has_data is False
+    assert f_05_1.has_data is False

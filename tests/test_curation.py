@@ -1564,3 +1564,85 @@ def test_read_curated_csv_delimiter_autodetect_and_error(tmp_path: Path) -> None
     missing_csv = tmp_path / "missing.csv"
     with pytest.raises(CurationError, match="Failed to read curated CSV"):
         read_curated_csv(missing_csv, delimiter=",")
+
+
+def test_curation_bounds_primary_self_consumption_by_generation_and_demand(
+    tmp_path: Path,
+) -> None:
+    """Bound primary CUPS hourly self_consumption by min(generation, final_cons) in CuratedHourRecord and CSV."""
+    cons_dir = tmp_path / "consumption"
+    gen_dir = tmp_path / "generation"
+    curated_dir = tmp_path / "curated"
+    cons_dir.mkdir()
+    gen_dir.mkdir()
+    curated_dir.mkdir()
+
+    pri_cups = "ES0021000000000001AA"
+    sec_cups = "ES0021000000000002BB"
+
+    create_mock_datadis_csv(cons_dir / f"{pri_cups}.csv", pri_cups, solar_cons_val=1.0)
+    create_mock_datadis_csv(cons_dir / f"{sec_cups}.csv", sec_cups, solar_cons_val=2.0)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    ws.append(["Informe de plantas_MOCK_PLANT", "", "", "", "", "", "", "", "", ""])
+    ws.append(
+        [
+            "Período estadístico",
+            "Irradiancia global (kWh/m²)",
+            "Temperatura media (°C)",
+            "Rendimiento teórico (kWh)",
+            "Rendimiento FV (kWh)",
+            "Rendimiento del inversor (kWh)",
+            "Energía exportada (kWh)",
+            "Importación (kWh)",
+            "Consumo (kWh)",
+            "Autoconsumo (kWh)",
+        ]
+    )
+    for h in range(24):
+        ts = f"2026-05-01 {h:02d}:00:00"
+        if h == 11:
+            # Reported self_consumption (9.0) exceeds generation (4.0) -> bounded to 4.0
+            ws.append([ts, 0.5, 20.0, 4.0, 4.0, 4.0, 0.0, 6.0, 10.0, 9.0])
+        elif h == 12:
+            # Reported self_consumption (8.0) exceeds final_cons (5.0) -> bounded to 5.0
+            ws.append([ts, 0.8, 22.0, 12.0, 12.0, 12.0, 4.0, 0.0, 5.0, 8.0])
+        else:
+            ws.append([ts, 0.0, 15.0, 0.0, 0.0, 0.0, 0.0, 2.0, 2.0, 0.0])
+    wb.save(gen_dir / "gen.xlsx")
+
+    cups_file = tmp_path / "cups.json"
+    cups_file.write_text(
+        json.dumps(
+            [
+                {"cups": pri_cups, "use": "Aerotermia", "primary": True},
+                {"cups": sec_cups, "use": "Garaje", "primary": False},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    curator = DataCurator(
+        consumption_dir=cons_dir,
+        generation_dir=gen_dir,
+        cups_config_path=cups_file,
+        curated_dir=curated_dir,
+    )
+    dataset = curator.curate()
+
+    rec_11 = next(r for r in dataset.records if r.timestamp == "2026-05-01 11:00:00")
+    rec_12 = next(r for r in dataset.records if r.timestamp == "2026-05-01 12:00:00")
+    assert float(rec_11.self_consumption) == 4.0
+    assert float(rec_12.self_consumption) == 5.0
+    assert float(next(c for c in rec_11.cups if c.id == pri_cups).self_consumption) == 4.0
+    assert float(next(c for c in rec_12.cups if c.id == pri_cups).self_consumption) == 5.0
+    assert float(next(c for c in rec_11.cups if c.id == sec_cups).self_consumption) == 0.0
+
+    csv_file = curator.export_csv(dataset, curated_dir=curated_dir)
+    df = read_curated_csv(csv_file)
+    pri_11 = df[(df["timestamp"] == "2026-05-01 11:00:00") & (df["cups_id"] == pri_cups)].iloc[0]
+    pri_12 = df[(df["timestamp"] == "2026-05-01 12:00:00") & (df["cups_id"] == pri_cups)].iloc[0]
+    assert float(pri_11["self_consumption"]) == 4.0
+    assert float(pri_12["self_consumption"]) == 5.0
