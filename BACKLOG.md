@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| **DOC-02** | `P2` Medium | `Documentation` | Unified Platform Documentation & `datadis-analyzer` Migration / Retirement Guide | `README.md`, `AGENTS.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `src/presentation/views/common.py` |
 | **DES-01** | `P3` Low | `Design` | Align Interactive HTML Dashboard with 4-Way Modality Progression & Streamline Template Logic | `src/presentation/html_report.py` |
 | **DES-02** | `P3` Low | `Design` | Cohesive Visual Polish for Consumption Summary & Multi-Year Comparison Views (80-Col UI & Responsive SVG/HTML) | `src/presentation/views/`, `src/presentation/charts.py`, `src/presentation/console.py` |
 
@@ -51,12 +50,7 @@ _No pending tasks._
 
 ## 📚 Documentation
 
-### DOC-02 (`P2` Medium): Unified Platform Documentation & `datadis-analyzer` Migration / Retirement Guide
-- **Goal:** Consolidate product positioning across all docs once `datadis-analyzer` capabilities are integrated so `datadis-analyzer` can be cleanly archived.
-- **Target Components:** `README.md`, `AGENTS.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `src/presentation/views/common.py`.
-- **Acceptance Criteria:**
-  1. Update `README.md`, `AGENTS.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, and `render_help()` to document `esd summary`, `esd compare`, annualized `.input/consumption/<year>/` ingestion support, the 100.00% fair-share invariant, consumer classification badges (`★`, `(0)`), and the apples-to-apples calendar completeness heuristic.
-  2. Replace "sibling utility to `datadis-analyzer`" positioning with unified platform framing covering both consumption-only residential analytics and collective PV optimization under RD 244/2019, and include a concise bilingual `da` ➔ `esd` command/input migration table in `README.md`, `docs/GUIDE_EN.md`, and `docs/GUIDE_ES.md`.
+_No pending tasks._
 
 ## 🧹 Simplicity
 

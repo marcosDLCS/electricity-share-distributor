@@ -14,14 +14,14 @@
 
 ## 1. 🎯 What is the Real Purpose of `esd`?
 
-`electricity-share-distributor` (`esd`) is specifically designed to calculate optimal electricity distribution coefficients ($\beta_i$) for **shared common facilities within a single homeowners association (*comunidad de vecinos / propietarios*)** in Spain.
+`electricity-share-distributor` (`esd`) is a **unified CLI platform** for **residential community energy analytics and optimal collective photovoltaic distribution** across **shared common facilities within a single homeowners association (*comunidad de vecinos / propietarios*)** in Spain. Consolidating the capabilities of `datadis-analyzer` (`da`) directly into `esd`, it serves both communities analyzing pure DATADIS grid consumption (`esd summary`, `esd compare`) and communities optimizing collective solar generation (`esd doctor`, `esd curate`, `esd calculate`) under Real Decreto 244/2019 & Orden TED/1247/2021.
 
 ### 🚫 What `esd` is NOT:
-- **`esd` is NOT meant to distribute energy to private residential dwellings or individual apartments.**
-- It does not calculate domestic billing splits or private consumption shares between neighbors.
+- **`esd` is NOT meant to distribute energy or bills to private residential dwellings or individual apartments.**
+- It does not calculate private domestic consumption splits between neighbors.
 
 ### 🏢 What `esd` IS:
-When a residential community installs a shared rooftop photovoltaic (PV) system, the community uses the generated solar electricity to power its **own collective facilities and common services**, such as:
+When a residential community monitors shared utility contracts or installs a shared rooftop photovoltaic (PV) system, `esd` helps understand demand across **collective facilities and common services**, and allocate generated solar electricity across them:
 1. **Central Aerothermal / Heating & Hot Water (*Aerotermia / Calefacción Central / ACS*):** Typically the largest energy consumer in modern buildings.
 2. **Swimming Pool & Community Hall (*Piscina y Sala Comunitaria*):** Filtration pumps, water treatment, lighting, and summer recreational demand.
 3. **Underground Garages (*Garaje*):** Continuous ventilation systems, carbon monoxide extractors, and 24/7 lighting.
@@ -183,7 +183,28 @@ To provide complete transparency and support informed decision-making by propert
 
 ## 6. 🚀 Practical Workflow & Commands
 
-You can execute the entire pipeline with simple commands:
+### Track A: Consumption-Only Community Analytics (`esd summary` & `esd compare`)
+Communities without a solar PV installation (or preparing an initial consumption audit prior to sizing PV) only need DATADIS CSV exports placed either flat in `.input/consumption/*.csv` or organized into annualized folders `.input/consumption/<year>/*.csv` (supporting both `consumo_kWh` and `consumoKwh` headers via `DatadisValidator` pre-validation). An optional `cups.json` adds human-readable `use` labels but is not required:
+
+```bash
+# Inspect annual & monthly consumption shares and export Markdown summary
+esd summary [--year 2025] [--view all|annual|monthly] [--cups ES0021000000000001AA]
+
+# Compare multiple years fairly (excludes incomplete months) + native SVG charts
+esd compare [-y 2024 -y 2025] [--no-charts]
+```
+
+Key analytical guarantees preserved from `datadis-analyzer`:
+- **Exact 100.00% Fair-Share Invariant:** Annual and monthly community shares sum strictly to `100.00%` (via Hare-Niemeyer largest remainder rounding whenever consumption > 0).
+- **Consumer Classification Badges:** `★` highlights a dominant consumer accounting for $>30\%$ of community demand at rank #1; `(0)` flags inactive or negligible circuits consuming $<1\text{ kWh}$ over the period.
+- **Apples-to-Apples Calendar Completeness (`[Inc]` Heuristic):** In `esd compare`, each calendar month is marked complete only if readings exceed 90% of expected hours and reach past the 27th day. Partial or missing months are tagged `[Inc]` and excluded across all compared years from annual kWh totals, deltas, and percentage variations.
+- **Zero-Dependency Native SVG Charts:** `esd compare` generates lightweight grouped bar charts (`*.svg`) in `.output/charts/` embedded inside the Markdown comparison report—no `matplotlib` required.
+
+---
+
+### Track B: Collective PV Optimization Pipeline (`esd doctor` ➔ `esd curate` ➔ `esd calculate`)
+
+You can execute the full solar distribution pipeline with simple commands:
 
 ```mermaid
 graph TD
@@ -194,7 +215,7 @@ graph TD
 ```
 
 ### Step 1: Check Data Health (`esd doctor`)
-Scans all DATADIS CSV files, solar inverter Excel reports, and Open-Meteo weather datasets to detect gaps, inactive meters, and overlapping date ranges before running calculations. Enriches CUPS with functional uses (e.g. Aerothermal heat pump, garage, elevators) from `cups.json`:
+Scans all DATADIS CSV files, solar inverter Excel reports, and Open-Meteo weather datasets to detect gaps, inactive meters, and overlapping date ranges before running calculations. Enriches CUPS with functional uses (e.g. Aerothermal heat pump, garage, elevators) from `cups.json`. When `.input/generation/` is empty, it automatically performs a **consumption-only health audit** (exiting with status `1` to indicate solar generation is still required before running `calculate`):
 ```bash
 esd doctor
 # With custom CUPS config or weather directory:
@@ -228,49 +249,67 @@ Runs with zero command-line modifiers, automatically evaluating only the CUPS pr
 esd calculate
 ```
 
-### Step 5: Clean Up Generated Data (`esd cleanup`)
-Removes generated files from `.output`, `.curated`, and `.input/weather`:
+### Step 5: Clean Up Generated Data (`esd cleanup` / `esd clean`)
+Removes generated files from `.output`, `.curated`, and `.input/weather` (the hidden `esd clean` alias behaves identically):
 ```bash
 esd cleanup
 # Or skip interactive confirmation:
 esd cleanup --force
+esd clean --force
 ```
 
 ---
 
 ## 7. 📊 Deliverables & Official Documents (`.output/`)
 
-Running `esd calculate` generates ready-to-use artifacts in `.output/`:
+Running `esd calculate`, `esd summary`, or `esd compare` generates ready-to-use artifacts in `.output/`:
 
-| File Name | Format | Practical Purpose |
+| File Name | Format | Source Command & Practical Purpose |
 | :--- | :--- | :--- |
-| `*_esd_interactive_report.html` | HTML (Standalone) | Offline interactive executive dashboard with dynamic bilingual ES/EN switcher, 4 primary energy KPI cards, dynamic hourly coefficient prevision (Orden TED/1247/2021), energy trajectory multi-bars, Photovoltaic Solar Efficiency Index graphic, and monthly coefficient matrix heatmap. |
-| `*_esd_monthly_shares.csv` | CSV (`;` delimited) | Monthly allocation breakdown per CUPS: consumption, generation, share percentage ($\beta_i$ %), self-consumed kWh, solar surplus, and remaining grid demand, ordered by month and facility use. |
-| `*_esd_monthly_shares_lite.csv` | CSV (`;` delimited) | Compact monthly share matrix containing only share percentages ($\beta_i$ %), with CUPS (`cups`, `use`) on the Y axis and calendar months (`01`..`12`) on the X axis. |
-| `*_esd_fortnight_shares.csv` | CSV (`;` delimited) | Fortnight (half-month: `1` for days 1–15, `2` for days 16–end of month) allocation breakdown per CUPS: month, fortnight, consumption, generation, share percentage ($\beta_i$ %), self-consumed kWh, solar surplus, and remaining grid demand. |
-| `*_esd_fortnight_shares_lite.csv` | CSV (`;` delimited) | Compact fortnight share matrix containing only share percentages ($\beta_i$ %), with CUPS (`cups`, `use`) on the Y axis and calendar fortnights (`01-1`..`12-2`) on the X axis. |
-| `*_esd_hourly_shares.csv` | CSV (`;` delimited) | Full hourly time-series recording consumption, generation, shares (with 1% floor), and the Solar Efficiency Index (integer 1-100 for generation hours, 0 without generation), ordered by timestamp and use. |
+| `*_esd_interactive_report.html` | HTML (Standalone) | `calculate`: Offline interactive executive dashboard with dynamic bilingual ES/EN switcher, 4 primary energy KPI cards, dynamic hourly coefficient prevision (Orden TED/1247/2021), energy trajectory multi-bars, Photovoltaic Solar Efficiency Index graphic, and monthly coefficient matrix heatmap. |
+| `*_esd_monthly_shares.csv` | CSV (`;` delimited) | `calculate`: Monthly allocation breakdown per CUPS: consumption, generation, share percentage ($\beta_i$ %), self-consumed kWh, solar surplus, and remaining grid demand, ordered by month and facility use. |
+| `*_esd_monthly_shares_lite.csv` | CSV (`;` delimited) | `calculate`: Compact monthly share matrix containing only share percentages ($\beta_i$ %), with CUPS (`cups`, `use`) on the Y axis and calendar months (`01`..`12`) on the X axis. |
+| `*_esd_fortnight_shares.csv` | CSV (`;` delimited) | `calculate`: Fortnight (half-month: `1` for days 1–15, `2` for days 16–end of month) allocation breakdown per CUPS: month, fortnight, consumption, generation, share percentage ($\beta_i$ %), self-consumed kWh, solar surplus, and remaining grid demand. |
+| `*_esd_fortnight_shares_lite.csv` | CSV (`;` delimited) | `calculate`: Compact fortnight share matrix containing only share percentages ($\beta_i$ %), with CUPS (`cups`, `use`) on the Y axis and calendar fortnights (`01-1`..`12-2`) on the X axis. |
+| `*_esd_hourly_shares.csv` | CSV (`;` delimited) | `calculate`: Full hourly time-series recording consumption, generation, shares (with 1% floor), and the Solar Efficiency Index (integer 1-100 for generation hours, 0 without generation), ordered by timestamp and use. |
+| `*_esd_consumption_summary.md` | Markdown | `summary`: Executive consumption report with annual/monthly 100.00% fair-share rankings, `★` / `(0)` consumer badges, ASCII distribution bars, and seasonality insights. |
+| `*_esd_consumption_comparison.md` & `charts/*.svg` | Markdown + Native SVG | `compare`: Multi-year apples-to-apples comparison report excluding `[Inc]` incomplete months, paired with responsive zero-dependency grouped bar charts in `.output/charts/`. |
 
 ---
 
-## 8. 🗺️ Code Map & Traceability Reference
+## 8. 🔄 Migrating from `datadis-analyzer` (`da` ➔ `esd`)
+
+`esd` consolidates all capabilities of [`datadis-analyzer`](https://github.com/marcosDLCS/datadis-analyzer) into one unified platform:
+
+| Legacy `datadis-analyzer` (`da`) | Unified `esd` Equivalent | Notes |
+| :--- | :--- | :--- |
+| `da init` / `da config` | `esd init` / `esd config` | Settings live in `.esd_config.json` (`esd init --lang es`) |
+| `da summary` (`--year`, `--view`, `--cups`) | `esd summary` (`-y`, `-v`, `--cups`, `-C`) | Adds optional `use` label enrichment from `cups.json` |
+| `da compare` (`-y 2024 -y 2025`, `--no-charts`) | `esd compare` (`-y`, `--charts/--no-charts`) | Replaces PNGs with zero-dependency `.output/charts/*.svg` |
+| `.input/<year>/*.csv` | `.input/consumption/<year>/*.csv` | Supports both nested `<year>/` trees and flat CSVs |
+| `da cleanup` / `da clean` | `esd cleanup` / `esd clean` | Recursively cleans `.output`, `.curated`, and `.input/weather` |
+
+---
+
+## 9. 🗺️ Code Map & Traceability Reference
 
 For developers and autonomous agents navigating the codebase:
 
 | Architecture Layer | Module | Key Classes / Functions | Responsibility |
 | :--- | :--- | :--- | :--- |
-| **CLI & Commands** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `curate_command`, `weather_command`, `doctor_command` | Typer command routing, parameter validation, and user workflow dispatch. |
-| **Application Services** | [`src/services/`](../src/services) | `CalculationService`, `CurationService`, `DoctorService`, `WeatherService` | Core workflow orchestrators encapsulating business processes. |
+| **CLI & Commands** | [`src/cli.py`](../src/cli.py) | `calculate_command`, `summary_command`, `compare_command`, `curate_command`, `doctor_command`, `weather_command` | Typer command routing, parameter validation, and user workflow dispatch. |
+| **Application Services** | [`src/services/`](../src/services) | `CalculationService`, `SummaryService`, `ComparisonService`, `CurationService`, `DoctorService`, `WeatherService` | Core workflow orchestrators encapsulating analytics and PV optimization processes. |
+| **Consumption Analytics** | [`src/analytics/`](../src/analytics) | `aggregate_consumption`, `compare_years`, `get_complete_months` | Fair-share 100.00% aggregation and apples-to-apples `[Inc]` multi-year comparison engine. |
 | **Domain Core** | [`src/domain/`](../src/domain) | `SupplyPoint`, `BylawConstraints`, `EsdError` | Pure domain models, bylaw bounds, and centralized domain exceptions. |
 | **Configuration** | [`src/config.py`](../src/config.py) | `AppConfig`, `get_language`, `get_precision`, `get_weather_dir` | Settings persistence (`.esd_config.json`) and folder resolution. |
-| **Localization** | [`src/i18n.py`](../src/i18n.py) | `t()`, `I18nNamespace`, `TRANSLATIONS` | Structured domain namespaces (app, cli, doctor, curate, weather, tables, export) with parameter parity and dual-mode resolution. |
-| **Ingestion: Consumption** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader` | DATADIS CSV discovery, encoding detection, and reading. |
-| **Ingestion: Generation** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `HuaweiGenerationLoader` | Solar inverter `.xlsx` report parsing (solar production and load demand). |
+| **Localization** | [`src/i18n.py`](../src/i18n.py) | `t()`, `I18nNamespace`, `TRANSLATIONS` | Structured domain namespaces (`app`, `cli`, `status`, `doctor`, `curate`, `weather`, `tables`, `export`, `analytics`) with strict EN/ES parity. |
+| **Ingestion: Consumption** | [`src/ingestion/consumption.py`](../src/ingestion/consumption.py) | `DatadisConsumptionLoader`, `DatadisValidator` | Pre-validation, recursive `.input/consumption/<year>/` discovery, DST conservation, and multi-dialect CSV reading. |
+| **Ingestion: Generation** | [`src/ingestion/generation.py`](../src/ingestion/generation.py) | `HuaweiGenerationLoader` | Solar inverter `.xlsx` report parsing (solar production, load demand, and DST conservation). |
 | **Ingestion: Weather** | [`src/ingestion/weather.py`](../src/ingestion/weather.py) | `OpenMeteoWeatherDownloader`, `WeatherLoader` | Open-Meteo Archive API downloader, WMO weather codes, and weather CSV ingestion. |
-| **Ingestion: Audit** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Pre-flight gap detection, weather health audit, CUPS use enrichment, inactive meter alerts, and date overlap verification. |
-| **Curation & Reconciliation** | [`src/curation/`](../src/curation) | `DataCurator`, `GenerationDataset`, `ConsumptionDataset`, `CuratedDataset` | 3-stage canonical aggregation (`generation`, `consumption`), fake-zero reconciliation, and master `esd.csv`/`esd.xlsx` export. |
+| **Ingestion: Audit** | [`src/ingestion/doctor.py`](../src/ingestion/doctor.py) | `DataDoctor`, `DoctorReport` | Pre-flight gap detection, consumption-only diagnostics, weather health audit, and date overlap verification. |
+| **Curation & Reconciliation** | [`src/curation/`](../src/curation) | `DataCurator`, `GenerationDataset`, `ConsumptionDataset`, `CuratedDataset` | 3-stage canonical aggregation (`generation`, `consumption`), non-destructive primary reconciliation, and master `esd.csv`/`esd.xlsx` export. |
 | **Optimization: Models** | [`src/optimization/models.py`](../src/optimization/models.py) | `CoefficientsMatrix`, `HourlyProfileMatrix`, `OptimizationResult` | Matrix structures, diurnal profiles, and community metrics. |
-| **Optimization: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Linear programming solver, diurnal profile engine, baselines, and Hare-Niemeyer rounding. |
-| **Presentation: Views** | [`src/presentation/views/`](../src/presentation/views) | `render_coefficients_matrix_table`, `render_community_summary` | Rich terminal tables, executive KPI cards with baseline gain badges, two-tone heatmaps, unicode sparklines, 4-step progress stepper, and adaptive 80-column formatting. |
-| **Presentation: Exports** | [`src/presentation/export.py`](../src/presentation/export.py) | `ReportExporter` | Unified exporter producing all 6 `.output/` deliverables (monthly/fortnight/hourly CSVs, lite matrices, and interactive HTML) with formula sanitization. |
+| **Optimization: Solver** | [`src/optimization/engine.py`](../src/optimization/engine.py) | `DistributionOptimizer` | Linear programming solver, diurnal profile engine, 4-way progressions, $1/k_m$ scaling, and Hare-Niemeyer rounding. |
+| **Presentation: Views & Charts** | [`src/presentation/views/`](../src/presentation/views), [`charts.py`](../src/presentation/charts.py) | `render_community_summary`, `render_consumption_overview`, `render_comparison_overview`, `generate_comparison_charts` | 80-column Rich terminal views (`★`/`(0)`, `[Inc]`, KPI cards, share bars) and native grouped SVG bar charts. |
+| **Presentation: Exports** | [`src/presentation/export.py`](../src/presentation/export.py) | `ReportExporter` | Unified exporter producing all 6 calculation CSV/HTML deliverables plus `summary`/`compare` Markdown reports with formula sanitization. |
 | **Security & Privacy** | [`src/security.py`](../src/security.py) | `check_privacy`, `scan_xlsx_file`, `scan_git_history` | GDPR CUPS enforcement, private coordinate & exposed secret detection, `.xlsx` scanning, `--scan` targeted audits, and streamed git history inspection. |

@@ -6,32 +6,34 @@ Welcome to **Electricity Share Distributor** (`esd`). This document serves as th
 
 ## 1. 🎯 Project Overview & Mission
 
-`electricity-share-distributor` (`esd`) is a high-performance Python CLI utility designed to determine optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic installations (*autoconsumo colectivo*) across shared common services in a homeowners association (*comunidad de propietarios*) in Spain (e.g. central aerothermal heating, pool, garage, elevators, general lighting) under **Real Decreto 244/2019**. It is **not** meant to distribute private domestic consumption.
-
-It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/datadis-analyzer).
+`electricity-share-distributor` (`esd`) is the **unified Python CLI platform** for residential community electricity analytics and collective photovoltaic distribution (*autoconsumo colectivo*) across shared common services in a homeowners association (*comunidad de propietarios*) in Spain (e.g. central aerothermal heating, pool, garage, elevators, general lighting) under **Real Decreto 244/2019** and **Orden TED/1247/2021**. It consolidates and supersedes [`datadis-analyzer`](https://github.com/marcosDLCS/datadis-analyzer) into one unified codebase supporting both **consumption-only analytics** (`summary`, `compare`, consumption-only `doctor`) and **full solar optimization workflows** (`curate`, `calculate`). It is **not** meant to distribute private domestic apartment consumption.
 
 ### Core Capabilities:
-- **📥 Dual Time-Series & Weather Ingestion:** Ingests DATADIS hourly consumption CSVs per CUPS, solar inverter PV generation Excel reports, and Open-Meteo hourly historical weather archives.
-- **⏱️ Time-Series Alignment & Normalization:** Aligns disparate timestamps, accounting for daylight saving time (DST) transitions, missing intervals, and Spanish electricity meter conventions.
-- **🧮 Optimal $\beta_i$ Allocation Engine:** Formulates and solves linear programming (LP) models to find monthly distribution coefficients ($\sum \beta_i \le 1.0$ or $100\%$) that maximize collective self-consumption and minimize unused solar surplus spilled to the grid.
-- **📊 Rich Terminal UI:** Renders clear tabular views, summary metrics, and visual share bars formatted for 80-column terminals.
-- **📝 Multi-Format Reporting:** Generates timestamped interactive HTML dashboards, monthly shares CSV, and hourly shares CSV in `.output/`.
-- **⚙️ Persistent Configuration:** Maintains language preferences (`en`/`es`), geographical coordinates, and directory paths in `.esd_config.json`.
+- **📥 Unified Time-Series & Weather Ingestion:** Pre-validates (`DatadisValidator`) and recursively ingests DATADIS hourly consumption CSVs across flat and annualized (`.input/consumption/<year>/`) trees (`consumo_kWh` / `consumoKwh`), solar inverter PV generation Excel reports, and Open-Meteo hourly weather archives.
+- **📊 Consumption Analytics & Fair Shares (`esd summary`):** Aggregates community consumption across months and years with an exact **100.00% fair-share invariant** (Hare-Niemeyer rounding), dominant (`★`) and inactive (`(0)`) consumer badges, and Markdown report exports.
+- **📈 Multi-Year Comparison & Native SVGs (`esd compare`):** Evaluates year-over-year consumption trends using an apples-to-apples `[Inc]` calendar completeness heuristic, generating zero-dependency native SVG grouped bar charts and Markdown reports.
+- **⏱️ Time-Series Alignment & Normalization:** Aligns disparate timestamps, conserving 25h autumn DST transition energy per source file, handling missing intervals, and normalizing Spanish 01:00–24:00 meter conventions.
+- **🧮 Optimal $\beta_i$ Allocation Engine:** Formulates and solves monthly/fortnight LP models (RD 244/2019) and dynamic 24-hour profiles (Orden TED/1247/2021) maximizing collective self-consumption with exact per-month $1/k_m$ calendar scaling.
+- **📊 Rich Terminal UI:** Renders clear tabular views, 4-way self-consumption progressions, summary metrics, and visual share bars formatted for 80-column terminals.
+- **📝 Multi-Format Reporting:** Generates timestamped Markdown analytics reports, native SVG charts, interactive HTML dashboards, monthly/fortnight/hourly shares CSVs, and lite matrices in `.output/`.
+- **🛡️ Privacy & Secret Guardrails:** Audits workspace files, `.xlsx` workbooks, staged diffs, and git history for real CUPS, private coordinates, local paths, and exposed secrets/credentials.
+- **⚙️ Persistent Configuration:** Maintains language preferences (`en`/`es`), share precision, geographical coordinates, and directory paths in `.esd_config.json`.
 
 ---
 
 ## 2. 🧩 Architecture & Component Boundaries
 
 The codebase is organized into focused, modular layers with clean separation of concerns:
-- **CLI & Dispatch (`src/cli.py`):** Typer application orchestrating command dispatch, parameter validation, and user workflow.
-- **Application Services (`src/services/`):** Workflow orchestrators (`CalculationService`, `CurationService`, `DoctorService`, `WeatherService`) encapsulating business processes.
-- **Domain Core (`src/domain/`):** Pure domain models, value objects (`SupplyPoint`, `ShareAllocation`, `EnergyBalance`), and centralized domain exceptions (`EsdError`, `IngestionError`, `AlignmentError`, `CurationError`, `OptimizationError`).
-- **Configuration & Localization (`src/config.py`, `src/i18n.py`):** Persistent settings (`.esd_config.json`) and structured domain namespaces (`app`, `cli`, `doctor`, `curate`, `weather`, `tables`, `export`) with bilingual English/Spanish resolution.
-- **Ingestion & Alignment (`src/ingestion/`):** DATADIS CSV loader, solar inverter Excel loader, Open-Meteo weather downloader/loader, `DataDoctor` pre-flight auditor, and DST-aware `TimeSeriesAligner`.
-- **Curation & Reconciliation (`src/curation/`):** Multi-stage canonical data pipeline aggregating generation (`generation.csv` + `generation.xlsx` via `GenerationDataset`), aggregating consumption (`consumption.csv` + `consumption.xlsx` via `ConsumptionDataset`), reconciling primary CUPS fake-zero loads, integrating weather (temperature, cloud cover), and producing the master ESD dataset (`esd.csv` + `esd.xlsx` via `CuratedDataset`).
-- **Optimization Core (`src/optimization/`):** RD 244/2019 linear programming solver (`scipy.optimize.linprog`), baseline comparisons, Hare-Niemeyer exact rounding, and multi-year calendar prevision engine.
-- **Presentation & Reporting (`src/presentation/`):** Rich 80-column terminal tables, modular views (`src/presentation/views/`), two-tone heatmaps, KPI cards, and unified `ReportExporter` multi-format reporting (CSV shares and interactive HTML).
-- **Security & Versioning (`src/security.py`, `src/version.py`):** GDPR CUPS privacy audit harness and automated CalVer release manager.
+- **CLI & Dispatch (`src/cli.py`):** Typer application orchestrating command dispatch (`calculate`, `summary`, `compare`, `curate`, `doctor`, `weather`, `init`, `config`, `cleanup`/`clean`, `help`, `version`), parameter validation, and user workflow.
+- **Application Services (`src/services/`):** Workflow orchestrators (`CalculationService`, `ComparisonService`, `CurationService`, `DoctorService`, `SummaryService`, `WeatherService`) encapsulating business processes.
+- **Consumption Analytics (`src/analytics/`):** Pure consumption aggregation (`aggregate_consumption`, `CommunityConsumptionSummary`, `CupsConsumptionShare`) and apples-to-apples multi-year comparison (`compare_years`, `ComparisonSummary`).
+- **Domain Core (`src/domain/`):** Pure domain models (`SupplyPoint`, `BylawConstraints`) and centralized domain exceptions (`EsdError`, `IngestionError`, `ValidationError`, `AlignmentError`, `CurationError`, `OptimizationError`).
+- **Configuration & Localization (`src/config.py`, `src/i18n.py`):** Persistent settings (`.esd_config.json`) and structured domain namespaces (`app`, `cli`, `status`, `doctor`, `curate`, `weather`, `tables`, `export`, `analytics`) with strict bilingual EN/ES parity.
+- **Ingestion & Alignment (`src/ingestion/`):** `DatadisValidator`, recursive `DatadisConsumptionLoader`, `HuaweiGenerationLoader`, Open-Meteo weather downloader/loader, `DataDoctor` pre-flight auditor (supporting consumption-only mode), shared `csv_utils` (including `consolidate_autumn_dst`), and DST-aware `TimeSeriesAligner`.
+- **Curation & Reconciliation (`src/curation/`):** Multi-stage canonical data pipeline aggregating generation (`generation.csv` + `generation.xlsx` via `GenerationDataset`), aggregating consumption (`consumption.csv` + `consumption.xlsx` via `ConsumptionDataset`), non-destructively reconciling primary CUPS fake-zero loads ($\max(C_{\text{DATADIS}}, C_{\text{inverter}})$), integrating weather, and producing the master ESD dataset (`esd.csv` + `esd.xlsx` via `CuratedDataset`).
+- **Optimization Core (`src/optimization/`):** RD 244/2019 linear programming solver (`scipy.optimize.linprog`), 4-way modality evaluations, Hare-Niemeyer exact rounding, and multi-year $1/k_m$ calendar prevision engine.
+- **Presentation & Reporting (`src/presentation/`):** Rich 80-column terminal views (`src/presentation/views/`), zero-dependency SVG comparison chart generator (`src/presentation/charts.py`), two-tone heatmaps, KPI cards, and unified `ReportExporter` multi-format reporting (6 calculation CSV/HTML deliverables plus `summary`/`compare` Markdown reports).
+- **Security & Versioning (`src/security.py`, `src/version.py`):** GDPR CUPS, private coordinate, path, and secret/credential audit harness (`--staged`, `--files-only`, `--scan <path>`, single-pass git history) and automated CalVer release manager.
 
 ---
 
@@ -63,10 +65,14 @@ The codebase is organized into focused, modular layers with clean separation of 
 3. **Collective Optimization Objective:**
    $$\max_{\beta} \sum_{i} \sum_{h \in m} \min(C_{i, h}, \beta_i \cdot G_h) \quad \text{s.t.} \quad \sum_i \beta_i \le 1, \; \beta_i \ge 0$$
 4. **DATADIS Time Series:**
-   - Hours 01:00–24:00 (hour 01:00 = interval 00:00–01:00).
-   - Values are hourly kWh consumption per CUPS.
+   - Hours 01:00–24:00 (hour 01:00 = interval 00:00–01:00); autumn DST transition day preserves all 25 hours via within-file summation before deduplication.
+   - Values are hourly kWh consumption per CUPS (`consumo_kWh` or `consumoKwh`).
 5. **Solar Inverter Generation:**
    - Timestamps `YYYY-MM-DD HH:MM:SS`. Column `Rendimiento FV (kWh)` or `Rendimiento del inversor (kWh)`.
+6. **Consumption Analytics & Comparison Invariants (`esd summary` / `esd compare`):**
+   - **100.00% Fair-Share Invariant:** Annual and monthly consumption shares sum strictly to `100.00%` whenever total consumption > 0 (via Hare-Niemeyer rounding at 2 decimals).
+   - **Consumer Classification Badges:** `★` marks a dominant consumer (`share_pct > 30.0%` at rank #1); `(0)` marks an inactive/negligible consumer (`consumption_kwh < 1.0`).
+   - **Apples-to-Apples Completeness Heuristic:** A calendar month is complete only when observed hours exceed 90% of expected calendar hours and span past the 27th day (`get_complete_months()`); incomplete months are flagged `[Inc]` and excluded from year-over-year totals, deltas, and percentage variations.
 
 ---
 

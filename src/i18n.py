@@ -29,10 +29,10 @@ class I18nNamespace(StrEnum):
 STRUCTURED_TRANSLATIONS: dict[str, dict[str, dict[str, str]]] = {
     "en": {
         "app": {
-            "app_subtitle": "Collective Photovoltaic Allocation & Optimization CLI (RD 244/2019)",
+            "app_subtitle": "Unified Community Energy Analytics & Collective PV Optimization CLI",
             "app_title": "☀️ ELECTRICITY SHARE DISTRIBUTOR (esd)",
             "overview_heading": "OVERVIEW",
-            "overview_text": "Calculates optimal electricity distribution coefficients (β_i) for shared PV self-consumption\nin Spain under Real Decreto 244/2019, combining DATADIS hourly consumption curves and\nHuawei FusionSolar PV generation exports to maximize collective self-consumption.",
+            "overview_text": "Unified platform for residential community consumption analytics and collective PV\nallocation under RD 244/2019 & Orden TED/1247/2021. Runs consumption-only fair-share\nsummaries and multi-year comparisons, or optimizes β_i coefficients with PV generation.",
         },
         "cli": {
             "available_commands": "AVAILABLE COMMANDS",
@@ -54,12 +54,14 @@ STRUCTURED_TRANSLATIONS: dict[str, dict[str, dict[str, str]]] = {
             "err_lat_range": "Latitude must be between -90.0 and 90.0 (got {val}).",
             "err_lon_range": "Longitude must be between -180.0 and 180.0 (got {val}).",
             "help_workflow_body": (
-                "  1. esd doctor       Pre-flight audit of consumption, solar & weather files\n"
-                "  2. esd curate       Build curated CSV/XLSX datasets in .curated/\n"
-                "  3. esd calculate    Zero-arg calculation -> 6 CSV/HTML files in .output/\n"
-                "                      (monthly, monthly_lite, fortnight, fortnight_lite,\n"
-                "                       hourly shares CSVs + interactive HTML report)\n"
-                "  4. esd cleanup      Clean .output, .curated, and .input/weather"
+                "  Consumption Analytics (no PV/generation files required):\n"
+                "    esd summary     Annual & monthly 100.00% shares, ★/(0) badges + .md\n"
+                "    esd compare     Multi-year [Inc] completeness delta & SVG charts\n"
+                "  Collective PV Allocation (RD 244/2019 & Orden TED/1247/2021):\n"
+                "    esd doctor      Audit consumption, solar PV & weather data health\n"
+                "    esd curate      Build canonical .curated/ CSV & XLSX datasets\n"
+                "    esd calculate   Zero-arg optimization -> 6 CSV/HTML files in .output/\n"
+                "    esd cleanup     Clean .output, .curated, and .input/weather (clean)"
             ),
             "help_workflow_heading": "QUICK WORKFLOW & OUTPUT DELIVERABLES",
             "init_clean_cleared": "Cleared {count} file(s) from .output",
@@ -288,10 +290,10 @@ STRUCTURED_TRANSLATIONS: dict[str, dict[str, dict[str, str]]] = {
     },
     "es": {
         "app": {
-            "app_subtitle": "CLI de Optimización y Reparto de Autoconsumo Colectivo (RD 244/2019)",
+            "app_subtitle": "Plataforma Unificada de Análisis de Consumo y Reparto Solar Colectivo",
             "app_title": "☀️ DISTRIBUIDOR DE ENERGÍA COMPARTIDA (esd)",
             "overview_heading": "DESCRIPCIÓN GENERAL",
-            "overview_text": "Calcula los coeficientes óptimos de reparto (β_i) para autoconsumo colectivo fotovoltaico\nen España bajo el Real Decreto 244/2019, combinando curvas horarias de DATADIS y\nexportaciones de generación FV de Huawei FusionSolar para maximizar el autoconsumo colectivo.",
+            "overview_text": "Plataforma unificada para análisis de consumo comunitario y optimización de reparto FV\nbajo RD 244/2019 y Orden TED/1247/2021. Ejecuta resúmenes y comparativas interanuales\nsolo con consumo DATADIS, o calcula coeficientes óptimos β_i con producción solar.",
         },
         "cli": {
             "available_commands": "COMANDOS DISPONIBLES",
@@ -313,12 +315,14 @@ STRUCTURED_TRANSLATIONS: dict[str, dict[str, dict[str, str]]] = {
             "err_lat_range": "La latitud debe estar entre -90.0 y 90.0 (valor recibido: {val}).",
             "err_lon_range": "La longitud debe estar entre -180.0 y 180.0 (valor recibido: {val}).",
             "help_workflow_body": (
-                "  1. esd doctor       Auditoría previa de consumo, generación FV y clima\n"
-                "  2. esd curate       Generar conjuntos CSV/XLSX curados en .curated/\n"
-                "  3. esd calculate    Cálculo sin argumentos -> 6 archivos en .output/\n"
-                "                      (monthly, monthly_lite, fortnight, fortnight_lite,\n"
-                "                       hourly shares CSV + informe interactivo HTML)\n"
-                "  4. esd cleanup      Limpiar .output, .curated y .input/weather"
+                "  Análisis de Consumo (sin archivos de generación FV requeridos):\n"
+                "    esd summary     Cuotas 100.00% anuales/mensuales, insignias ★/(0) + .md\n"
+                "    esd compare     Comparativa interanual [Inc] y gráficos SVG en .output/\n"
+                "  Reparto Solar Colectivo (RD 244/2019 y Orden TED/1247/2021):\n"
+                "    esd doctor      Auditar salud de consumo, generación FV y clima\n"
+                "    esd curate      Generar conjuntos canónicos CSV/XLSX en .curated/\n"
+                "    esd calculate   Optimización sin args -> 6 archivos en .output/\n"
+                "    esd cleanup     Limpiar .output, .curated y .input/weather (alias clean)"
             ),
             "help_workflow_heading": "FLUJO RÁPIDO Y ENTREGABLES",
             "init_clean_cleared": "Se eliminaron {count} archivo(s) de .output",

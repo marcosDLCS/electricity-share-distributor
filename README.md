@@ -1,9 +1,9 @@
 # ☀️ Electricity Share Distributor (`esd`)
 
-> Optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic self-consumption (*autoconsumo colectivo*) across shared community services in Spain under **Real Decreto 244/2019**.
+> Unified Python CLI for residential community energy analytics (*comunidades de propietarios*) and optimal photovoltaic self-consumption distribution coefficients ($\beta_i$) in Spain under **Real Decreto 244/2019** & **Orden TED/1247/2021**.
 
 [![Python](https://img.shields.io/badge/Python-3.14+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.11.016-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.11.017-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-SciPy%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -11,9 +11,9 @@
 [![Pre-commit](https://img.shields.io/badge/Pre--commit-Enabled-brightgreen?style=flat&logo=pre-commit&logoColor=white)](https://pre-commit.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat)](LICENSE)
 
-`electricity-share-distributor` (`esd`) is a high-performance Python CLI utility designed to determine optimal electricity distribution coefficients ($\beta_i$) for collective photovoltaic installations (*autoconsumo colectivo*) across the shared common elements of a homeowners association (*comunidad de propietarios*) in Spain (such as central aerothermal heating, swimming pool, garage ventilation, common area lighting, and elevators). It is **not** meant for dividing solar energy among private domestic apartments.
+`electricity-share-distributor` (`esd`) is the **unified platform** combining residential community electricity analytics (consolidating and superseding [`datadis-analyzer`](https://github.com/marcosDLCS/datadis-analyzer)) and optimal collective PV distribution under **Real Decreto 244/2019** & **Orden TED/1247/2021** for homeowners associations (*comunidades de propietarios*) in Spain (such as central aerothermal heating, swimming pool, garage ventilation, common area lighting, and elevators).
 
-It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/datadis-analyzer).
+It supports both **consumption-only workflows** (`esd summary`, `esd compare`, consumption-only `esd doctor` — requiring only DATADIS CSVs) and **full solar optimization workflows** (`esd curate`, `esd calculate`). It is **not** meant for splitting bills among private domestic apartments.
 
 📚 **Guides & Documentation:**
 - [🇬🇧 Technical & Operational Guide (English)](docs/GUIDE_EN.md)
@@ -25,13 +25,15 @@ It is a sibling utility to [`datadis-analyzer`](https://github.com/marcosDLCS/da
 
 ## 🚀 Key Capabilities
 
-- **📥 Dual Time-Series Ingestion:** DATADIS hourly consumption curves (per CUPS) and solar inverter generation Excel workbooks (`.xlsx`).
+- **📊 Consumption Analytics & Fair Shares (`esd summary`):** Computes exact **100.00% fair-share percentages** (Hare-Niemeyer largest remainder rounding) across annual and monthly periods from DATADIS CSVs alone, with dominant (`★` >30%) and inactive (`(0)` <1 kWh) consumer badges, inline share bars, single-CUPS trajectories, and Markdown reports.
+- **📈 Multi-Year Comparison & Native SVGs (`esd compare`):** Evaluates year-over-year energy trends using an **apples-to-apples calendar completeness heuristic** (flagging incomplete months as `[Inc]` and excluding them from deltas), plus zero-dependency grouped SVG bar charts in `.output/charts/` and Markdown reports.
+- **📥 Unified Time-Series & Weather Ingestion:** Pre-validates DATADIS CSVs via `DatadisValidator` across both flat (`.input/consumption/*.csv`) and annualized (`.input/consumption/<year>/*.csv`) trees, auto-detects `consumoKwh`/`consumo_kWh` aliases, and ingests solar inverter Excel reports (`.xlsx`) plus Open-Meteo weather CSVs.
 - **⏱️ Time-Series Alignment & DST:** Synchronizes disparate timestamps across leap years, missing intervals, and European DST switches (23h spring leap, 25h autumn transition with per-file energy conservation prior to cross-file deduplication).
 - **🧮 Regulatory Optimization Engine:** Solves monthly and fortnight (24 half-month) linear programming models under **Real Decreto 244/2019** alongside dynamic 24-hour profiles under **Orden TED/1247/2021** via `scipy.optimize.linprog(method='highs')`, finding optimal $\beta_i$ coefficients ($\sum \beta_i = 1.0$) that maximize collective self-consumption.
 - **📋 Annual Prevision Distribution Matrix:** Formulates a 12-month calendar schedule (Jan–Dec) for an upcoming operating year, skipping incomplete months (`—`) and pooling multi-year observations with exact per-month $1/k_m$ energy scaling.
 - **⚡ 4-Way Modality Progression:** Evaluates Current No-Share baseline against Monthly Share (RD 244/2019), Fortnight Share, and Hourly Share (Orden TED/1247/2021).
-- **📊 Rich 80-Column Terminal UI:** Tabular overviews, monthly trajectories, and visual share bars formatted cleanly for 80-column terminals.
-- **📝 Multi-Format Reporting:** Timestamped exports across **6 deliverables** in `.output/`: interactive HTML dashboard, monthly shares CSV + lite matrix CSV, fortnight shares CSV + lite matrix CSV, and hourly shares CSV.
+- **🖥️ Rich 80-Column Terminal UI:** Tabular overviews, monthly trajectories, and visual share bars formatted cleanly for 80-column terminals.
+- **📝 Multi-Format Reporting:** Timestamped exports across **6 `calculate` deliverables** (interactive HTML dashboard, monthly shares CSV + lite matrix CSV, fortnight shares CSV + lite matrix CSV, hourly shares CSV) plus `summary`/`compare` Markdown reports & SVG charts in `.output/`.
 - **🌐 Localization & Versioning:** Bilingual English/Spanish (`en`/`es`) support and automated per-commit CalVer (`YYYY.MM.NNN`).
 
 ---
@@ -135,13 +137,17 @@ esd init --lang es
 
 ### 3. Place Input Files
 
-- Put DATADIS hourly CSV files into `.input/consumption/` (one file per CUPS, or bulk exports).
-- Put solar inverter `.xlsx` generation reports into `.input/generation/`.
+- Put DATADIS hourly CSV files into `.input/consumption/` (flat `*.csv` or annualized `<year>/*.csv` subdirectories).
+- *(Optional, required only for `curate`/`calculate`)* Put solar inverter `.xlsx` generation reports into `.input/generation/` and configure participating facilities in `.input/cups/cups.json`.
 
-### 4. Run Optimization
+### 4. Run Analytics or Optimization
 
 ```bash
-# Calculate monthly, fortnight, and hourly coefficients for CUPS configured in cups.json
+# Consumption-only analytics (works without solar generation or cups.json):
+esd summary
+esd compare -y 2024 -y 2025
+
+# Full collective PV optimization (monthly, fortnight & hourly shares + 6 .output/ files):
 esd calculate
 
 # (Optional) Adjust precision or language beforehand in persistent configuration
@@ -151,6 +157,43 @@ esd config --precision 2 --lang es
 ---
 
 ## 📖 CLI Command Reference
+
+### `esd summary`
+Aggregates DATADIS community consumption by year and month, enforces an exact **100.00% fair-share invariant**, tags dominant (`★` >30%) and inactive (`(0)` <1 kWh) meters, optionally enriches rows with `use` labels from `cups.json`, renders 80-column terminal tables, and exports a Markdown report (`*_esd_consumption_summary.md`):
+
+```bash
+esd summary                               # Annual + monthly overview and Markdown export
+esd summary --year 2025 --view annual     # Filter to 2025 annual fair-share table
+esd summary --cups ES0021000000000001AA   # Dedicated trajectory for a single CUPS
+```
+
+| Option | Flag | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--consumption-dir` | `-c` | Folder containing DATADIS CSVs (flat or `<year>/` trees) | From config |
+| `--output-dir` | `-o` | Destination folder for Markdown reports | From config |
+| `--year` | `-y` | Filter display and report to a specific calendar year | `None` (all) |
+| `--view` | `-v` | View mode: `all`, `annual`, or `monthly` | `all` |
+| `--cups` | — | Filter display to a single CUPS trajectory | `None` (all) |
+| `--cups-file` | `-C` | Optional path to `cups.json` for functional `use` labels | `.input/cups/cups.json` |
+| `--lang` | `-l` | Language override (`en` or `es`) | From config |
+
+### `esd compare`
+Performs apples-to-apples multi-year community energy comparison across selected years. Months with incomplete telemetry in any compared year are flagged `[Inc]` and excluded from annual totals, deltas, and trend metrics so comparisons remain fair. Exports a Markdown report (`*_esd_consumption_comparison.md`) and native SVG grouped bar charts in `.output/charts/`:
+
+```bash
+esd compare                        # Compare all available years with SVG charts
+esd compare -y 2024 -y 2025        # Compare specific years (--years 2024,2025 also valid)
+esd compare --no-charts            # Skip SVG chart generation
+```
+
+| Option | Flag | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--consumption-dir` | `-c` | Folder containing DATADIS CSVs (flat or `<year>/` trees) | From config |
+| `--years` | `-y` | Years to compare (`-y 2024 -y 2025` or `--years 2024,2025`) | `None` (all) |
+| `--output-dir` | `-o` | Destination folder for Markdown report and `.output/charts/*.svg` | From config |
+| `--cups-file` | `-C` | Optional path to `cups.json` for functional `use` labels | `.input/cups/cups.json` |
+| `--charts/--no-charts` | — | Generate native monthly SVG comparison bar charts | `True` |
+| `--lang` | `-l` | Language override (`en` or `es`) | From config |
 
 ### `esd calculate`
 Calculates optimal monthly (RD 244/2019), fortnight (24 half-month), and dynamic hourly (Orden TED/1247/2021) distribution coefficients ($\beta_i$) using zero command-line arguments. Reads workspace directories, language, and share precision from `.esd_config.json`, evaluates only participating CUPS and optional per-CUPS `min_share`/`max_share` bylaws configured in `cups.json`, auto-curates `.curated/esd.csv` when missing or stale, renders 80-column terminal summary/trajectory/matrix tables, and exports all **6 timestamped `.output/` deliverables**:
@@ -196,7 +239,7 @@ esd curate --name community_data --delimiter ";"
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |
 
 ### `esd doctor`
-Audits input data files to detect gaps, missing hourly intervals, inactive meters, weather dataset continuity, and temporal alignment issues. Enriches CUPS with functional uses (e.g. heat pump, pool, garage) from `cups.json`:
+Audits input data files to detect gaps, missing hourly intervals, inactive meters, weather dataset continuity, and temporal alignment issues. Enriches CUPS with functional uses (e.g. heat pump, pool, garage) from `cups.json`. When `.input/generation/` is empty or absent, it seamlessly runs in **consumption-only diagnostic mode** (exiting with status `1` while clearly marking `can_calculate=False` since PV generation is absent):
 
 ```bash
 esd doctor
@@ -262,11 +305,12 @@ esd config --consumption-dir /path/to/consumption --generation-dir /path/to/gene
 ```
 
 ### `esd cleanup`
-Recursively removes generated reports, charts, curated datasets, and cached weather files from `.output`, `.curated`, and `.input/weather` (preserving hidden files such as `.gitkeep`):
+Recursively removes generated reports, charts, curated datasets, and cached weather files from `.output`, `.curated`, and `.input/weather` (preserving hidden files such as `.gitkeep`). Also supports the hidden `esd clean` command alias:
 
 ```bash
 esd cleanup
 esd cleanup --force  # Skip interactive confirmation
+esd clean --force    # Alias preserved for former da users
 ```
 
 | Option | Flag | Description | Default |
@@ -288,9 +332,26 @@ esd version
 
 ## 📁 Supported Ingestion Formats
 
-1. **DATADIS Consumption Files (`.input/consumption/*.csv`):** Auto-detects delimiters (`;`, `,`, `\t`), decimal formats (`0,152` / `0.152`), character encodings (`utf-8`, `latin-1`), and standardizes Spanish 01:00–24:00 billing hours.
-2. **Solar Inverter Generation Files (`.input/generation/*.xlsx`):** Ingests inverter and plant generation reports, extracting PV yield (`Rendimiento FV` or `Rendimiento del inversor`) and standardizing timestamps.
+1. **DATADIS Consumption Files (`.input/consumption/*.csv` or `.input/consumption/<year>/*.csv`):** Discovers CSVs recursively, pre-validates headers via `DatadisValidator`, auto-detects delimiters (`;`, `,`, `\t`), decimal formats (`0,152` / `0.152`), encodings (`utf-8`, `utf-8-sig`, `latin-1`, `cp1252`), supports both `consumo_kWh` and `consumoKwh` column aliases, and conserves 25h autumn DST transition energy.
+2. **Solar Inverter Generation Files (`.input/generation/*.xlsx`):** Ingests inverter and plant generation reports, extracting PV yield (`Rendimiento FV` or `Rendimiento del inversor`), standardizing timestamps, and conserving 25h autumn DST intervals.
 3. **Open-Meteo Hourly Weather Files (`.input/weather/{YYYY}_{lat}_{lon}_weather.csv`):** Standardized CSVs containing hourly records with columns `timestamp,temperature,cloud_cover,weather_code`.
+
+---
+
+## 🔄 Migrating from `datadis-analyzer` (`da` ➔ `esd`)
+
+`esd` absorbs all core workflows of [`datadis-analyzer`](https://github.com/marcosDLCS/datadis-analyzer) into one CLI so `datadis-analyzer` can be cleanly archived:
+
+| Workflow / Artifact | Former `datadis-analyzer` (`da`) | Unified `electricity-share-distributor` (`esd`) |
+| :--- | :--- | :--- |
+| **Initialize Workspace** | `da init` | `esd init` |
+| **Consumption Summary** | `da summary [--year --view --cups]` | `esd summary [--year --view --cups -C cups.json]` |
+| **Multi-Year Comparison** | `da compare [-y 2024 -y 2025 --no-charts]` | `esd compare [-y 2024 -y 2025 --no-charts]` |
+| **Charts Output** | Matplotlib PNG charts in `.output/charts/` | Zero-dependency native SVGs in `.output/charts/*.svg` |
+| **Input CSV Layout** | `.input/<year>/*.csv` | `.input/consumption/<year>/*.csv` (or flat `.input/consumption/*.csv`) |
+| **Clean Generated Files** | `da cleanup` / `da clean` | `esd cleanup` / `esd clean` (cleans `.output`, `.curated`, `.input/weather`) |
+| **Config & Version** | `.da_config.json`, `da version` | `.esd_config.json`, `esd config`, `esd version` |
+| **Collective PV Sizing** | *(Not available)* | `esd doctor` ➔ `esd curate` ➔ `esd calculate` |
 
 ---
 

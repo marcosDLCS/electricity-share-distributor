@@ -26,6 +26,8 @@ def test_cli_help() -> None:
     assert "ELECTRICITY SHARE DISTRIBUTOR" in result.output
     assert "AVAILABLE COMMANDS" in result.output
     assert "QUICK WORKFLOW & OUTPUT DELIVERABLES" in result.output
+    assert "summary" in result.output
+    assert "compare" in result.output
     assert "esd calculate" in result.output
     assert ".output" in result.output
     assert ".curated" in result.output
@@ -38,6 +40,8 @@ def test_cli_help() -> None:
     assert "DISTRIBUIDOR DE ENERGÍA COMPARTIDA" in result_es.output
     assert "COMANDOS DISPONIBLES" in result_es.output
     assert "FLUJO RÁPIDO Y ENTREGABLES" in result_es.output
+    assert "summary" in result_es.output
+    assert "compare" in result_es.output
     assert "esd calculate" in result_es.output
     assert ".output" in result_es.output
     assert ".input/weather" in result_es.output
