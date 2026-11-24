@@ -115,10 +115,19 @@ def test_generate_interactive_html_report_structure() -> None:
     assert "<html" in html_en
     assert "</html>" in html_en
 
-    # 100% offline requirement: no external script or stylesheet sources
+    # Offline asset & external link checks: zero external scripts/stylesheets, only glossary links open new tabs
     assert '<script src="http' not in html_en
     assert '<script src="//' not in html_en
-    assert 'href="http' not in html_en
+    assert "<link " not in html_en
+    external_links = re.findall(r"<a\b[^>]*href=\"https?://[^\"]+\"[^>]*>", html_en)
+    assert len(external_links) == 12
+    assert all(
+        'class="glossary-link"' in tag
+        and 'target="_blank"' in tag
+        and 'rel="noopener noreferrer"' in tag
+        and "data-i18n-href=" in tag
+        for tag in external_links
+    )
 
     # Clean hero header: short eyebrow (without RD 244/2019), title, subtitle; no KPI summary cards or badges
     hero_match = re.search(r"<header class=\"story-hero\">(.*?)</header>", html_en, flags=re.S)
@@ -209,12 +218,15 @@ def test_generate_interactive_html_report_structure() -> None:
     assert "Dynamic Hourly Share (Orden TED/1247/2021)" in html_en
     assert "prev-uplift-impact" in html_en
 
-    # Chapter 6: Plain-language Glossary (renumbered from Chapter 7)
+    # Chapter 6: Plain-language Glossary (renumbered from Chapter 7; 12 cards + localized links)
     assert "glossary-grid" in html_en
+    assert html_en.count('class="glossary-card"') == 12
     assert "6. Glossary" in html_en
     assert "Chapter 6" in html_en
     assert "Chapter 7" not in html_en
     assert "Hare-Niemeyer" not in html_en
+    assert "Day Types" in html_en
+    assert "en.wikipedia.org/wiki/Kilowatt-hour" in html_en
 
     # Bilingual language selector and JS engine
     assert "btn-lang-es" in html_en
@@ -234,12 +246,15 @@ def test_generate_interactive_html_report_structure() -> None:
 
     # English chapter titles
     assert "Meet Our Community Supplies (Active CUPS)" in html_en
-    assert "How Our Community Consumes Energy" in html_en
+    assert "How Our Community CUPS Consume Energy" in html_en
     assert "Local Weather Across the Analyzed Years" in html_en
     assert "How Our Roof Produces Solar Energy" in html_en
 
     # Bilingual natural Spanish generation
     html_es = generate_interactive_html_report(opt_result, summary, lang="es")
+    assert "zonas comunes" not in html_es.lower()
+    assert "zona común" not in html_es.lower()
+    assert "CUPS comunitarios" in html_es
     hero_es = re.search(r"<header class=\"story-hero\">(.*?)</header>", html_es, flags=re.S)
     assert hero_es is not None
     assert "Comunidad de propietarios · Autoconsumo colectivo" in hero_es.group(1)
@@ -247,12 +262,15 @@ def test_generate_interactive_html_report_structure() -> None:
     assert "La energía solar de nuestra comunidad, explicada paso a paso" in html_es
     assert "Los contadores de nuestra comunidad (CUPS activos)" in html_es
     assert "Reparto solar medio" not in html_es
-    assert "Cuándo y cuánto consumen nuestras zonas comunes" in html_es
+    assert "Cuándo y cuánto consumen nuestros CUPS comunitarios" in html_es
     assert "+10 kWh solares" in html_es
     assert "Consume 6 kWh reales" in html_es
     assert "Compra registrada: 0 kWh" in html_es
     assert "El tiempo en nuestra finca en los años analizados" in html_es
-    assert "Días de cielo y lluvia" in html_es
+    assert "Tipos de día" in html_es
+    assert "Días de cielo y lluvia" not in html_es
+    assert "es.wikipedia.org/wiki/Kilovatio_hora" in html_es
+    assert html_es.count('class="glossary-card"') == 12
     assert "Cuánta electricidad producen nuestras placas" in html_es
     assert "Producción solar (ámbar)" in html_es
     assert "Demanda comunitaria (azul)" in html_es
@@ -909,23 +927,24 @@ def test_calculation_service_multi_year_story_integration(tmp_path: Path) -> Non
             )
     (curated_dir / "generation.csv").write_text("\n".join(gen_lines) + "\n", encoding="utf-8")
 
-    for yr, base_t in ((2024, 19.5), (2025, 22.0)):
-        w_lines = ["timestamp,temperature,cloud_cover,weather_code"]
+    # Year 2024 uses cached weather CSV; 2025 intentionally differs in CSV to assert esd.csv precedence
+    for yr, base_t, cloud, code in ((2024, 19.5, 15, 1), (2025, 9.9, 99, 63)):
+        w_lines = ["timestamp,temperature,cloud_cover,weather_code,is_day"]
         for d in range(1, 4):
-            w_lines.append(f"{yr}-05-{d:02d} 12:00:00,{base_t},15,1")
+            w_lines.append(f"{yr}-05-{d:02d} 12:00:00,{base_t},{cloud},{code},1")
         (weather_dir / f"{yr}_40.4168_-3.7038_weather.csv").write_text(
             "\n".join(w_lines) + "\n", encoding="utf-8"
         )
 
     esd_lines = [
-        "timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption;community_demand;generation;self_consumption;exported_energy;imported_energy;temperature;cloud_cover"
+        "timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption;community_demand;generation;self_consumption;exported_energy;imported_energy;temperature;cloud_cover;weather_code;is_day"
     ]
     for d in range(1, 4):
         esd_lines.append(
-            f"2025-05-{d:02d} 12:00:00;2025;5;{d};12;Thursday;False;{c1};Aerotermia;6,0;8,0;10,0;6,0;4,0;0,0;22,0;10"
+            f"2025-05-{d:02d} 12:00:00;2025;5;{d};12;Thursday;False;{c1};Aerotermia;6,0;8,0;10,0;6,0;4,0;0,0;22,0;10;0;True"
         )
         esd_lines.append(
-            f"2025-05-{d:02d} 12:00:00;2025;5;{d};12;Thursday;False;{c2};Garaje;2,0;8,0;10,0;0,0;0,0;0,0;22,0;10"
+            f"2025-05-{d:02d} 12:00:00;2025;5;{d};12;Thursday;False;{c2};Garaje;2,0;8,0;10,0;0,0;0,0;0,0;22,0;10;0;True"
         )
     esd_csv = curated_dir / "esd.csv"
     esd_csv.write_text("\n".join(esd_lines) + "\n", encoding="utf-8")
@@ -958,6 +977,12 @@ def test_calculation_service_multi_year_story_integration(tmp_path: Path) -> Non
     story_data = json.loads(story_match.group(1))
     assert story_data["weather"]["has_data"] is True
     assert story_data["weather"]["years"] == [2024, 2025]
+    assert story_data["weather"]["by_year"]["2024"]["temp_avg"][4] == 19.5
+    assert story_data["weather"]["by_year"]["2025"]["temp_avg"][4] == 22.0
+    assert story_data["weather"]["by_year"]["2025"]["clear_sky_pct"][4] == 90.0
+    assert story_data["weather"]["by_year"]["2025"]["monthly_sunny_days"][4] == 3
+    assert story_data["weather"]["by_year"]["2025"]["sunny_days"] == 3
+    assert story_data["weather"]["by_year"]["2025"]["rainy_days"] == 0
     assert "insights" in story_data["weather"]
     assert "hero-kpi-grid" not in content
 
@@ -1147,3 +1172,110 @@ def test_story_embedded_json_and_js_integrity() -> None:
     assert "el.namespaceURI === 'http://www.w3.org/2000/svg'" in html_doc
     assert "data-i18n-title" in html_doc
     assert "data-i18n-aria" in html_doc
+    assert "data-i18n-href" in html_doc
+
+
+def test_story_data_weather_daylight_classification_and_esd_precedence() -> None:
+    """Day types classify strictly by max daytime weather_code (is_day / 08-19 fallback), prioritizing esd.csv."""
+    import pandas as pd
+
+    from src.ingestion.schema import AlignedDataset
+    from src.presentation.story_data import build_story_context
+
+    opt_result, summary = _create_mock_optimization_result()
+    c1, c2 = opt_result.cups_list
+
+    # 1) Explicit is_day flag across 5 days in 2026-05:
+    # Day 1: night rain (03:00 code=65, is_day=False) + sunny day (12:00 code=0, is_day=True) -> Sunny
+    # Day 2: partly cloudy day (12:00 code=2, is_day=True) -> Partly cloudy
+    # Day 3: overcast day (12:00 code=3, is_day=True) -> Overcast
+    # Day 4: daytime fog (12:00 code=45, is_day=True) -> Overcast
+    # Day 5: daytime rain (12:00 code=61, is_day=True) -> Rainy
+    aln_rows = []
+    aln_idx = []
+    day_specs = [
+        (1, [(3, 65, False, 90.0), (12, 0, True, 10.0)]),
+        (2, [(3, 65, False, 80.0), (12, 2, True, 50.0)]),
+        (3, [(12, 3, True, 90.0)]),
+        (4, [(12, 45, True, 95.0)]),
+        (5, [(12, 61, True, 85.0)]),
+    ]
+    for day_num, hours in day_specs:
+        for hr, wcode, is_d, cloud in hours:
+            ts = f"2026-05-{day_num:02d} {hr:02d}:00:00"
+            aln_idx.append(ts)
+            aln_rows.append(
+                {
+                    c1: 4.0,
+                    c2: 1.0,
+                    "generation_kwh": 6.0,
+                    "temperature": 20.0,
+                    "cloud_cover": cloud,
+                    "weather_code": wcode,
+                    "is_day": is_d,
+                }
+            )
+    df_aln = pd.DataFrame(aln_rows, index=aln_idx)
+    df_aln["weather_code"] = df_aln["weather_code"].astype("Int64")
+    df_aln["is_day"] = df_aln["is_day"].astype("boolean")
+
+    aligned = AlignedDataset(
+        data=df_aln,
+        cups_list=[c1, c2],
+        metadata=summary,
+        monthly_groups={"2026-05": df_aln},
+        cups_uses={c1: "Aerotermia", c2: "Garaje"},
+        primary_cups=c1,
+    )
+
+    # Supplement weather_df contains:
+    # - Overlapping Day 1 12:00 with conflicting rain (code=63, temp=5.0) -> must be IGNORED in favor of esd.csv
+    # - Pre-solar 2024-05-01 without is_day (None fallback to 08:00-19:00):
+    #   02:00 rain (code=65) + 12:00 sunny (code=1) -> must classify as Sunny via 08-19 fallback!
+    sup_df = pd.DataFrame(
+        {
+            "timestamp": [
+                "2026-05-01 12:00:00",
+                "2024-05-01 02:00:00",
+                "2024-05-01 12:00:00",
+            ],
+            "temperature": [5.0, 12.0, 23.0],
+            "cloud_cover": [99, 80, 10],
+            "weather_code": [63, 65, 1],
+        }
+    )
+    cons_df = pd.DataFrame(
+        [
+            {"timestamp": "2024-05-01 12:00:00", "cups_id": c1, "consumption": 3.0},
+            {"timestamp": "2026-05-01 12:00:00", "cups_id": c1, "consumption": 4.0},
+        ]
+    )
+
+    ctx = build_story_context(
+        opt_result=opt_result,
+        ingestion_summary=summary,
+        consumption_df=cons_df,
+        weather_df=sup_df,
+        aligned_dataset=aligned,
+    )
+    wh = ctx.weather_history
+    assert wh.years == [2024, 2026]
+
+    # 2026: 1 sunny (Day 1 despite night rain!), 1 partly cloudy (Day 2), 2 overcast (Days 3+4), 1 rainy (Day 5)
+    yr26 = wh.by_year[2026]
+    assert yr26.sunny_days == 1
+    assert yr26.partly_cloudy_days == 1
+    assert yr26.cloudy_days == 2
+    assert yr26.rainy_days == 1
+    assert yr26.monthly_sunny_days[4] == 1
+    assert yr26.monthly_partly_days[4] == 1
+    assert yr26.monthly_cloudy_days[4] == 2
+    assert yr26.monthly_rainy_days[4] == 1
+    # Overlapped 2026-05-01 12:00 used esd.csv temperature (20.0), not weather_df (5.0)
+    assert yr26.temp_avg[4] == 20.0
+
+    # 2024 pre-solar supplemented from weather_df without is_day -> 08-19 fallback ignores 02:00 rain
+    yr24 = wh.by_year[2024]
+    assert yr24.sunny_days == 1
+    assert yr24.rainy_days == 0
+    assert yr24.annual_avg_clear_pct == 90.0

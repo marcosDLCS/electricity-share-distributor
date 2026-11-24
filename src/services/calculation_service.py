@@ -260,14 +260,39 @@ class CalculationService:
                     if len(yr_str) == 4 and yr_str.isdigit():
                         analyzed_years.add(int(yr_str))
 
+        aligned_years: set[int] = {
+            int(str(ts)[:4])
+            for ts in aligned.data.index
+            if len(str(ts)) >= 4 and str(ts)[:4].isdigit()
+        }
+        aligned_has_weather = (
+            "temperature" in aligned.data.columns or "cloud_cover" in aligned.data.columns
+        ) and (
+            "weather_code" in aligned.data.columns
+            and bool(aligned.data["weather_code"].notna().any())
+        )
+        aligned_ts_set = {str(ts).strip() for ts in aligned.data.index}
+        extra_years_needed: set[int] = set()
+        if not aligned_has_weather:
+            extra_years_needed = set(analyzed_years)
+        else:
+            extra_years_needed = analyzed_years - aligned_years
+            for ts_df in (consumption_df, generation_df):
+                if ts_df is not None and not ts_df.empty and "timestamp" in ts_df.columns:
+                    ts_vals = ts_df["timestamp"].astype(str).str.strip()
+                    outside = ts_vals[~ts_vals.isin(aligned_ts_set)]
+                    for yr_str in outside.str.slice(0, 4).unique():
+                        if len(yr_str) == 4 and yr_str.isdigit():
+                            extra_years_needed.add(int(yr_str))
+
         weather_df: pd.DataFrame | None = None
-        if analyzed_years and request.weather_dir.exists():
+        if extra_years_needed and request.weather_dir.exists():
             coords = curator.get_default_location(cups_cfg)
             lat_val = coords[0] if coords else None
             lon_val = coords[1] if coords else None
             weather_loader = WeatherLoader(request.weather_dir)
             weather_frames: list[pd.DataFrame] = []
-            for yr in sorted(analyzed_years):
+            for yr in sorted(extra_years_needed):
                 try:
                     w_yr = weather_loader.load_year(year=yr, latitude=lat_val, longitude=lon_val)
                     if not w_yr.empty:

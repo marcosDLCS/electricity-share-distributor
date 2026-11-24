@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from html import escape
 from typing import TYPE_CHECKING, Any
 
@@ -57,7 +58,7 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "font_inc_label": "Aumentar tamaño de letra",
             "ch1_badge": "Capítulo 1",
             "ch1_title": "Los contadores de nuestra comunidad (CUPS activos)",
-            "ch1_intro": "El edificio cuenta con varios contratos eléctricos independientes para sus zonas comunes (calefacción central, garaje, ascensores, piscina o alumbrado). Cada contador se identifica con un código único llamado <strong>CUPS</strong>. En esta tabla figuran únicamente los suministros activos incluidos en el reparto solar, junto con su consumo en el último año completo disponible.",
+            "ch1_intro": "El edificio cuenta con varios contratos eléctricos independientes para sus CUPS comunitarios (calefacción central, garaje, ascensores, piscina o alumbrado). Cada contador se identifica con un código único llamado <strong>CUPS</strong>. En esta tabla figuran únicamente los suministros activos incluidos en el reparto solar, junto con su consumo en el último año completo disponible.",
             "ch1_col_rank": "#",
             "ch1_col_service": "Servicio común",
             "ch1_col_cups": "Código CUPS",
@@ -67,9 +68,9 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "ch1_jump_tip": "Ver la evolución mensual de este servicio en el Capítulo 2",
             "ch1_jump_hint": "↗ Pulsa sobre cualquier servicio común para ver su evolución mensual en el gráfico de consumo.",
             "ch1_total_label": "TOTAL COMUNIDAD",
-            "ch1_note": "<strong>¿Afecta esto a la factura de mi vivienda?</strong> No. Este informe trata exclusivamente sobre los contadores de las zonas comunes; los contratos particulares de cada piso o local no cambian.",
+            "ch1_note": "<strong>¿Afecta esto a la factura de mi vivienda?</strong> No. Este informe trata exclusivamente sobre los CUPS comunitarios; los contratos particulares de cada piso o local no cambian.",
             "ch2_badge": "Capítulo 2",
-            "ch2_title": "Cuándo y cuánto consumen nuestras zonas comunes",
+            "ch2_title": "Cuándo y cuánto consumen nuestros CUPS comunitarios",
             "ch2_intro": "El consumo del edificio cambia con las estaciones: en invierno sube la calefacción o aerotermia, mientras que en verano trabajan más la depuradora de la piscina o la ventilación. Puedes ver el total de la comunidad año a año o comparar servicios entre sí.",
             "cons_mode_community": "Total comunidad",
             "cons_mode_single": "Un servicio",
@@ -113,10 +114,10 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "fz_svg_meter_cap2": "No ve los 6 kWh del tejado",
             "ch3_badge": "Capítulo 3",
             "ch3_title": "El tiempo en nuestra finca en los años analizados",
-            "ch3_intro": "El clima explica buena parte de lo que acabamos de ver: los meses fríos disparan la calefacción y los días despejados multiplican la producción de las placas. Explora la temperatura, la claridad del cielo y el reparto mensual de días de sol o lluvia en los años analizados.",
+            "ch3_intro": "El clima explica buena parte de lo que acabamos de ver: los meses fríos disparan la calefacción y los días despejados multiplican la producción de las placas. Explora la temperatura, la claridad del cielo y los tipos de día en los años analizados.",
             "weather_mode_temp": "🌡️ Temperatura (°C)",
             "weather_mode_clear": "☀️ Cielo despejado (%)",
-            "weather_mode_days": "📅 Días de cielo y lluvia",
+            "weather_mode_days": "📅 Tipos de día",
             "weather_stat_temp": "Temperatura media",
             "weather_stat_range": "Mes frío y mes cálido",
             "weather_stat_clear": "Cielo despejado medio",
@@ -125,7 +126,7 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "weather_partly_days": "Nubes y claros",
             "weather_cloudy_days": "Muy nubosos",
             "weather_rainy_days": "Con lluvia",
-            "weather_sky_title": "Reparto del cielo en",
+            "weather_sky_title": "Tipos de día en",
             "weather_days_unit": "días registrados",
             "weather_cold_days_lbl": "<10 °C",
             "weather_hot_days_lbl": "≥30 °C",
@@ -141,7 +142,7 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "weather_insight_single_tpl": "🌤️ En <strong>{year}</strong> la temperatura media fue de <strong>{temp}</strong>, con un <strong>{clear}</strong> de cielos despejados en horas de luz y <strong>{sunny} días soleados</strong> frente a <strong>{rainy} días de lluvia</strong>.",
             "weather_insight_yoy_tpl": "🌤️ Entre <strong>{y0}</strong> y <strong>{y1}</strong>, la temperatura media varió <strong>{dt} °C</strong> y la proporción de cielo despejado <strong>{dc} puntos</strong> (en {y1}: <strong>{temp}</strong> de media y <strong>{clear}</strong> despejado).",
             "weather_card1_title": "🥶 Frío y demanda del edificio",
-            "weather_card1_ratio_tpl": "En los meses fríos (media por debajo de 12 °C), las zonas comunes consumen de media <strong>{cold_kwh}</strong> al mes frente a <strong>{mild_kwh}</strong> en los meses templados (15–23 °C): un gasto <strong>{ratio}× mayor</strong>. En {year} se registraron <strong>{cold_days} días fríos (&lt;10 °C)</strong>{frost_part}.",
+            "weather_card1_ratio_tpl": "En los meses fríos (media por debajo de 12 °C), los CUPS comunitarios consumen de media <strong>{cold_kwh}</strong> al mes frente a <strong>{mild_kwh}</strong> en los meses templados (15–23 °C): un gasto <strong>{ratio}× mayor</strong>. En {year} se registraron <strong>{cold_days} días fríos (&lt;10 °C)</strong>{frost_part}.",
             "weather_card1_fallback_tpl": "Las jornadas por debajo de 10 °C empujan el consumo de calefacción o aerotermia en la finca. En <strong>{year}</strong> se midieron <strong>{cold_days} días fríos (&lt;10 °C)</strong>, <strong>{hot_days} calurosos (≥30 °C)</strong> y extremos entre <strong>{min_t}</strong> y <strong>{max_t}</strong>.",
             "weather_card2_title": "☀️ Cielo despejado, calor y rendimiento solar",
             "weather_card2_body_tpl": "El mes más luminoso suele ser <strong>{sun_m}</strong> (<strong>{sun_c}</strong> despejado) frente a <strong>{cld_m}</strong> (<strong>{cld_c}</strong>).",
@@ -209,19 +210,55 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "prev_uplift_impact_tpl": "🌱 Solo por repartir la energía entre todos los contadores en lugar de dejarla en uno solo, evitamos <strong>{co2}</strong> adicionales (equivalente al consumo de <strong>{home_months} meses de una vivienda media</strong>).",
             "ch6_badge": "Capítulo 6",
             "ch6_title": "Glosario básico",
-            "ch6_intro": "Conceptos eléctricos y normativos explicados en lenguaje cotidiano.",
+            "ch6_intro": "Conceptos eléctricos, meteorológicos y normativos explicados en lenguaje cotidiano, con enlaces de ampliación en español.",
             "g1_term": "CUPS (Código Universal de Punto de Suministro)",
-            "g1_desc": "Es el «DNI» de cada contador eléctrico. Nuestra comunidad tiene un CUPS distinto para el garaje, los ascensores, la calefacción o la piscina.",
+            "g1_desc": "Es el «DNI» de cada contador eléctrico. Nuestra comunidad tiene un CUPS comunitario distinto para la calefacción, el garaje, los ascensores o la piscina.",
+            "g1_link_label": "Qué es el CUPS (Wikipedia) ↗",
+            "g1_link_url": "https://es.wikipedia.org/wiki/C%C3%B3digo_Unificado_de_Punto_de_Suministro",
             "g2_term": "kWh (kilovatio-hora)",
             "g2_desc": "La unidad básica de energía eléctrica. Equivale, por ejemplo, a un lavado en modo eco o a tener encendido un radiador pequeño (1.000 W) durante una hora.",
+            "g2_link_label": "Qué es un kWh (Wikipedia) ↗",
+            "g2_link_url": "https://es.wikipedia.org/wiki/Kilovatio_hora",
             "g3_term": "Autoconsumo colectivo",
-            "g3_desc": "Electricidad que generan las placas de la cubierta y consumen en esa misma hora los servicios comunes del edificio, evitando comprarla de la red.",
+            "g3_desc": "Electricidad que generan las placas de la cubierta y consumen en esa misma hora los CUPS comunitarios del edificio, evitando comprarla de la red.",
+            "g3_link_label": "Guías de autoconsumo colectivo (IDAE) ↗",
+            "g3_link_url": "https://www.idae.es/tecnologias/energias-renovables/oficina-de-autoconsumo/guias-",
             "g4_term": "Excedente vertido a red",
-            "g4_desc": "Energía solar que sobra cuando las placas producen más electricidad de la que consumen juntos todos los servicios comunes en esa hora.",
+            "g4_desc": "Energía solar que sobra cuando las placas producen más electricidad de la que consumen juntos todos los CUPS comunitarios en esa hora.",
+            "g4_link_label": "Autoconsumo y excedentes (Wikipedia) ↗",
+            "g4_link_url": "https://es.wikipedia.org/wiki/Autoconsumo_fotovoltaico",
             "g5_term": "Coeficiente de reparto (β)",
             "g5_desc": "El porcentaje fijo de la producción solar asignado a cada contador ante la distribuidora. La suma de todos los coeficientes debe ser siempre exactamente del 100 %.",
+            "g5_link_label": "RD 244/2019 en el BOE ↗",
+            "g5_link_url": "https://www.boe.es/eli/es/rd/2019/04/05/244",
             "g6_term": "Mes incompleto [Inc]",
             "g6_desc": "Señala un mes con menos del 90 % de sus días u horas registrados (por ejemplo, el mes en curso o una puesta en marcha) para evitar comparaciones engañosas.",
+            "g6_link_label": "Portal de energía (CNMC) ↗",
+            "g6_link_url": "https://sede.cnmc.gob.es/",
+            "g7_term": "DATADIS (datos horarios de consumo)",
+            "g7_desc": "Plataforma oficial de las distribuidoras eléctricas en España que registra las lecturas horarias reales de cada contador CUPS conectado a la red.",
+            "g7_link_label": "Web oficial de DATADIS ↗",
+            "g7_link_url": "https://datadis.es/",
+            "g8_term": "Inversor solar",
+            "g8_desc": "Equipo que convierte la corriente continua de los paneles del tejado en corriente alterna utilizable por el edificio y mide la producción solar bruta hora a hora.",
+            "g8_link_label": "Cómo funciona un inversor (Wikipedia) ↗",
+            "g8_link_url": "https://es.wikipedia.org/wiki/Inversor_fotovoltaico",
+            "g9_term": "RD 244/2019 y Orden TED/1247/2021",
+            "g9_desc": "Normativa española que regula los coeficientes de reparto colectivo: el RD 244/2019 define coeficientes fijos y la Orden TED/1247/2021 habilita perfiles horarios dinámicos.",
+            "g9_link_label": "Orden TED/1247/2021 en el BOE ↗",
+            "g9_link_url": "https://www.boe.es/eli/es/ord/2021/11/15/ted1247",
+            "g10_term": "Aprovechamiento frente a Cobertura solar",
+            "g10_desc": "El aprovechamiento mide qué parte de lo producido por las placas se absorbe en el edificio; la cobertura mide qué porcentaje del gasto eléctrico total proviene del sol.",
+            "g10_link_label": "Energía solar fotovoltaica (Wikipedia) ↗",
+            "g10_link_url": "https://es.wikipedia.org/wiki/Energ%C3%ADa_solar_fotovoltaica",
+            "g11_term": "«Cero ficticio» tras el contador",
+            "g11_desc": "Ocurre cuando el CUPS conectado directamente tras el inversor marca 0 kWh comprados a la red aunque sí esté consumiendo electricidad solar propia en esa misma hora.",
+            "g11_link_label": "Autoconsumo en red interior (Wikipedia) ↗",
+            "g11_link_url": "https://es.wikipedia.org/wiki/Autoconsumo_fotovoltaico",
+            "g12_term": "Códigos meteorológicos WMO y horas de luz",
+            "g12_desc": "Códigos internacionales (0–99) de Open-Meteo evaluados solo en horas diurnas (is_day) para clasificar los tipos de día sin que la lluvia nocturna distorsione las jornadas soleadas.",
+            "g12_link_label": "Documentación Open-Meteo (WMO) ↗",
+            "g12_link_url": "https://open-meteo.com/en/docs/historical-weather-api",
             "tip_gen": "Producción solar",
             "tip_dem": "Demanda",
             "tip_solar_dem": "Demanda en horas de sol",
@@ -294,7 +331,7 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "font_inc_label": "Increase text size",
             "ch1_badge": "Chapter 1",
             "ch1_title": "Meet Our Community Supplies (Active CUPS)",
-            "ch1_intro": "Our homeowners association holds separate electricity meters for shared facilities (central heating, garage, elevators, pool, hallway lighting). In Spain, each meter contract has a unique ID called a <strong>CUPS</strong>. Below are strictly the active community meters included in our collective solar agreement, alongside their demand in the latest complete year.",
+            "ch1_intro": "Our homeowners association holds separate electricity contracts for its community CUPS (central heating, garage, elevators, pool, hallway lighting). In Spain, each meter contract has a unique ID called a <strong>CUPS</strong>. Below are strictly the active community CUPS included in our collective solar agreement, alongside their demand in the latest complete year.",
             "ch1_col_rank": "#",
             "ch1_col_service": "Common Service",
             "ch1_col_cups": "Official CUPS Code",
@@ -304,9 +341,9 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "ch1_jump_tip": "View this service's monthly curve in Chapter 2",
             "ch1_jump_hint": "↗ Click any common service to jump straight to its monthly curve in Chapter 2.",
             "ch1_total_label": "COMMUNITY TOTAL",
-            "ch1_note": "<strong>Good to know:</strong> This report only covers shared building common-service meters. Private apartment electricity contracts and household bills are neither included nor modified.",
+            "ch1_note": "<strong>Good to know:</strong> This report only covers shared community CUPS contracts. Private apartment electricity contracts and household bills are neither included nor modified.",
             "ch2_badge": "Chapter 2",
-            "ch2_title": "How Our Community Consumes Energy",
+            "ch2_title": "How Our Community CUPS Consume Energy",
             "ch2_intro": "Each building service follows the seasons: central heating spikes in winter while swimming pool pumps and ventilation run harder in warmer months. Explore our community total across years or inspect individual services side by side.",
             "cons_mode_community": "Community Total",
             "cons_mode_single": "Single Service (CUPS)",
@@ -350,10 +387,10 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "fz_svg_meter_cap2": "Misses the 6 kWh rooftop flow",
             "ch3_badge": "Chapter 3",
             "ch3_title": "Local Weather Across the Analyzed Years",
-            "ch3_intro": "Weather connects demand and solar supply: colder months push central heating higher while clear bright skies boost rooftop output. Explore monthly temperatures, clear-sky percentages, and sunny vs. rainy day counts across the exact analyzed years.",
+            "ch3_intro": "Weather connects demand and solar supply: colder months push central heating higher while clear bright skies boost rooftop output. Explore monthly temperatures, clear-sky percentages, and day types across the exact analyzed years.",
             "weather_mode_temp": "🌡️ Temperature (°C)",
             "weather_mode_clear": "☀️ Clear Sky (%)",
-            "weather_mode_days": "📅 Sky & Rain Days",
+            "weather_mode_days": "📅 Day Types",
             "weather_stat_temp": "Average Temperature",
             "weather_stat_range": "Coldest & Warmest Month",
             "weather_stat_clear": "Average Clear Sky",
@@ -362,7 +399,7 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "weather_partly_days": "Partly cloudy",
             "weather_cloudy_days": "Overcast",
             "weather_rainy_days": "Rainy",
-            "weather_sky_title": "Sky breakdown in",
+            "weather_sky_title": "Day types in",
             "weather_days_unit": "observed days",
             "weather_cold_days_lbl": "<10 °C",
             "weather_hot_days_lbl": "≥30 °C",
@@ -378,7 +415,7 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "weather_insight_single_tpl": "🌤️ In <strong>{year}</strong> the mean temperature was <strong>{temp}</strong>, with <strong>{clear}</strong> daytime clear skies and <strong>{sunny} sunny days</strong> versus <strong>{rainy} rainy days</strong>.",
             "weather_insight_yoy_tpl": "🌤️ From <strong>{y0}</strong> to <strong>{y1}</strong>, mean temperature shifted by <strong>{dt} °C</strong> and clear skies by <strong>{dc} pp</strong> ({y1}: <strong>{temp}</strong> avg · <strong>{clear}</strong> clear sky).",
             "weather_card1_title": "🥶 Cold Weather & Building Demand",
-            "weather_card1_ratio_tpl": "During cold months (avg below 12 °C), shared facilities consume <strong>{cold_kwh}</strong>/month vs. <strong>{mild_kwh}</strong> in mild months (15–23 °C)—a <strong>{ratio}× surge</strong> driven by central heating. {year} logged <strong>{cold_days} cold days (&lt;10 °C)</strong>{frost_part}.",
+            "weather_card1_ratio_tpl": "During cold months (avg below 12 °C), community CUPS consume <strong>{cold_kwh}</strong>/month vs. <strong>{mild_kwh}</strong> in mild months (15–23 °C)—a <strong>{ratio}× surge</strong> driven by central heating. {year} logged <strong>{cold_days} cold days (&lt;10 °C)</strong>{frost_part}.",
             "weather_card1_fallback_tpl": "Days averaging below 10 °C drive central heating demand sharply higher. In <strong>{year}</strong> we observed <strong>{cold_days} cold days (&lt;10 °C)</strong>, <strong>{hot_days} hot days (≥30 °C)</strong>, and extremes from <strong>{min_t}</strong> to <strong>{max_t}</strong>.",
             "weather_card2_title": "☀️ Clear Skies, Heat & Panel Efficiency",
             "weather_card2_body_tpl": "The brightest skies typically arrive in <strong>{sun_m}</strong> (<strong>{sun_c}</strong> clear) versus <strong>{cld_m}</strong> (<strong>{cld_c}</strong>).",
@@ -446,19 +483,55 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "prev_uplift_impact_tpl": "🌱 Simply by sharing solar across all common meters instead of just one, the community avoids an extra <strong>{co2}</strong> (equivalent to <strong>{home_months} months of electricity for an average home</strong>).",
             "ch6_badge": "Chapter 6",
             "ch6_title": "Plain-Language Glossary for Neighbours",
-            "ch6_intro": "Everyday explanations of key energy and regulatory terms used in this report.",
+            "ch6_intro": "Everyday explanations of key energy, weather, and regulatory terms used in this report, with external links to explore further.",
             "g1_term": "CUPS (Universal Supply Point Code)",
-            "g1_desc": "Think of a CUPS as an electricity meter's official ID card. Our building holds separate CUPS contracts for heating, garage, elevators, and pool.",
+            "g1_desc": "Think of a CUPS as an electricity meter's official ID card. Our association holds separate community CUPS contracts for heating, garage, elevators, and pool.",
+            "g1_link_label": "How electricity meters work (Wikipedia) ↗",
+            "g1_link_url": "https://en.wikipedia.org/wiki/Electricity_meter",
             "g2_term": "kWh (Kilowatt-hour)",
             "g2_desc": "The standard unit of electricity. Roughly equal to one eco washing machine cycle or running a 1,000 W small heater for one hour.",
+            "g2_link_label": "Kilowatt-hour explained (Wikipedia) ↗",
+            "g2_link_url": "https://en.wikipedia.org/wiki/Kilowatt-hour",
             "g3_term": "Collective Self-Consumption",
-            "g3_desc": "Solar electricity generated on our roof and used immediately by building services in the same hour—power we never have to buy from the grid.",
+            "g3_desc": "Solar electricity generated on our roof and used immediately by community CUPS in the same hour—power we never have to buy from the grid.",
+            "g3_link_label": "Photovoltaic systems (Wikipedia) ↗",
+            "g3_link_url": "https://en.wikipedia.org/wiki/Photovoltaic_system",
             "g4_term": "Grid Surplus",
-            "g4_desc": "Extra solar electricity produced when rooftop panels generate more than all shared services can consume during that hour.",
+            "g4_desc": "Extra solar electricity produced when rooftop panels generate more than all community CUPS can consume during that hour.",
+            "g4_link_label": "Grid export & net metering (Wikipedia) ↗",
+            "g4_link_url": "https://en.wikipedia.org/wiki/Net_metering",
             "g5_term": "Share Coefficient (β)",
             "g5_desc": "The percentage slice of solar energy assigned to each CUPS at the grid distributor. Across all participating meters, shares must always add up to 100%.",
+            "g5_link_label": "Spanish RD 244/2019 text (BOE) ↗",
+            "g5_link_url": "https://www.boe.es/eli/es/rd/2019/04/05/244",
             "g6_term": "Incomplete Month [Inc]",
             "g6_desc": "Marks a month with under 90% of expected days/hours recorded (such as an ongoing month or mid-month start), preventing misleading comparisons.",
+            "g6_link_label": "Smart meter interval logging (Wikipedia) ↗",
+            "g6_link_url": "https://en.wikipedia.org/wiki/Smart_meter",
+            "g7_term": "DATADIS (Hourly Meter Data)",
+            "g7_desc": "Official Spanish electricity distributor portal providing verified hourly smart-meter readings for every grid-connected CUPS contract.",
+            "g7_link_label": "Official DATADIS portal (ES) ↗",
+            "g7_link_url": "https://datadis.es/",
+            "g8_term": "Solar Inverter",
+            "g8_desc": "The device converting rooftop panel direct current (DC) into building-ready alternating current (AC) while logging total gross hourly solar production.",
+            "g8_link_label": "Solar inverter basics (Wikipedia) ↗",
+            "g8_link_url": "https://en.wikipedia.org/wiki/Solar_inverter",
+            "g9_term": "RD 244/2019 & Order TED/1247/2021",
+            "g9_desc": "Spanish regulation defining collective sharing rules: RD 244/2019 sets fixed monthly shares, while Order TED/1247/2021 unlocks dynamic hourly profiles.",
+            "g9_link_label": "Order TED/1247/2021 text (BOE) ↗",
+            "g9_link_url": "https://www.boe.es/eli/es/ord/2021/11/15/ted1247",
+            "g10_term": "Utilization vs. Solar Coverage",
+            "g10_desc": "Utilization measures how much generated rooftop energy stays inside our building; solar coverage measures what share of total community demand comes from sunlight.",
+            "g10_link_label": "Solar PV fundamentals (Wikipedia) ↗",
+            "g10_link_url": "https://en.wikipedia.org/wiki/Solar_energy",
+            "g11_term": "Behind-the-Meter «Fake Zero»",
+            "g11_desc": "Occurs when the primary meter wired directly behind the inverter reads 0 kWh drawn from the grid while actively consuming rooftop solar power during that same hour.",
+            "g11_link_label": "Behind-the-meter & zero-export (Wikipedia) ↗",
+            "g11_link_url": "https://en.wikipedia.org/wiki/Zero-export",
+            "g12_term": "WMO Weather Codes & Daylight Hours",
+            "g12_desc": "Standard international 0–99 Open-Meteo codes evaluated strictly during daytime hours (is_day) so overnight showers never skew daytime sky classifications.",
+            "g12_link_label": "Open-Meteo WMO code docs ↗",
+            "g12_link_url": "https://open-meteo.com/en/docs/historical-weather-api",
             "tip_gen": "Solar Generation",
             "tip_dem": "Demand",
             "tip_solar_dem": "Solar Hours Demand",
@@ -1459,9 +1532,23 @@ _CSS_STYLES: str = """
             border: 1px solid var(--border-subtle);
             border-radius: var(--radius-md);
             padding: 1.1rem 1.2rem;
+            display: flex;
+            flex-direction: column;
         }
         .glossary-card h3 { font-size: 0.96rem; font-weight: 700; color: var(--accent-demand); margin-bottom: 0.35rem; }
-        .glossary-card p { font-size: 0.87rem; color: var(--text-muted); }
+        .glossary-card p { font-size: 0.87rem; color: var(--text-muted); flex: 1; }
+        .glossary-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            margin-top: 0.65rem;
+            font-size: 0.81rem;
+            font-weight: 600;
+            color: var(--accent-demand);
+            text-decoration: none;
+            align-self: flex-start;
+        }
+        .glossary-link:hover, .glossary-link:focus-visible { text-decoration: underline; }
 
         .text-amber { color: var(--accent-solar); }
         .text-cyan { color: var(--accent-demand); }
@@ -2807,6 +2894,10 @@ _SCRIPT_BODY: str = """
                 const key = el.getAttribute('data-i18n-aria');
                 if (I18N[lang][key] !== undefined) el.setAttribute('aria-label', I18N[lang][key]);
             });
+            document.querySelectorAll('[data-i18n-href]').forEach(el => {
+                const key = el.getAttribute('data-i18n-href');
+                if (I18N[lang][key] !== undefined) el.setAttribute('href', I18N[lang][key]);
+            });
             document.querySelectorAll('[data-month]').forEach(el => {
                 const m = el.getAttribute('data-month');
                 if (I18N[lang].months && I18N[lang].months[m]) el.textContent = I18N[lang].months[m];
@@ -2923,6 +3014,28 @@ _SCRIPT_BODY: str = """
             initScrollChrome();
         })();
 """
+
+_GLOSSARY_CARD_COUNT = 12
+
+
+def _build_glossary_cards_html(ui: Mapping[str, object]) -> str:
+    """Render the localized Chapter 6 glossary cards with new-tab external links."""
+    cards: list[str] = []
+    for idx in range(1, _GLOSSARY_CARD_COUNT + 1):
+        term = str(ui[f"g{idx}_term"])
+        desc = str(ui[f"g{idx}_desc"])
+        link_label = str(ui[f"g{idx}_link_label"])
+        link_url = escape(str(ui[f"g{idx}_link_url"]))
+        cards.append(
+            f'<article class="glossary-card">'
+            f'<h3 data-i18n="g{idx}_term">{term}</h3>'
+            f'<p data-i18n="g{idx}_desc">{desc}</p>'
+            f'<a class="glossary-link" href="{link_url}" '
+            f'data-i18n-href="g{idx}_link_url" data-i18n="g{idx}_link_label" '
+            f'target="_blank" rel="noopener noreferrer">{link_label}</a>'
+            f"</article>"
+        )
+    return "\n                ".join(cards)
 
 
 def generate_story_html_report(
@@ -3320,12 +3433,7 @@ def generate_story_html_report(
                 <p class="chapter-intro" data-i18n="ch6_intro">{ui["ch6_intro"]}</p>
             </div>
             <div class="glossary-grid">
-                <article class="glossary-card"><h3 data-i18n="g1_term">{ui["g1_term"]}</h3><p data-i18n="g1_desc">{ui["g1_desc"]}</p></article>
-                <article class="glossary-card"><h3 data-i18n="g2_term">{ui["g2_term"]}</h3><p data-i18n="g2_desc">{ui["g2_desc"]}</p></article>
-                <article class="glossary-card"><h3 data-i18n="g3_term">{ui["g3_term"]}</h3><p data-i18n="g3_desc">{ui["g3_desc"]}</p></article>
-                <article class="glossary-card"><h3 data-i18n="g4_term">{ui["g4_term"]}</h3><p data-i18n="g4_desc">{ui["g4_desc"]}</p></article>
-                <article class="glossary-card"><h3 data-i18n="g5_term">{ui["g5_term"]}</h3><p data-i18n="g5_desc">{ui["g5_desc"]}</p></article>
-                <article class="glossary-card"><h3 data-i18n="g6_term">{ui["g6_term"]}</h3><p data-i18n="g6_desc">{ui["g6_desc"]}</p></article>
+                {_build_glossary_cards_html(ui)}
             </div>
         </section>
 

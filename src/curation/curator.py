@@ -51,7 +51,27 @@ from src.ingestion.weather import (
 )
 
 MANIFEST_FILENAME: Final[str] = ".esd_manifest.json"
-CURATED_SCHEMA_VERSION: Final[int] = 1
+CURATED_SCHEMA_VERSION: Final[int] = 2
+
+
+def _parse_nullable_bool_value(val: object) -> bool | None:
+    """Parse a scalar value into True, False, or None."""
+    if val is None or pd.isna(val):
+        return None
+    if isinstance(val, (bool, np.bool_)):
+        return bool(val)
+    text = str(val).strip().lower()
+    if text in ("true", "1", "1.0", "yes"):
+        return True
+    if text in ("false", "0", "0.0", "no"):
+        return False
+    return None
+
+
+def _parse_nullable_bool_series(series: pd.Series) -> pd.Series:
+    """Parse a Series of bool/int/str values into nullable pandas boolean dtype."""
+    parsed = [_parse_nullable_bool_value(v) for v in series.tolist()]
+    return pd.Series(pd.array(parsed, dtype="boolean"), index=series.index)
 
 
 def read_curated_csv(
@@ -164,7 +184,7 @@ def dataframe_to_aligned_dataset(
     for add_col in ("self_consumption", "exported_energy", "imported_energy"):
         if add_col in df_clean.columns:
             agg_spec[add_col] = "sum"
-    for weather_col in ("temperature", "cloud_cover"):
+    for weather_col in ("temperature", "cloud_cover", "weather_code", "is_day"):
         if weather_col in df_clean.columns:
             agg_spec[weather_col] = "first"
 
@@ -179,9 +199,16 @@ def dataframe_to_aligned_dataset(
         "imported_energy",
         "temperature",
         "cloud_cover",
+        "weather_code",
+        "is_day",
     ):
         if col in ts_meta.columns:
-            aligned_df[col] = ts_meta[col]
+            if col == "weather_code":
+                aligned_df[col] = pd.to_numeric(ts_meta[col], errors="coerce").astype("Int64")
+            elif col == "is_day":
+                aligned_df[col] = _parse_nullable_bool_series(ts_meta[col])
+            else:
+                aligned_df[col] = ts_meta[col]
     aligned_df = aligned_df.sort_index()
 
     # Extract CUPS functional uses if available (vectorized deduplication preserving last value)
@@ -643,8 +670,8 @@ class DataCurator:
         # Resolve cups default location (latitude, longitude)
         default_coords = self.get_default_location(cups_configs)
 
-        # Build hourly weather lookup mapping: timestamp_str -> (temperature, cloud_cover)
-        weather_map: dict[str, tuple[float | None, int | None]] = {}
+        # Build hourly weather lookup: timestamp_str -> (temperature, cloud_cover, weather_code, is_day)
+        weather_map: dict[str, tuple[float | None, int | None, int | None, bool | None]] = {}
         weather_loader = WeatherLoader(self.weather_dir)
         weather_downloader = OpenMeteoWeatherDownloader(self.weather_dir)
 
@@ -675,14 +702,29 @@ class DataCurator:
                 ts_series = pd.to_datetime(yr_df["timestamp"], errors="coerce").dt.strftime(
                     "%Y-%m-%d %H:%M:%S"
                 )
-                for ts_fmt, temp, cloud in zip(
-                    ts_series, yr_df["temperature"], yr_df["cloud_cover"], strict=False
+                w_codes = (
+                    yr_df["weather_code"]
+                    if "weather_code" in yr_df.columns
+                    else [None] * len(yr_df)
+                )
+                is_days = yr_df["is_day"] if "is_day" in yr_df.columns else [None] * len(yr_df)
+                for ts_fmt, temp, cloud, wcode, is_d in zip(
+                    ts_series,
+                    yr_df["temperature"],
+                    yr_df["cloud_cover"],
+                    w_codes,
+                    is_days,
+                    strict=False,
                 ):
                     if pd.isna(ts_fmt):
                         continue
                     temp_val = round(float(temp), 1) if pd.notna(temp) else None
                     cloud_val = round(float(cloud)) if pd.notna(cloud) else None
-                    weather_map[str(ts_fmt)] = (temp_val, cloud_val)
+                    code_val = (
+                        round(float(wcode)) if wcode is not None and pd.notna(wcode) else None
+                    )
+                    day_val = _parse_nullable_bool_value(is_d)
+                    weather_map[str(ts_fmt)] = (temp_val, cloud_val, code_val, day_val)
 
         # Pre-sort CUPS metadata once so every hour emits CUPS in deterministic alphabetical (use, id) order
         cups_entries = [
@@ -831,7 +873,9 @@ class DataCurator:
             ]
 
             w_reading = weather_map.get(ts_str)
-            temp_val, cloud_val = w_reading if w_reading is not None else (None, None)
+            temp_val, cloud_val, code_val, is_day_val = (
+                w_reading if w_reading is not None else (None, None, None, None)
+            )
 
             records.append(
                 CuratedHourRecord(
@@ -841,6 +885,8 @@ class DataCurator:
                     total_consumption=format_energy_value(hour_sum_rows[idx]),
                     temperature=temp_val,
                     cloud_cover=cloud_val,
+                    weather_code=code_val,
+                    is_day=is_day_val,
                 )
             )
 
@@ -1110,6 +1156,8 @@ class DataCurator:
                     and "year" in cols
                     and "temperature" in cols
                     and "cloud_cover" in cols
+                    and "weather_code" in cols
+                    and "is_day" in cols
                     and "self_consumption" in cols
                     and "hourly_self_consumption" not in cols
                     and "exported_energy" in cols

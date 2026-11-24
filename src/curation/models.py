@@ -74,6 +74,8 @@ ESD_COLUMNS: Final[tuple[str, ...]] = (
     "imported_energy",
     "temperature",
     "cloud_cover",
+    "weather_code",
+    "is_day",
 )
 
 
@@ -567,6 +569,8 @@ class CuratedHourRecord:
         total_consumption: Sum of consumption across all participating CUPS for this hour.
         temperature: Ambient temperature in degrees Celsius (°C), if available.
         cloud_cover: Cloud cover percentage (0-100%), if available.
+        weather_code: WMO weather interpretation code (0-99), if available.
+        is_day: Whether this hour falls during local daylight (`True`/`False`), if available.
     """
 
     timestamp: str
@@ -575,6 +579,8 @@ class CuratedHourRecord:
     total_consumption: float | int = 0
     temperature: float | None = None
     cloud_cover: int | float | None = None
+    weather_code: int | None = None
+    is_day: bool | None = None
 
 
 @dataclass
@@ -609,7 +615,7 @@ class CuratedDataset:
         1. Temporal coordinates: timestamp, year, month, day, hour, day_of_week, is_weekend
         2. Individual consumer: cups_id, use, consumption
         3. Community & solar balance: community_demand, generation, self_consumption, exported_energy, imported_energy
-        4. Weather context: temperature, cloud_cover
+        4. Weather context: temperature, cloud_cover, weather_code, is_day
         """
         columns = list(ESD_COLUMNS)
         if not self.records:
@@ -626,6 +632,8 @@ class CuratedDataset:
         imp_col: list[float | int] = []
         temp_col: list[float | None] = []
         cloud_col: list[int | float | None] = []
+        wcode_col: list[int | None] = []
+        is_day_col: list[bool | None] = []
 
         for r in self.records:
             ts = r.timestamp
@@ -633,6 +641,8 @@ class CuratedDataset:
             gen = r.generation
             temp = r.temperature
             cloud = r.cloud_cover
+            wcode = r.weather_code
+            is_day = r.is_day
             for c in r.cups:
                 ts_col.append(ts)
                 cups_col.append(c.id)
@@ -645,6 +655,8 @@ class CuratedDataset:
                 imp_col.append(c.imported_energy)
                 temp_col.append(temp)
                 cloud_col.append(cloud)
+                wcode_col.append(wcode)
+                is_day_col.append(is_day)
 
         if not ts_col:
             return pd.DataFrame(columns=columns)
@@ -662,6 +674,8 @@ class CuratedDataset:
                 "imported_energy": imp_col,
                 "temperature": temp_col,
                 "cloud_cover": cloud_col,
+                "weather_code": wcode_col,
+                "is_day": is_day_col,
             }
         )
 
@@ -669,6 +683,8 @@ class CuratedDataset:
 
         df["cloud_cover"] = pd.to_numeric(df["cloud_cover"], errors="coerce").astype("Int64")
         df["temperature"] = pd.to_numeric(df["temperature"], errors="coerce").round(1)
+        df["weather_code"] = pd.to_numeric(df["weather_code"], errors="coerce").astype("Int64")
+        df["is_day"] = pd.array(is_day_col, dtype="boolean")
 
         return _sort_by_timestamp_use_cups(df[columns], ["timestamp", "use", "cups_id"])
 

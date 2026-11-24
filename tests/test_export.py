@@ -1011,7 +1011,7 @@ def test_streaming_excel_export_styling_and_linearity(
     ws = wb.active
     assert ws is not None
     assert ws.freeze_panes == "A2"
-    assert ws.auto_filter.ref == "A1:Q7"
+    assert ws.auto_filter.ref == "A1:S7"
     assert ws.views.sheetView[0].showGridLines is True
     assert ws.column_dimensions["A"].width == 21
     assert ws.cell(row=1, column=1).fill.start_color.rgb == "002B4C7E"

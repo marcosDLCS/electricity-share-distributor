@@ -3,7 +3,7 @@
 > Unified Python CLI for residential community energy analytics (*comunidades de propietarios*) and optimal photovoltaic self-consumption distribution coefficients ($\beta_i$) in Spain under **Real Decreto 244/2019** & **Orden TED/1247/2021**.
 
 [![Python](https://img.shields.io/badge/Python-3.14+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.11.032-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.11.033-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-Water--Filling%20%2B%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -218,7 +218,7 @@ esd calculate --curate-only   # Build CSV + styled Excel datasets in .curated/ a
 
 | Deliverable | Format | Contents |
 | :--- | :--- | :--- |
-| `*_esd_interactive_report.html` | HTML (Standalone) | Offline accessible 6-chapter ES/EN community story: clickable 4-col active CUPS table (latest complete year), Y-split fake-zero diagram, multi-year Consumption, Weather (with Sky Breakdown & Insights) & Generation graphs, seasonal spotlight, 4-step sharing + CO₂/home equivalences, glossary & Light/Dark/High-Contrast themes |
+| `*_esd_interactive_report.html` | HTML (Standalone) | Accessible 6-chapter ES/EN community CUPS story: clickable 4-col active CUPS table (latest complete year), Y-split fake-zero diagram, multi-year Consumption, Weather (Day Types via daylight WMO codes & Insights) & Generation graphs, seasonal spotlight, 4-step sharing + CO₂/home equivalences, 12-term glossary with localized new-tab links & Light/Dark/High-Contrast themes |
 | `*_esd_monthly_shares.csv` | CSV (`;`) | Full monthly allocation and energy balance per CUPS |
 | `*_esd_monthly_shares_lite.csv` | CSV (`;`) | Compact monthly share matrix (CUPS vs. months `01`..`12`) |
 | `*_esd_fortnight_shares.csv` | CSV (`;`) | Full fortnight allocation (`1`: days 1–15, `2`: days 16–end) and energy balance per CUPS |
@@ -241,7 +241,7 @@ esd clean [--force] [--lang en|es]
 
 1. **DATADIS Consumption Files (`.input/consumption/*.csv` or `<year>/*.csv`):** Discovered recursively and pre-validated by `DatadisValidator` (required columns: `cups`, `fecha`, `hora`, `consumo_kWh` or `consumoKwh`). Auto-detects delimiters (`;`, `,`, `\t`), decimals (`0,152` / `0.152`), and encodings (`utf-8`, `utf-8-sig`, `latin-1`, `cp1252`), conserving 25h autumn DST intervals inside each file before deduplication.
 2. **Solar Inverter Generation Reports (`.input/generation/*.xlsx`):** Parsed read-only via Openpyxl (`Rendimiento FV (kWh)` or `Rendimiento del inversor (kWh)`), normalizing `YYYY-MM-DD HH:MM:SS` timestamps and conserving 25h autumn DST intervals.
-3. **Open-Meteo Hourly Weather Files (`.input/weather/{YYYY}_{lat}_{lon}_weather.csv`):** Cached or automatically downloaded hourly CSVs (`timestamp,temperature,cloud_cover,weather_code`) used for cloud-cover context and the Solar Efficiency Index (SEI).
+3. **Open-Meteo Hourly Weather Files (`.input/weather/{YYYY}_{lat}_{lon}_weather.csv`):** Cached or automatically downloaded hourly CSVs (`timestamp,temperature,cloud_cover,weather_code,is_day`) ingested into `esd.csv` for cloud-cover context, daylight WMO day-type classification (`Sunny`, `Partly cloudy`, `Overcast`, `Rainy`), and the Solar Efficiency Index (SEI).
 4. **Facility Mapping (`.input/cups/cups.json`):** Optional JSON array (required for solar `calculate` filtering and primary reconciliation) defining participating supplies:
    - `cups` & `use`: Synthetic CUPS (`ES00210000000000XXYY`) and human-readable facility label (`Aerotermia`, `Garaje`, etc.).
    - `primary`: Marks the behind-the-meter main supply point eligible for inverter load reconciliation.

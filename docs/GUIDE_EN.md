@@ -68,20 +68,20 @@ Formatted using `;` delimiters and `,` decimals without thousands separators acr
 1. **Temporal coordinates:** `timestamp`, `year`, `month`, `day`, `hour`, `day_of_week`, `is_weekend`
 2. **Individual consumer:** `cups_id`, `use`, `consumption`
 3. **Community & solar balance:** `community_demand`, `generation`, `self_consumption`, `exported_energy`, `imported_energy`
-4. **Weather context:** `temperature`, `cloud_cover`
+4. **Weather context:** `temperature`, `cloud_cover`, `weather_code`, `is_day`
 
 ```csv
-timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption;community_demand;generation;self_consumption;exported_energy;imported_energy;temperature;cloud_cover
-2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000001AA;Aerotermia;8,5;9,7;12,5;6,0;6,0;2,5;21,4;12
-2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000002BB;Garaje;1,2;9,7;12,5;0,0;0,0;0,0;21,4;12
+timestamp;year;month;day;hour;day_of_week;is_weekend;cups_id;use;consumption;community_demand;generation;self_consumption;exported_energy;imported_energy;temperature;cloud_cover;weather_code;is_day
+2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000001AA;Aerotermia;8,5;9,7;12,5;6,0;6,0;2,5;21,4;12;1;True
+2026-05-01 12:00:00;2026;5;1;12;Friday;False;ES0021000000000002BB;Garaje;1,2;9,7;12,5;0,0;0,0;0,0;21,4;12;1;True
 ```
 
 #### 2. Styled Streaming Excel Workbooks (`--curate-only` ➔ `esd.xlsx`, `generation.xlsx`, `consumption.xlsx`)
 - **Semantic Group Header Colors:** Harmonized header fills distinguish Time (Steel Slate Blue), CUPS (Deep Petrol Teal), Demand (Warm Terracotta), Solar Generation/Balance (Solar Emerald), and Weather (Royal Amethyst).
 - **Hour-Grouped Zebra Pattern:** Rows sharing the same hour alternate cleanly between pure white and soft grey (`#F4F6F9`) to visually group community meters per timestamp.
-- **Boolean Badges, Freeze Panes & AutoFilter:** `is_weekend` renders `✅`/`❌`, top headers stay frozen, and native Excel filters are enabled.
+- **Boolean Badges, Freeze Panes & AutoFilter:** `is_weekend` and `is_day` render `✅`/`❌`, top headers stay frozen, and native Excel filters are enabled.
 
-On the primary supply point, `esd` adopts $\max(C_{\text{DATADIS}}, C_{\text{inverter}})$ — non-destructively capturing full physical behind-the-meter demand without ever erasing positive fiscal DATADIS readings during inverter outages. The primary supply also records physically conserved plant flows ($SC_{\text{primary}, h} = \min(G_h, C_{\text{final}, h})$, `exported_energy`, and `imported_energy`), while secondary supplies carry zero individual plant flows before collective allocation. Records sort chronologically and alphabetically by facility `use`, and missing Open-Meteo years (`temperature` °C, `cloud_cover` 0–100%) are automatically downloaded from `cups.json` coordinates.
+On the primary supply point, `esd` adopts $\max(C_{\text{DATADIS}}, C_{\text{inverter}})$ — non-destructively capturing full physical behind-the-meter demand without ever erasing positive fiscal DATADIS readings during inverter outages. The primary supply also records physically conserved plant flows ($SC_{\text{primary}, h} = \min(G_h, C_{\text{final}, h})$, `exported_energy`, and `imported_energy`), while secondary supplies carry zero individual plant flows before collective allocation. Records sort chronologically and alphabetically by facility `use`, and missing Open-Meteo years (`temperature` °C, `cloud_cover` 0–100%, WMO `weather_code`, `is_day` 0/1) are automatically downloaded from `cups.json` coordinates.
 
 ---
 
@@ -220,7 +220,7 @@ esd clean [--force]
 
 | File Name | Format | Source Command & Practical Purpose |
 | :--- | :--- | :--- |
-| `*_esd_interactive_report.html` | HTML (Standalone) | `calculate`: Offline accessible 6-chapter EN/ES community storytelling report with clean editorial header, interactive 4-column active CUPS table (`cups.json`, latest complete year ref. consumption), Consumption, Weather (Sky & Rain Days + Weather–Energy cross-insights) & Generation line graphs (`[Inc]` aware), redesigned Y-split behind-the-meter diagram, Winter vs. Summer spotlight, Monthly Balance legend, 4-step collective sharing story, everyday CO₂/household equivalences, plain-language glossary, Light/Dark/High-Contrast themes & text-size controls. |
+| `*_esd_interactive_report.html` | HTML (Standalone) | `calculate`: Accessible 6-chapter EN/ES community CUPS storytelling report (`esd.csv` primary weather + pre-solar CSV fallback) with clean editorial header, interactive 4-column active CUPS table (`cups.json`, latest complete year ref. consumption), Consumption, Weather (Day Types by daylight WMO `weather_code` + Weather–Energy cross-insights) & Generation line graphs (`[Inc]` aware), redesigned Y-split behind-the-meter diagram, Winter vs. Summer spotlight, Monthly Balance legend, 4-step collective sharing story, everyday CO₂/household equivalences, 12-term glossary with localized new-tab external links, Light/Dark/High-Contrast themes & text-size controls. |
 | `*_esd_monthly_shares.csv` | CSV (`;`) | `calculate`: Monthly allocation breakdown per CUPS: consumption, generation, share percentage ($\beta_i$ %), self-consumed kWh, solar surplus & remaining grid demand ordered by month and `use`. |
 | `*_esd_monthly_shares_lite.csv` | CSV (`;`) | `calculate`: Compact monthly $\beta_i$ % matrix with CUPS (`cups`, `use`) on the Y axis and months (`01`..`12`) on the X axis. |
 | `*_esd_fortnight_shares.csv` | CSV (`;`) | `calculate`: Fortnight (`1`: days 1–15, `2`: days 16–end) allocation breakdown per CUPS with monthly half-period balances. |

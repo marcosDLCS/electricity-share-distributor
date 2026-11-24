@@ -39,6 +39,7 @@ def _mock_open_meteo_response(
     temps = [10.0 + (h % 5) for h in range(hours_count)]
     clouds = [20 + (h % 50) for h in range(hours_count)]
     codes = [1 if h % 2 == 0 else 2 for h in range(hours_count)]
+    is_days = [1 if 8 <= (h % 24) <= 19 else 0 for h in range(hours_count)]
 
     payload = {
         "latitude": 40.4168,
@@ -51,6 +52,7 @@ def _mock_open_meteo_response(
             "temperature_2m": temps,
             "cloud_cover": clouds,
             "weather_code": codes,
+            "is_day": is_days,
         },
     }
     return json.dumps(payload).encode("utf-8")
@@ -193,7 +195,9 @@ def test_download_year_success_and_overwrite(tmp_path: Path) -> None:
     assert out_file.exists()
     assert out_file.name == "2023_40.4168_-3.7038_weather.csv"
     assert len(df) == 24
-    assert list(df.columns) == ["timestamp", "temperature", "cloud_cover", "weather_code"]
+    assert list(df.columns) == ["timestamp", "temperature", "cloud_cover", "weather_code", "is_day"]
+    assert df["is_day"].iloc[0] == 0
+    assert df["is_day"].iloc[12] == 1
     assert result.overwritten is False
     assert result.total_hours == 24
     assert result.min_temperature == 10.0
@@ -279,6 +283,22 @@ def test_weather_loader_discover_and_load(tmp_path: Path) -> None:
     assert df["temperature"].iloc[0] == 5.2
     assert df["cloud_cover"].iloc[0] == 80
     assert df["weather_code"].iloc[0] == 3
+    assert "is_day" not in df.columns
+
+
+def test_weather_loader_parses_is_day_column(tmp_path: Path) -> None:
+    """WeatherLoader preserves nullable integer is_day values when present in CSV."""
+    csv_path = tmp_path / "2024_40.4168_-3.7038_weather.csv"
+    csv_path.write_text(
+        "timestamp,temperature,cloud_cover,weather_code,is_day\n"
+        "2024-06-01 03:00:00,14.0,90,63,0\n"
+        "2024-06-01 13:00:00,24.5,5,0,1\n",
+        encoding="utf-8",
+    )
+    loader = WeatherLoader(weather_dir=tmp_path)
+    df = loader.load_year(2024)
+    assert list(df.columns) == ["timestamp", "temperature", "cloud_cover", "weather_code", "is_day"]
+    assert list(df["is_day"]) == [0, 1]
 
 
 def test_weather_loader_missing_year(tmp_path: Path) -> None:

@@ -415,7 +415,7 @@ class OpenMeteoWeatherDownloader:
             "longitude": longitude,
             "start_date": start_date,
             "end_date": end_date,
-            "hourly": "temperature_2m,cloud_cover,weather_code",
+            "hourly": "temperature_2m,cloud_cover,weather_code,is_day",
             "timezone": timezone,
         }
         url = f"{self.base_url}?{urllib.parse.urlencode(query_params)}"
@@ -479,6 +479,7 @@ class OpenMeteoWeatherDownloader:
         temps = hourly.get("temperature_2m", [])
         clouds = hourly.get("cloud_cover", [])
         codes = hourly.get("weather_code", [])
+        is_days = hourly.get("is_day", [])
 
         if not times or len(times) != len(temps):
             raise IngestionError(
@@ -490,12 +491,19 @@ class OpenMeteoWeatherDownloader:
             pd.to_datetime(times, errors="coerce").strftime("%Y-%m-%d %H:%M:%S").tolist()
         )
 
+        is_day_series = (
+            pd.array([int(d) if d is not None else pd.NA for d in is_days], dtype="Int64")
+            if len(is_days) == len(times)
+            else pd.array([pd.NA] * len(times), dtype="Int64")
+        )
+
         df = pd.DataFrame(
             {
                 "timestamp": formatted_timestamps,
                 "temperature": [float(t) if t is not None else float("nan") for t in temps],
                 "cloud_cover": [int(c) if c is not None else 0 for c in clouds],
                 "weather_code": [int(w) if w is not None else 0 for w in codes],
+                "is_day": is_day_series,
             }
         )
 
@@ -621,6 +629,8 @@ class WeatherLoader:
         df["temperature"] = pd.to_numeric(df["temperature"], errors="coerce")
         df["cloud_cover"] = pd.to_numeric(df["cloud_cover"], errors="coerce")
         df["weather_code"] = pd.to_numeric(df["weather_code"], errors="coerce")
+        if "is_day" in df.columns:
+            df["is_day"] = pd.to_numeric(df["is_day"], errors="coerce").astype("Int64")
 
         return df.sort_values("timestamp").reset_index(drop=True)
 

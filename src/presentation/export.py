@@ -237,6 +237,22 @@ class ReportExporter:
         df_out = _sanitize_dataframe_strings(df)
         if "is_weekend" in df_out.columns:
             df_out["is_weekend"] = df_out["is_weekend"].astype(bool).map({True: "✅", False: "❌"})
+        if "is_day" in df_out.columns:
+            df_out["is_day"] = (
+                df_out["is_day"]
+                .astype(object)
+                .map(
+                    lambda v: (
+                        None
+                        if pd.isna(v)
+                        else (
+                            "✅"
+                            if str(v).strip().lower() in ("true", "1", "1.0")
+                            else ("❌" if str(v).strip().lower() in ("false", "0", "0.0") else None)
+                        )
+                    )
+                )
+            )
 
         wb = openpyxl.Workbook(write_only=True)
         ws = wb.create_sheet(title=sheet_title)
@@ -266,6 +282,8 @@ class ReportExporter:
             # 5. Weather context: Royal Amethyst Plum
             "temperature": "5C4D7D",
             "cloud_cover": "5C4D7D",
+            "weather_code": "5C4D7D",
+            "is_day": "5C4D7D",
         }
 
         col_widths: dict[str, int] = {
@@ -286,6 +304,8 @@ class ReportExporter:
             "imported_energy": 16,
             "temperature": 14,
             "cloud_cover": 13,
+            "weather_code": 14,
+            "is_day": 10,
         }
 
         headers = list(df_out.columns)
@@ -328,6 +348,8 @@ class ReportExporter:
                 "day_of_week",
                 "is_weekend",
                 "cloud_cover",
+                "weather_code",
+                "is_day",
             )
             for h in headers
         )

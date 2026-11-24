@@ -324,7 +324,7 @@ def test_curation_exports_csv(tmp_path: Path) -> None:
     expected_header = (
         "timestamp;year;month;day;hour;day_of_week;is_weekend;"
         "cups_id;use;consumption;community_demand;generation;self_consumption;"
-        "exported_energy;imported_energy;temperature;cloud_cover"
+        "exported_energy;imported_energy;temperature;cloud_cover;weather_code;is_day"
     )
     assert header == expected_header
     assert "hourly_self_consumption" not in header.split(";")
@@ -690,9 +690,10 @@ def test_curation_with_existing_weather_data(tmp_path: Path) -> None:
 
     # Create mock weather CSV for 2026
     weather_file = weather_dir / "2026_40.4168_-3.7038_weather.csv"
-    weather_rows = ["timestamp,temperature,cloud_cover,weather_code"]
+    weather_rows = ["timestamp,temperature,cloud_cover,weather_code,is_day"]
     for h in range(24):
-        weather_rows.append(f"2026-05-01 {h:02d}:00:00,18.5,35,1")
+        day_flag = 1 if 8 <= h <= 19 else 0
+        weather_rows.append(f"2026-05-01 {h:02d}:00:00,18.5,35,1,{day_flag}")
     weather_file.write_text("\n".join(weather_rows), encoding="utf-8")
 
     curator = DataCurator(
@@ -708,15 +709,21 @@ def test_curation_with_existing_weather_data(tmp_path: Path) -> None:
     rec_noon = next(r for r in dataset.records if r.timestamp.endswith(" 12:00:00"))
     assert rec_noon.temperature == 18.5
     assert rec_noon.cloud_cover == 35
+    assert rec_noon.weather_code == 1
+    assert rec_noon.is_day is True
 
     csv_path = curator.export_csv(dataset, curated_dir=curated_dir, base_name="weather_curated")
     df = pd.read_csv(csv_path, sep=";", decimal=",")
     assert "temperature" in df.columns
     assert "cloud_cover" in df.columns
+    assert "weather_code" in df.columns
+    assert "is_day" in df.columns
     assert "primary" not in df.columns
     assert "reconciled" not in df.columns
     assert float(df["temperature"].iloc[12]) == 18.5
     assert int(df["cloud_cover"].iloc[12]) == 35
+    assert int(df["weather_code"].iloc[12]) == 1
+    assert bool(df["is_day"].iloc[12]) is True
 
 
 def test_curation_auto_fetches_weather_when_missing(
@@ -765,6 +772,7 @@ def test_curation_auto_fetches_weather_when_missing(
                 "temperature": [22.4] * 24,
                 "cloud_cover": [10] * 24,
                 "weather_code": [0] * 24,
+                "is_day": [1 if 8 <= h <= 19 else 0 for h in range(24)],
             }
         )
         out_csv = self.weather_dir / f"{year}_{latitude:.4f}_{longitude:.4f}_weather.csv"
@@ -794,6 +802,8 @@ def test_curation_auto_fetches_weather_when_missing(
     rec = dataset.records[0]
     assert rec.temperature == 22.4
     assert rec.cloud_cover == 10
+    assert rec.weather_code == 0
+    assert rec.is_day is False
 
 
 def test_curation_without_coordinates_leaves_weather_empty(tmp_path: Path) -> None:
@@ -831,13 +841,19 @@ def test_curation_without_coordinates_leaves_weather_empty(tmp_path: Path) -> No
     assert dataset.summary.total_hours == 24
     assert dataset.records[0].temperature is None
     assert dataset.records[0].cloud_cover is None
+    assert dataset.records[0].weather_code is None
+    assert dataset.records[0].is_day is None
 
     csv_path = curator.export_csv(dataset, curated_dir=curated_dir, base_name="empty_weather")
     df = pd.read_csv(csv_path, sep=";", decimal=",")
     assert "temperature" in df.columns
     assert "cloud_cover" in df.columns
+    assert "weather_code" in df.columns
+    assert "is_day" in df.columns
     assert df["temperature"].isna().all()
     assert df["cloud_cover"].isna().all()
+    assert df["weather_code"].isna().all()
+    assert df["is_day"].isna().all()
 
 
 def test_cli_curate_with_weather_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1007,7 +1023,7 @@ def test_curated_csv_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
     expected_header = (
         "timestamp;year;month;day;hour;day_of_week;is_weekend;"
         "cups_id;use;consumption;community_demand;generation;self_consumption;"
-        "exported_energy;imported_energy;temperature;cloud_cover"
+        "exported_energy;imported_energy;temperature;cloud_cover;weather_code;is_day"
     )
     assert header == expected_header
 
@@ -1015,7 +1031,7 @@ def test_curated_csv_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
     sample_line = lines[1]
     assert ";" in sample_line
     parts = sample_line.split(";")
-    assert len(parts) == 17
+    assert len(parts) == 19
     # Verify no thousand separators (e.g. no '.' within numeric values when ',' is decimal)
     # Check that consumption, community_demand, generation, and self_consumption parse as float with comma decimal
     cons_val = float(parts[9].replace(",", "."))
@@ -1034,6 +1050,8 @@ def test_curated_csv_semicolon_separator_comma_decimal(tmp_path: Path) -> None:
     # Verify load_aligned_dataset reconstructs properly
     aligned = curator.load_aligned_dataset(csv_file)
     assert aligned.cups_list == [cups_id]
+    assert "weather_code" in aligned.data.columns
+    assert "is_day" in aligned.data.columns
     assert len(aligned.data) > 0
     assert float(aligned.data[cups_id].iloc[0]) == cons_val
 
@@ -1053,6 +1071,8 @@ def test_curated_dataset_calendar_decomposition_and_community_demand() -> None:
         total_consumption=8.0,
         temperature=18.5,
         cloud_cover=25,
+        weather_code=1,
+        is_day=True,
         cups=[
             CuratedCupsReading(
                 id="ES0021000000000001AA",
@@ -1072,6 +1092,8 @@ def test_curated_dataset_calendar_decomposition_and_community_demand() -> None:
         total_consumption=3.0,
         temperature=15.0,
         cloud_cover=0,
+        weather_code=0,
+        is_day=False,
         cups=[
             CuratedCupsReading(
                 id="ES0021000000000001AA",
@@ -1117,6 +1139,8 @@ def test_curated_dataset_calendar_decomposition_and_community_demand() -> None:
         "imported_energy",
         "temperature",
         "cloud_cover",
+        "weather_code",
+        "is_day",
     ]
     assert list(df.columns) == expected_cols
 
@@ -1132,9 +1156,13 @@ def test_curated_dataset_calendar_decomposition_and_community_demand() -> None:
     assert row_sat["generation"] == 12.5
     assert row_sat["temperature"] == 18.5
     assert row_sat["cloud_cover"] == 25
+    assert row_sat["weather_code"] == 1
+    assert bool(row_sat["is_day"]) is True
 
     # Monday checks
     row_mon = df[df["timestamp"] == "2026-10-26 09:00:00"].iloc[0]
+    assert row_mon["weather_code"] == 0
+    assert bool(row_mon["is_day"]) is False
     assert row_mon["year"] == 2026
     assert row_mon["month"] == 10
     assert row_mon["day"] == 26
@@ -1287,9 +1315,11 @@ def test_curation_exports_styled_excel(tmp_path: Path) -> None:
         "imported_energy": "002D6A4F",
         "temperature": "005C4D7D",
         "cloud_cover": "005C4D7D",
+        "weather_code": "005C4D7D",
+        "is_day": "005C4D7D",
     }
 
-    for col in range(1, 18):
+    for col in range(1, 20):
         col_name = str(ws.cell(row=1, column=col).value)
         assert col_name in header_group_expected
         expected_color = header_group_expected[col_name]

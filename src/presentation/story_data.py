@@ -1061,69 +1061,25 @@ def _build_seasonal_spotlight(
     )
 
 
-def _build_weather_history(
-    analyzed_years: list[int],
-    weather_df: pd.DataFrame | None,
-    aligned_dataset: AlignedDataset | None,
-) -> WeatherHistoryData:
-    """Build monthly weather summary strictly for the analyzed years without disk I/O."""
-    df_src: pd.DataFrame | None = None
-    if (
-        weather_df is not None
-        and not weather_df.empty
-        and "timestamp" in weather_df.columns
-        and ("temperature" in weather_df.columns or "cloud_cover" in weather_df.columns)
-    ):
-        df_src = pd.DataFrame(
-            {
-                "timestamp": weather_df["timestamp"],
-                "temperature": (
-                    pd.to_numeric(weather_df["temperature"], errors="coerce")
-                    if "temperature" in weather_df.columns
-                    else pd.Series(float("nan"), index=weather_df.index)
-                ),
-                "cloud_cover": (
-                    pd.to_numeric(weather_df["cloud_cover"], errors="coerce")
-                    if "cloud_cover" in weather_df.columns
-                    else pd.Series(float("nan"), index=weather_df.index)
-                ),
-                "weather_code": (
-                    pd.to_numeric(weather_df["weather_code"], errors="coerce")
-                    if "weather_code" in weather_df.columns
-                    else pd.Series(float("nan"), index=weather_df.index)
-                ),
-            }
-        )
-    elif (
-        aligned_dataset is not None
-        and not aligned_dataset.data.empty
-        and (
-            "temperature" in aligned_dataset.data.columns
-            or "cloud_cover" in aligned_dataset.data.columns
-        )
-    ):
-        aln = aligned_dataset.data
-        df_src = pd.DataFrame(
-            {
-                "timestamp": aln.index,
-                "temperature": (
-                    pd.to_numeric(aln["temperature"], errors="coerce").to_numpy()
-                    if "temperature" in aln.columns
-                    else np.full(len(aln), float("nan"))
-                ),
-                "cloud_cover": (
-                    pd.to_numeric(aln["cloud_cover"], errors="coerce").to_numpy()
-                    if "cloud_cover" in aln.columns
-                    else np.full(len(aln), float("nan"))
-                ),
-                "weather_code": np.full(len(aln), float("nan")),
-            }
-        )
+def _parse_daylight_mask(is_day_series: pd.Series, hours_series: pd.Series) -> pd.Series:
+    """Resolve boolean daylight mask from is_day column, falling back to 08:00-19:00."""
+    out: list[bool] = []
+    for raw_val, hr in zip(is_day_series.tolist(), hours_series.tolist(), strict=False):
+        if raw_val is not None and pd.notna(raw_val):
+            if isinstance(raw_val, (bool, np.bool_)):
+                out.append(bool(raw_val))
+            elif isinstance(raw_val, (int, float, np.integer, np.floating)):
+                out.append(float(raw_val) != 0.0)
+            else:
+                out.append(str(raw_val).strip().lower() in ("true", "1", "1.0", "yes"))
+        else:
+            out.append(8 <= int(hr) <= 19)
+    return pd.Series(out, index=is_day_series.index, dtype=bool)
 
-    if df_src is None or df_src.empty:
-        return WeatherHistoryData(years=[], by_year={}, has_data=False)
 
-    ts_col = df_src["timestamp"]
+def _normalize_weather_source(df_raw: pd.DataFrame) -> pd.DataFrame:
+    """Parse timestamps and index deduplicated weather rows by canonical YYYY-MM-DD HH:MM:SS key."""
+    ts_col = df_raw["timestamp"]
     if pd.api.types.is_datetime64_any_dtype(ts_col):
         dt_series = ts_col
     else:
@@ -1134,24 +1090,149 @@ def _build_weather_history(
             missing = dt_series.isna()
             dt_series = dt_series.where(~missing, pd.to_datetime(ts_col[missing], errors="coerce"))
 
-    valid_mask = dt_series.notna() & (df_src["temperature"].notna() | df_src["cloud_cover"].notna())
+    valid_mask = dt_series.notna() & (
+        df_raw["temperature"].notna()
+        | df_raw["cloud_cover"].notna()
+        | df_raw["weather_code"].notna()
+    )
     if not bool(valid_mask.any()):
-        return WeatherHistoryData(years=[], by_year={}, has_data=False)
+        return pd.DataFrame()
 
-    work = df_src.loc[valid_mask].copy()
+    work = df_raw.loc[valid_mask].copy()
     dt_valid = dt_series.loc[valid_mask]
     work["_year"] = dt_valid.dt.year.astype(int)
     work["_month"] = dt_valid.dt.month.astype(int)
     work["_day"] = dt_valid.dt.day.astype(int)
     work["_hour"] = dt_valid.dt.hour.astype(int)
     work["_ts_key"] = dt_valid.dt.strftime("%Y-%m-%d %H:%M:%S")
+    return work.drop_duplicates(subset=["_ts_key"], keep="last").set_index("_ts_key")
+
+
+def _extract_aligned_weather_df(aligned_dataset: AlignedDataset | None) -> pd.DataFrame | None:
+    """Extract weather columns from AlignedDataset (sourced from master esd.csv)."""
+    if aligned_dataset is None or aligned_dataset.data.empty:
+        return None
+    aln = aligned_dataset.data
+    if (
+        "temperature" not in aln.columns
+        and "cloud_cover" not in aln.columns
+        and "weather_code" not in aln.columns
+    ):
+        return None
+    return pd.DataFrame(
+        {
+            "timestamp": aln.index,
+            "temperature": (
+                pd.to_numeric(aln["temperature"], errors="coerce").to_numpy()
+                if "temperature" in aln.columns
+                else np.full(len(aln), float("nan"))
+            ),
+            "cloud_cover": (
+                pd.to_numeric(aln["cloud_cover"], errors="coerce").to_numpy()
+                if "cloud_cover" in aln.columns
+                else np.full(len(aln), float("nan"))
+            ),
+            "weather_code": (
+                pd.to_numeric(aln["weather_code"], errors="coerce").to_numpy()
+                if "weather_code" in aln.columns
+                else np.full(len(aln), float("nan"))
+            ),
+            "is_day": (
+                aln["is_day"].to_numpy() if "is_day" in aln.columns else np.full(len(aln), None)
+            ),
+        }
+    )
+
+
+def _extract_supplement_weather_df(weather_df: pd.DataFrame | None) -> pd.DataFrame | None:
+    """Extract supplemental pre-solar weather columns from cached weather CSV DataFrame."""
+    if (
+        weather_df is None
+        or weather_df.empty
+        or "timestamp" not in weather_df.columns
+        or (
+            "temperature" not in weather_df.columns
+            and "cloud_cover" not in weather_df.columns
+            and "weather_code" not in weather_df.columns
+        )
+    ):
+        return None
+    return pd.DataFrame(
+        {
+            "timestamp": weather_df["timestamp"],
+            "temperature": (
+                pd.to_numeric(weather_df["temperature"], errors="coerce")
+                if "temperature" in weather_df.columns
+                else pd.Series(float("nan"), index=weather_df.index)
+            ),
+            "cloud_cover": (
+                pd.to_numeric(weather_df["cloud_cover"], errors="coerce")
+                if "cloud_cover" in weather_df.columns
+                else pd.Series(float("nan"), index=weather_df.index)
+            ),
+            "weather_code": (
+                pd.to_numeric(weather_df["weather_code"], errors="coerce")
+                if "weather_code" in weather_df.columns
+                else pd.Series(float("nan"), index=weather_df.index)
+            ),
+            "is_day": (
+                weather_df["is_day"]
+                if "is_day" in weather_df.columns
+                else pd.Series([None] * len(weather_df), index=weather_df.index, dtype=object)
+            ),
+        }
+    )
+
+
+def _build_weather_history(
+    analyzed_years: list[int],
+    weather_df: pd.DataFrame | None,
+    aligned_dataset: AlignedDataset | None,
+) -> WeatherHistoryData:
+    """Build monthly weather summary prioritizing esd.csv (aligned_dataset) plus pre-solar weather_df."""
+    aln_raw = _extract_aligned_weather_df(aligned_dataset)
+    sup_raw = _extract_supplement_weather_df(weather_df)
+
+    aln_norm = _normalize_weather_source(aln_raw) if aln_raw is not None else pd.DataFrame()
+    sup_norm = _normalize_weather_source(sup_raw) if sup_raw is not None else pd.DataFrame()
+
+    if aln_norm.empty and sup_norm.empty:
+        return WeatherHistoryData(years=[], by_year={}, has_data=False)
+
+    if aln_norm.empty:
+        work = sup_norm.copy()
+    elif sup_norm.empty:
+        work = aln_norm.copy()
+    else:
+        combined_index = aln_norm.index.union(sup_norm.index, sort=False)
+        a_reidx = aln_norm.reindex(combined_index)
+        s_reidx = sup_norm.reindex(combined_index)
+        work = pd.DataFrame(index=combined_index)
+        for col in (
+            "temperature",
+            "cloud_cover",
+            "weather_code",
+            "is_day",
+            "_year",
+            "_month",
+            "_day",
+            "_hour",
+        ):
+            a_col = a_reidx[col].astype(object) if col == "is_day" else a_reidx[col]
+            s_col = s_reidx[col].astype(object) if col == "is_day" else s_reidx[col]
+            work[col] = a_col.where(a_col.notna(), s_col)
+
+    work["_ts_key"] = work.index.astype(str)
+    work = work.reset_index(drop=True)
+    for int_col in ("_year", "_month", "_day", "_hour"):
+        work[int_col] = pd.to_numeric(work[int_col], errors="coerce").astype(int)
 
     if analyzed_years:
         work = work[work["_year"].isin(analyzed_years)].copy()
     if work.empty:
         return WeatherHistoryData(years=[], by_year={}, has_data=False)
 
-    work = work.drop_duplicates(subset=["_ts_key"], keep="last").reset_index(drop=True)
+    work["_is_daylight"] = _parse_daylight_mask(work["is_day"], work["_hour"])
     years = sorted(int(y) for y in work["_year"].unique())
     by_year: dict[int, WeatherYearData] = {}
 
@@ -1199,7 +1280,7 @@ def _build_weather_history(
                 temp_min.append(None)
                 temp_max.append(None)
 
-            day_cloud = m_df[(m_df["_hour"] >= 8) & (m_df["_hour"] <= 19)]["cloud_cover"].dropna()
+            day_cloud = m_df[m_df["_is_daylight"]]["cloud_cover"].dropna()
             cloud_series = day_cloud if not day_cloud.empty else m_df["cloud_cover"].dropna()
             if not cloud_series.empty:
                 c_val = round(max(0.0, min(100.0, float(cloud_series.mean()))), 1)
@@ -1227,7 +1308,7 @@ def _build_weather_history(
             frost_days = 0
             hot_days = 0
 
-        yr_day_cloud = yr_df[(yr_df["_hour"] >= 8) & (yr_df["_hour"] <= 19)]["cloud_cover"].dropna()
+        yr_day_cloud = yr_df[yr_df["_is_daylight"]]["cloud_cover"].dropna()
         yr_cloud_all = yr_day_cloud if not yr_day_cloud.empty else yr_df["cloud_cover"].dropna()
         if not yr_cloud_all.empty:
             ann_cloud: float | None = round(max(0.0, min(100.0, float(yr_cloud_all.mean()))), 1)
@@ -1237,10 +1318,15 @@ def _build_weather_history(
             ann_clear = None
 
         has_codes = bool(yr_df["weather_code"].notna().any())
-        day_codes = (
+        daylight_rows = yr_df[yr_df["_is_daylight"]]
+        daylight_codes = (
+            daylight_rows.groupby(["_month", "_day"])["weather_code"].max().to_dict()
+            if has_codes and not daylight_rows.empty
+            else {}
+        )
+        all_codes = (
             yr_df.groupby(["_month", "_day"])["weather_code"].max().to_dict() if has_codes else {}
         )
-        daylight_rows = yr_df[(yr_df["_hour"] >= 8) & (yr_df["_hour"] <= 19)]
         day_cloud_src = daylight_rows if not daylight_rows.empty else yr_df
         day_clouds = day_cloud_src.groupby(["_month", "_day"])["cloud_cover"].mean().to_dict()
         all_day_keys = sorted(
@@ -1250,26 +1336,31 @@ def _build_weather_history(
         month_day_counts: dict[int, list[int]] = {m: [0, 0, 0, 0] for m in range(1, 13)}
         for d_key in all_day_keys:
             m_num = int(d_key[0])
-            w_code = day_codes.get(d_key)
-            is_rainy = (
-                has_codes and w_code is not None and pd.notna(w_code) and float(w_code) >= 51.0
-            )
-            if is_rainy:
-                month_day_counts[m_num][3] += 1
-                continue
-            c_mean = day_clouds.get(d_key)
-            if c_mean is not None and pd.notna(c_mean):
-                c_val_f = float(c_mean)
-                if c_val_f < 30.0:
-                    month_day_counts[m_num][0] += 1
-                elif c_val_f >= 70.0:
-                    month_day_counts[m_num][2] += 1
+            w_code = daylight_codes.get(d_key)
+            if w_code is None or pd.isna(w_code):
+                w_code = all_codes.get(d_key)
+            if has_codes and w_code is not None and pd.notna(w_code):
+                code_int = round(float(w_code))
+                if code_int >= 51:
+                    month_day_counts[m_num][3] += 1  # Rainy / Precipitation
+                elif code_int <= 1:
+                    month_day_counts[m_num][0] += 1  # Sunny / Mainly clear (0, 1)
+                elif code_int == 2:
+                    month_day_counts[m_num][1] += 1  # Partly cloudy (2)
+                else:
+                    month_day_counts[m_num][2] += 1  # Overcast / Fog (3, 45, 48, ...)
+            else:
+                c_mean = day_clouds.get(d_key)
+                if c_mean is not None and pd.notna(c_mean):
+                    c_val_f = float(c_mean)
+                    if c_val_f < 30.0:
+                        month_day_counts[m_num][0] += 1
+                    elif c_val_f >= 70.0:
+                        month_day_counts[m_num][2] += 1
+                    else:
+                        month_day_counts[m_num][1] += 1
                 else:
                     month_day_counts[m_num][1] += 1
-            elif has_codes and w_code is not None and pd.notna(w_code) and float(w_code) <= 1.0:
-                month_day_counts[m_num][0] += 1
-            else:
-                month_day_counts[m_num][1] += 1
 
         sunny_days = sum(month_day_counts[m][0] for m in range(1, 13))
         partly_cloudy_days = sum(month_day_counts[m][1] for m in range(1, 13))
