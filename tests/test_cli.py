@@ -15,13 +15,39 @@ runner = CliRunner()
 
 
 def test_cli_version() -> None:
-    result = runner.invoke(app, ["version"])
-    assert result.exit_code == 0
-    assert get_version() in result.output
+    """Ensure root --version / -V displays version and 'version' subcommand is removed."""
+    for flag in ("--version", "-V"):
+        result = runner.invoke(app, [flag])
+        assert result.exit_code == 0
+        assert get_version() in result.output
+
+    removed = runner.invoke(app, ["version"])
+    assert removed.exit_code != 0
 
 
-def test_cli_help() -> None:
-    result = runner.invoke(app, ["help", "--lang", "en"])
+def test_cli_help(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure bare 'esd' renders localized Rich help, -h/--help shows 7 commands, and 'help' is removed."""
+    command_names = [cmd.name or cmd.callback.__name__ for cmd in app.registered_commands]
+    assert command_names == [
+        "init",
+        "doctor",
+        "calculate",
+        "summary",
+        "compare",
+        "config",
+        "clean",
+    ]
+
+    for flag in ("--help", "-h"):
+        help_res = runner.invoke(app, [flag])
+        assert help_res.exit_code == 0
+        for cmd in command_names:
+            assert f" {cmd} " in help_res.output
+        for old_cmd in ("│ curate ", "│ weather ", "│ cleanup ", "│ help ", "│ version "):
+            assert old_cmd not in help_res.output
+
+    monkeypatch.setattr("src.cli.get_language", lambda: "en")
+    result = runner.invoke(app, [])
     assert result.exit_code == 0
     assert "ELECTRICITY SHARE DISTRIBUTOR" in result.output
     assert "AVAILABLE COMMANDS" in result.output
@@ -30,12 +56,9 @@ def test_cli_help() -> None:
     assert "compare" in result.output
     assert "esd calculate" in result.output
     assert ".output" in result.output
-    assert ".curated" in result.output
-    assert ".input/weather" in result.output
-    for obsolete_flag in ("--strategy", "--min-share", "--hourly"):
-        assert obsolete_flag not in result.output
 
-    result_es = runner.invoke(app, ["help", "--lang", "es"])
+    monkeypatch.setattr("src.cli.get_language", lambda: "es")
+    result_es = runner.invoke(app, [])
     assert result_es.exit_code == 0
     assert "DISTRIBUIDOR DE ENERGÍA COMPARTIDA" in result_es.output
     assert "COMANDOS DISPONIBLES" in result_es.output
@@ -44,7 +67,9 @@ def test_cli_help() -> None:
     assert "compare" in result_es.output
     assert "esd calculate" in result_es.output
     assert ".output" in result_es.output
-    assert ".input/weather" in result_es.output
+
+    removed_help = runner.invoke(app, ["help"])
+    assert removed_help.exit_code != 0
 
 
 def test_cli_init_english() -> None:
@@ -222,7 +247,7 @@ def test_cli_cleanup_force(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     )
     monkeypatch.setattr("src.cli.load_config", lambda: cfg)
 
-    res = runner.invoke(app, ["cleanup", "--force"])
+    res = runner.invoke(app, ["clean", "--force"])
     assert res.exit_code == 0
     assert not (dummy_out / "test_out.csv").exists()
     assert not (dummy_cur / "esd.csv").exists()
@@ -304,8 +329,8 @@ def test_cli_calculate_dynamic_defaults_from_config(
     assert len(exported_html) == 1
 
 
-def test_cli_cleanup_with_dir_overrides(tmp_path: Path) -> None:
-    """Ensure cleanup -o, -u, -w cleans all three overridden directories."""
+def test_cli_clean_with_dir_overrides(tmp_path: Path) -> None:
+    """Ensure clean -o, -u, -w cleans all three overridden directories."""
     out_dir = tmp_path / "clean_out"
     cur_dir = tmp_path / "clean_cur"
     wth_dir = tmp_path / "clean_wth"
@@ -319,7 +344,7 @@ def test_cli_cleanup_with_dir_overrides(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         [
-            "cleanup",
+            "clean",
             "-o",
             str(out_dir),
             "-u",
@@ -373,68 +398,84 @@ def test_cli_doctor_handles_esd_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_cli_subcommands_unified_esd_error_handling(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure curate, weather, and calculate cleanly catch EsdError and exit with code 1."""
+    """Ensure calculate (--curate-only, --refresh, default) cleanly catches EsdError with exit code 1."""
     from src.domain.exceptions import CurationError, OptimizationError, ValidationError
-    from src.services.calculation_service import CalculationService
+    from src.services.calculation_service import CalculationRequest, CalculationService
     from src.services.curation_service import CurationService
-    from src.services.weather_service import WeatherService
 
     def mock_curation_execute(*args: Any, **kwargs: Any) -> Any:
         raise CurationError("Mock curation failure")
 
-    def mock_weather_execute(*args: Any, **kwargs: Any) -> Any:
-        raise ValidationError("Mock weather failure")
-
-    def mock_calc_execute(*args: Any, **kwargs: Any) -> Any:
+    def mock_calc_execute(req: CalculationRequest, **kwargs: Any) -> Any:
+        if req.refresh:
+            raise ValidationError("Mock weather refresh failure")
         raise OptimizationError("Mock calculation failure")
 
     monkeypatch.setattr(CurationService, "execute", mock_curation_execute)
-    res_curate = runner.invoke(app, ["curate"])
+    res_curate = runner.invoke(app, ["calculate", "--curate-only"])
     assert res_curate.exit_code == 1
     assert "Mock curation failure" in res_curate.output
     assert "Traceback" not in res_curate.output
 
-    monkeypatch.setattr(WeatherService, "execute", mock_weather_execute)
-    res_weather = runner.invoke(app, ["weather", "--year", "2024"])
-    assert res_weather.exit_code == 1
-    assert "Mock weather failure" in res_weather.output
-    assert "Traceback" not in res_weather.output
-
     monkeypatch.setattr(CalculationService, "execute", mock_calc_execute)
+    res_refresh = runner.invoke(app, ["calculate", "--refresh"])
+    assert res_refresh.exit_code == 1
+    assert "Mock weather refresh failure" in res_refresh.output
+    assert "Traceback" not in res_refresh.output
+
     res_calc = runner.invoke(app, ["calculate"])
     assert res_calc.exit_code == 1
     assert "Mock calculation failure" in res_calc.output
     assert "Traceback" not in res_calc.output
 
 
-def test_cli_curate_short_flag_u_and_o(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure esd curate accepts both -u and -o for --curated-dir."""
+def test_cli_calculate_refresh_and_curate_only_flags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ensure esd calculate forwards --refresh and --curate-only to CalculationService cleanly."""
     from unittest.mock import MagicMock
 
     import src.cli as cli_mod
-    from src.services.curation_service import CurationRequest, CurationService
+    from src.config import AppConfig
+    from src.services.calculation_service import CalculationRequest, CalculationService
 
-    captured_requests: list[CurationRequest] = []
+    cfg = AppConfig(curated_dir=str(tmp_path / "cur"), output_dir=str(tmp_path / "out"))
+    monkeypatch.setattr("src.cli.load_config", lambda: cfg)
 
-    def mock_curation_execute(req: CurationRequest) -> MagicMock:
+    captured_requests: list[CalculationRequest] = []
+    curate_rendered = False
+
+    def mock_calc_execute(req: CalculationRequest, **kwargs: Any) -> MagicMock:
         captured_requests.append(req)
         mock_res = MagicMock()
-        mock_res.csv_path = req.curated_dir / "esd.csv"
-        mock_res.excel_path = req.curated_dir / "esd.xlsx"
+        cur_mock = MagicMock()
+        cur_mock.csv_path = req.curated_dir / "esd.csv"
+        cur_mock.excel_path = req.curated_dir / "esd.xlsx"
+        cur_mock.generation_csv_path = None
+        cur_mock.generation_excel_path = None
+        cur_mock.consumption_csv_path = None
+        cur_mock.consumption_excel_path = None
+        mock_res.curation_result = cur_mock if req.curate_only else None
+        mock_res.exported_paths = []
         return mock_res
 
-    monkeypatch.setattr(CurationService, "execute", mock_curation_execute)
-    monkeypatch.setattr(cli_mod, "render_curate_summary", lambda **kwargs: None)
+    def mock_render_curate(**kwargs: Any) -> None:
+        nonlocal curate_rendered
+        curate_rendered = True
 
-    custom_dir_u = tmp_path / "curated_u"
-    res_u = runner.invoke(app, ["curate", "-u", str(custom_dir_u)])
-    assert res_u.exit_code == 0
-    assert captured_requests[-1].curated_dir == custom_dir_u
+    monkeypatch.setattr(CalculationService, "execute", mock_calc_execute)
+    monkeypatch.setattr(cli_mod, "render_curate_summary", mock_render_curate)
 
-    custom_dir_o = tmp_path / "curated_o"
-    res_o = runner.invoke(app, ["curate", "-o", str(custom_dir_o)])
-    assert res_o.exit_code == 0
-    assert captured_requests[-1].curated_dir == custom_dir_o
+    res_cur = runner.invoke(app, ["calculate", "--curate-only"])
+    assert res_cur.exit_code == 0
+    assert captured_requests[-1].curate_only is True
+    assert captured_requests[-1].refresh is False
+    assert curate_rendered is True
+
+    res_ref = runner.invoke(app, ["calculate", "--refresh", "--curate-only"])
+    assert res_ref.exit_code == 0
+    assert captured_requests[-1].refresh is True
+    assert captured_requests[-1].curate_only is True
 
 
 def test_cli_config_modify_curated_dir(tmp_path: Path) -> None:
@@ -460,51 +501,41 @@ def test_cli_config_display_includes_curated_dir() -> None:
     assert "curated_dir" in res.output
 
 
-def test_cli_cleanup_recursive_and_hidden_clean_alias(
+def test_cli_clean_recursive_and_no_cleanup_alias(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Ensure cleanup removes nested subdirectories while keeping .gitkeep, and hidden 'clean' alias works."""
+    """Ensure canonical 'esd clean --force' removes nested subdirectories while keeping .gitkeep."""
     from src.config import AppConfig
 
-    def _setup_dirs(prefix: str) -> tuple[Path, Path, Path]:
-        out_dir = tmp_path / f"{prefix}_out"
-        cur_dir = tmp_path / f"{prefix}_cur"
-        wth_dir = tmp_path / f"{prefix}_wth"
-        charts_dir = out_dir / "charts"
-        charts_dir.mkdir(parents=True)
-        cur_dir.mkdir()
-        wth_dir.mkdir()
-        (out_dir / ".gitkeep").write_text("", encoding="utf-8")
-        (charts_dir / "sample.svg").write_text("<svg/>", encoding="utf-8")
-        (cur_dir / "esd.csv").write_text("dummy", encoding="utf-8")
-        (wth_dir / "2026_weather.csv").write_text("dummy", encoding="utf-8")
-        return out_dir, cur_dir, wth_dir
+    out_dir = tmp_path / "clean_out"
+    cur_dir = tmp_path / "clean_cur"
+    wth_dir = tmp_path / "clean_wth"
+    charts_dir = out_dir / "charts"
+    charts_dir.mkdir(parents=True)
+    cur_dir.mkdir()
+    wth_dir.mkdir()
+    (out_dir / ".gitkeep").write_text("", encoding="utf-8")
+    (charts_dir / "sample.svg").write_text("<svg/>", encoding="utf-8")
+    (cur_dir / "esd.csv").write_text("dummy", encoding="utf-8")
+    (wth_dir / "2026_weather.csv").write_text("dummy", encoding="utf-8")
 
-    # 1. 'esd cleanup --force' removes nested charts directory while preserving .gitkeep
-    out_a, cur_a, wth_a = _setup_dirs("a")
     monkeypatch.setattr(
         "src.cli.load_config",
-        lambda: AppConfig(output_dir=str(out_a), curated_dir=str(cur_a), weather_dir=str(wth_a)),
-    )
-    res_cleanup = runner.invoke(app, ["cleanup", "--force"])
-    assert res_cleanup.exit_code == 0
-    assert not (out_a / "charts").exists()
-    assert (out_a / ".gitkeep").exists()
-    assert not (cur_a / "esd.csv").exists()
-    assert not (wth_a / "2026_weather.csv").exists()
-
-    # 2. Hidden 'clean' alias works identically while remaining hidden from --help
-    out_b, cur_b, wth_b = _setup_dirs("b")
-    monkeypatch.setattr(
-        "src.cli.load_config",
-        lambda: AppConfig(output_dir=str(out_b), curated_dir=str(cur_b), weather_dir=str(wth_b)),
+        lambda: AppConfig(
+            output_dir=str(out_dir), curated_dir=str(cur_dir), weather_dir=str(wth_dir)
+        ),
     )
     res_clean = runner.invoke(app, ["clean", "--force"])
     assert res_clean.exit_code == 0
-    assert not (out_b / "charts").exists()
-    assert (out_b / ".gitkeep").exists()
+    assert not (out_dir / "charts").exists()
+    assert (out_dir / ".gitkeep").exists()
+    assert not (cur_dir / "esd.csv").exists()
+    assert not (wth_dir / "2026_weather.csv").exists()
+
+    removed = runner.invoke(app, ["cleanup", "--force"])
+    assert removed.exit_code != 0
 
     res_help = runner.invoke(app, ["--help"])
     assert res_help.exit_code == 0
-    assert " cleanup " in res_help.output
-    assert " clean " not in res_help.output
+    assert " clean " in res_help.output
+    assert " cleanup " not in res_help.output

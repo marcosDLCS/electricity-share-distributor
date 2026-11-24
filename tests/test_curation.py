@@ -343,11 +343,14 @@ def test_curation_exports_csv(tmp_path: Path) -> None:
     assert parts[6] == "False"  # is_weekend
 
 
-def test_cli_curate_command(tmp_path: Path) -> None:
-    """Test invoking 'esd curate' CLI command through Typer CliRunner."""
+def test_cli_curate_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test invoking 'esd calculate --curate-only' CLI command through Typer CliRunner."""
+    from src.config import AppConfig
+
     cons_dir = tmp_path / "consumption"
     gen_dir = tmp_path / "generation"
     curated_dir = tmp_path / "curated"
+    out_dir = tmp_path / "out"
     cons_dir.mkdir()
     gen_dir.mkdir()
 
@@ -355,35 +358,32 @@ def test_cli_curate_command(tmp_path: Path) -> None:
     create_mock_datadis_csv(cons_dir / f"{cups_id}.csv", cups_id)
     create_mock_huawei_excel(gen_dir / "gen.xlsx")
 
-    runner = CliRunner()
-    result = runner.invoke(
-        app,
-        [
-            "curate",
-            "--consumption-dir",
-            str(cons_dir),
-            "--generation-dir",
-            str(gen_dir),
-            "--curated-dir",
-            str(curated_dir),
-            "--name",
-            "test_curated",
-            "--lang",
-            "en",
-        ],
+    cfg = AppConfig(
+        consumption_dir=str(cons_dir),
+        generation_dir=str(gen_dir),
+        curated_dir=str(curated_dir),
+        output_dir=str(out_dir),
+        language="en",
     )
+    monkeypatch.setattr("src.cli.load_config", lambda: cfg)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["calculate", "--curate-only"])
 
     assert result.exit_code == 0
     assert "DATA RECONCILIATION" in result.output
-    assert (curated_dir / "test_curated.csv").exists()
-    assert not (curated_dir / "test_curated.json").exists()
+    assert (curated_dir / "esd.csv").exists()
+    assert not (curated_dir / "esd.json").exists()
 
 
-def test_cli_curate_spanish_lang(tmp_path: Path) -> None:
-    """Test invoking 'esd curate' CLI with Spanish language override."""
+def test_cli_curate_spanish_lang(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test invoking 'esd calculate --curate-only' with Spanish language configured."""
+    from src.config import AppConfig
+
     cons_dir = tmp_path / "consumption"
     gen_dir = tmp_path / "generation"
     curated_dir = tmp_path / "curated"
+    out_dir = tmp_path / "out"
     cons_dir.mkdir()
     gen_dir.mkdir()
 
@@ -391,21 +391,17 @@ def test_cli_curate_spanish_lang(tmp_path: Path) -> None:
     create_mock_datadis_csv(cons_dir / f"{cups_id}.csv", cups_id)
     create_mock_huawei_excel(gen_dir / "gen.xlsx")
 
-    runner = CliRunner()
-    result = runner.invoke(
-        app,
-        [
-            "curate",
-            "--consumption-dir",
-            str(cons_dir),
-            "--generation-dir",
-            str(gen_dir),
-            "--curated-dir",
-            str(curated_dir),
-            "--lang",
-            "es",
-        ],
+    cfg = AppConfig(
+        consumption_dir=str(cons_dir),
+        generation_dir=str(gen_dir),
+        curated_dir=str(curated_dir),
+        output_dir=str(out_dir),
+        language="es",
     )
+    monkeypatch.setattr("src.cli.load_config", lambda: cfg)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["calculate", "--curate-only"])
 
     assert result.exit_code == 0
     assert "RECONCILIACIÓN" in result.output
@@ -844,12 +840,15 @@ def test_curation_without_coordinates_leaves_weather_empty(tmp_path: Path) -> No
     assert df["cloud_cover"].isna().all()
 
 
-def test_cli_curate_with_weather_dir(tmp_path: Path) -> None:
-    """Test invoking 'esd curate' CLI command with custom --weather-dir option."""
+def test_cli_curate_with_weather_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test invoking 'esd calculate --curate-only' with configured weather_dir."""
+    from src.config import AppConfig
+
     cons_dir = tmp_path / "consumption"
     gen_dir = tmp_path / "generation"
     curated_dir = tmp_path / "curated"
     weather_dir = tmp_path / "weather"
+    out_dir = tmp_path / "out"
     cons_dir.mkdir()
     gen_dir.mkdir()
     curated_dir.mkdir()
@@ -859,25 +858,19 @@ def test_cli_curate_with_weather_dir(tmp_path: Path) -> None:
     create_mock_datadis_csv(cons_dir / f"{pri_cups}.csv", pri_cups)
     create_mock_huawei_excel(gen_dir / "gen.xlsx")
 
-    runner = CliRunner()
-    result = runner.invoke(
-        app,
-        [
-            "curate",
-            "--consumption-dir",
-            str(cons_dir),
-            "--generation-dir",
-            str(gen_dir),
-            "--curated-dir",
-            str(curated_dir),
-            "--weather-dir",
-            str(weather_dir),
-            "--name",
-            "cli_weather_curated",
-        ],
+    cfg = AppConfig(
+        consumption_dir=str(cons_dir),
+        generation_dir=str(gen_dir),
+        curated_dir=str(curated_dir),
+        weather_dir=str(weather_dir),
+        output_dir=str(out_dir),
     )
+    monkeypatch.setattr("src.cli.load_config", lambda: cfg)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["calculate", "--curate-only"])
     assert result.exit_code == 0
-    assert (curated_dir / "cli_weather_curated.csv").exists()
+    assert (curated_dir / "esd.csv").exists()
 
 
 def test_primary_cups_uses_unmodified_raw_inverter_consumption(tmp_path: Path) -> None:

@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| `SIMP-1` | `P1` | Simplicity | Consolidate CLI surface from 11 commands (+ alias) to 7 core commands | `src/cli.py`, `src/i18n.py`, `src/presentation/views/common.py`, `tests/test_cli.py` |
 | `DES-1` | `P1` | Design | Declutter default console outputs (`summary`, `doctor`, `calculate`, `compare`) | `src/presentation/views/consumption.py`, `doctor.py`, `summary.py`, `comparison.py`, `common.py` |
 | `DOC-1` | `P1` | Documentation | Purge all `datadis-analyzer` references across docs, guides & codebase | `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `AGENTS.md`, `src/security.py` |
 | `DOC-2` | `P1` | Documentation | Condense `README.md`, bilingual guides & `AGENTS.md` by 20–25% | `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `AGENTS.md` |
@@ -87,18 +86,6 @@ _No pending tasks._
   3. Combined length of `README.md`, `docs/GUIDE_EN.md`, and `docs/GUIDE_ES.md` drops by **20–25%** (verified via `wc -l -w`), with zero broken markdown links and clean `python3 -m src.security` verification.
 
 ## 🧹 Simplicity
-
-### `SIMP-1` `[P1]` — Consolidate CLI Surface from 11 Commands (+ Alias) to 7 Core Commands
-- **Goal:** Simplify the CLI from 11 visible commands (`calculate`, `summary`, `compare`, `curate`, `doctor`, `weather`, `init`, `config`, `cleanup`, `help`, `version`) + hidden `clean` alias down to **7 orthogonal core commands** plus standard root flags:
-  - Keep: `init`, `doctor`, `summary`, `compare`, `calculate`, `config`, and `clean` (single canonical name replacing `cleanup` + hidden alias).
-  - Absorb internal plumbing: `curate` and `weather` already run automatically inside `esd calculate` — expose `--refresh` (force re-curation + weather refresh) and `--curate-only` (build `.curated/` CSV/XLSX without optimization) on `esd calculate` instead of separate top-level commands.
-  - Replace non-standard subcommands `help` and `version` with standard root `-h`/`--help` (and no-arg `esd` Rich help) and `-V`/`--version`.
-- **Target Components:**
-  - `src/cli.py`, `src/i18n.py`, `src/presentation/views/common.py`, `src/services/__init__.py`, `tests/test_cli.py`, `tests/test_i18n.py`
-- **Acceptance Criteria:**
-  1. `esd` exposes exactly 7 top-level commands (`init`, `doctor`, `summary`, `compare`, `calculate`, `config`, `clean`) plus root `--version`/`-V` and `--help`/`-h` (with bare `esd` rendering the Rich help screen).
-  2. `esd calculate --refresh` and `esd calculate --curate-only` cover all previous manual curation and weather refresh workflows seamlessly.
-  3. Dead CLI handlers and orphaned `i18n` keys are removed with strict EN/ES parity preserved; all tests pass.
 
 ### `SIMP-2` `[P2]` — Standardize Config-First CLI Options & Extract Shared Workspace Resolver
 - **Goal:** Align `summary`, `compare`, `doctor`, and `clean` with `calculate`'s clean config-first model instead of duplicating 5–7 directory/config override options (`-c`, `-g`, `-w`, `-u`, `-o`, `-C`) and repeated `load_config()` / `resolve_cups_config_path()` boilerplate across every command in `src/cli.py`.

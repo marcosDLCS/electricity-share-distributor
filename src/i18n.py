@@ -38,19 +38,15 @@ STRUCTURED_TRANSLATIONS: dict[str, dict[str, dict[str, str]]] = {
             "available_commands": "AVAILABLE COMMANDS",
             "cleaned_files": "Removed {count} file(s) from target directories.",
             "cleanup_aborted": "Cleanup aborted by user.",
-            "cmd_calculate_desc": "Calculate optimal monthly, fortnight, and hourly shares (parameterless) and export all 6 .output/ deliverables.",
-            "cmd_cleanup_desc": "Remove generated data from .output, .curated, and .input/weather directories.",
+            "cmd_calculate_desc": "Calculate optimal monthly, fortnight, and hourly shares (supports --refresh and --curate-only).",
+            "cmd_clean_desc": "Remove generated data from .output, .curated, and .input/weather directories.",
             "cmd_compare_desc": "Compare consumption and variations across multiple years with apples-to-apples completeness.",
             "cmd_config_desc": "Inspect or update persistent application configuration and directory paths.",
-            "cmd_curate_desc": "Reconcile consumption and generation time-series data into a curated CSV file in .curated.",
             "cmd_desc": "Description",
             "cmd_doctor_desc": "Audit input files to detect gaps, missing hourly intervals, and data inconsistencies.",
-            "cmd_help_desc": "Display comprehensive command reference, input structure guidelines, and examples.",
             "cmd_init_desc": "Initialize application directories, configure language preference, and persist settings.",
             "cmd_name": "Command",
             "cmd_summary_desc": "Aggregate consumption by year and month, show fair-share tables, and export Markdown reports.",
-            "cmd_version_desc": "Display the active CalVer version (YYYY.MM.NNN) and exit.",
-            "cmd_weather_desc": "Download hourly weather data (temperature, cloud cover, weather code) from Open-Meteo into .input/weather.",
             "err_lat_range": "Latitude must be between -90.0 and 90.0 (got {val}).",
             "err_lon_range": "Longitude must be between -180.0 and 180.0 (got {val}).",
             "help_workflow_body": (
@@ -59,9 +55,10 @@ STRUCTURED_TRANSLATIONS: dict[str, dict[str, dict[str, str]]] = {
                 "    esd compare     Multi-year [Inc] completeness delta & SVG charts\n"
                 "  Collective PV Allocation (RD 244/2019 & Orden TED/1247/2021):\n"
                 "    esd doctor      Audit consumption, solar PV & weather data health\n"
-                "    esd curate      Build canonical .curated/ CSV & XLSX datasets\n"
-                "    esd calculate   Zero-arg optimization -> 6 CSV/HTML files in .output/\n"
-                "    esd cleanup     Clean .output, .curated, and .input/weather (clean)"
+                "    esd calculate   Auto-curate + optimize -> 6 CSV/HTML files in .output/\n"
+                "                    (--refresh updates cache; --curate-only skips opt)\n"
+                "    esd clean       Remove generated files from .output/.curated/weather\n"
+                "  Global flags: -V/--version, -h/--help (run bare 'esd' for this guide)"
             ),
             "help_workflow_heading": "QUICK WORKFLOW & OUTPUT DELIVERABLES",
             "init_clean_cleared": "Cleared {count} file(s) from .output",
@@ -91,17 +88,15 @@ STRUCTURED_TRANSLATIONS: dict[str, dict[str, dict[str, str]]] = {
             "status_step_4": "Generating multi-format deliverables...",
             "status_comparing": "Ingesting DATADIS CSVs and calculating multi-year comparisons...",
             "status_summarizing": "Ingesting DATADIS CSVs and aggregating community shares...",
-            "status_weather": "Fetching hourly weather data from Open-Meteo for year {year}...",
-            "status_weather_coord": "Fetching hourly weather data from Open-Meteo for year {year} at {coords}...",
         },
         "doctor": {
             "doc_adv_clean": "[green]• Dataset is clean and ready. You can safely run 'esd calculate'.[/green]",
             "doc_adv_cons_gaps": "[yellow]• Consumption Gaps:[/yellow] {id} has {hours} missing hours. Download updated DATADIS CSV for complete billing periods.",
             "doc_adv_gen_gaps": "[yellow]• Generation Gaps:[/yellow] Huawei solar series has {hours} missing hours. Check inverter log exports.",
             "doc_adv_inactive": "[yellow]• Inactive Meter:[/yellow] {id} has {pct}% zero readings. In optimization, its β coefficient will be 0.00% to protect community solar energy.",
-            "doc_adv_weather_coverage": "[yellow]• Incomplete Weather Coverage:[/yellow] Weather data does not fully cover the calculation period ({period}). Run 'esd weather' for missing years.",
-            "doc_adv_weather_gaps": "[yellow]• Weather Gaps:[/yellow] Open-Meteo weather series has {hours} missing hours. Re-run 'esd weather' to re-fetch.",
-            "doc_adv_weather_missing": "[yellow]• Missing Weather Data:[/yellow] No weather data found in {dir}. Run 'esd weather' to download historical archives.",
+            "doc_adv_weather_coverage": "[yellow]• Incomplete Weather Coverage:[/yellow] Weather data does not fully cover the calculation period ({period}). Run 'esd calculate --refresh' for missing years.",
+            "doc_adv_weather_gaps": "[yellow]• Weather Gaps:[/yellow] Open-Meteo weather series has {hours} missing hours. Re-run 'esd calculate --refresh' to re-fetch.",
+            "doc_adv_weather_missing": "[yellow]• Missing Weather Data:[/yellow] No weather data found in {dir}. Run 'esd calculate --refresh' to download historical archives.",
             "doc_lbl_common_hours": "Common Hours:",
             "doc_lbl_healthy": "Healthy",
             "doc_lbl_overlap_range": "Overlap Date Range:",
@@ -299,19 +294,15 @@ STRUCTURED_TRANSLATIONS: dict[str, dict[str, dict[str, str]]] = {
             "available_commands": "COMANDOS DISPONIBLES",
             "cleaned_files": "Se han eliminado {count} archivo(s) de los directorios de destino.",
             "cleanup_aborted": "Limpieza cancelada por el usuario.",
-            "cmd_calculate_desc": "Calcular cuotas óptimas mensuales, quincenales y horarias (sin argumentos) y exportar los 6 archivos en .output/.",
-            "cmd_cleanup_desc": "Eliminar datos generados de los directorios .output, .curated y .input/weather.",
+            "cmd_calculate_desc": "Calcular cuotas óptimas mensuales, quincenales y horarias (admite --refresh y --curate-only).",
+            "cmd_clean_desc": "Eliminar datos generados de los directorios .output, .curated y .input/weather.",
             "cmd_compare_desc": "Comparar consumo y variaciones entre varios años con comparativa homogénea de meses completos.",
             "cmd_config_desc": "Inspeccionar o actualizar la configuración persistente y las rutas de directorios.",
-            "cmd_curate_desc": "Reconciliar series temporales de consumo y generación en un archivo CSV curado en .curated.",
             "cmd_desc": "Descripción",
             "cmd_doctor_desc": "Auditar archivos de entrada para detectar huecos, intervalos faltantes e incoherencias de datos.",
-            "cmd_help_desc": "Mostrar referencia completa de comandos, guía de datos de entrada y ejemplos.",
             "cmd_init_desc": "Inicializar directorios, configurar preferencia de idioma y guardar ajustes.",
             "cmd_name": "Comando",
             "cmd_summary_desc": "Agregar consumo por año y mes, mostrar tablas de reparto y exportar informes Markdown.",
-            "cmd_version_desc": "Mostrar la versión activa CalVer (YYYY.MM.NNN) y salir.",
-            "cmd_weather_desc": "Descargar datos meteorológicos horarios (temperatura, nubosidad, código de tiempo) de Open-Meteo en .input/weather.",
             "err_lat_range": "La latitud debe estar entre -90.0 y 90.0 (valor recibido: {val}).",
             "err_lon_range": "La longitud debe estar entre -180.0 y 180.0 (valor recibido: {val}).",
             "help_workflow_body": (
@@ -320,9 +311,10 @@ STRUCTURED_TRANSLATIONS: dict[str, dict[str, dict[str, str]]] = {
                 "    esd compare     Comparativa interanual [Inc] y gráficos SVG en .output/\n"
                 "  Reparto Solar Colectivo (RD 244/2019 y Orden TED/1247/2021):\n"
                 "    esd doctor      Auditar salud de consumo, generación FV y clima\n"
-                "    esd curate      Generar conjuntos canónicos CSV/XLSX en .curated/\n"
-                "    esd calculate   Optimización sin args -> 6 archivos en .output/\n"
-                "    esd cleanup     Limpiar .output, .curated y .input/weather (alias clean)"
+                "    esd calculate   Auto-curado + optimización -> 6 archivos en .output/\n"
+                "                    (--refresh actualiza caché; --curate-only solo curado)\n"
+                "    esd clean       Limpiar archivos generados de .output/.curated/clima\n"
+                "  Flags globales: -V/--version, -h/--help ('esd' sin args abre esta guía)"
             ),
             "help_workflow_heading": "FLUJO RÁPIDO Y ENTREGABLES",
             "init_clean_cleared": "Se eliminaron {count} archivo(s) de .output",
@@ -352,17 +344,15 @@ STRUCTURED_TRANSLATIONS: dict[str, dict[str, dict[str, str]]] = {
             "status_step_4": "Generando entregables multiformato...",
             "status_comparing": "Cargando CSVs de DATADIS y calculando comparativas interanuales...",
             "status_summarizing": "Cargando archivos CSV de DATADIS y agregando porcentajes comunitarios...",
-            "status_weather": "Descargando datos meteorológicos horarios de Open-Meteo para el año {year}...",
-            "status_weather_coord": "Descargando datos meteorológicos horarios de Open-Meteo para el año {year} en {coords}...",
         },
         "doctor": {
             "doc_adv_clean": "[green]• Conjunto de datos limpio y listo. Puede ejecutar 'esd calculate' con total seguridad.[/green]",
             "doc_adv_cons_gaps": "[yellow]• Huecos en Consumo:[/yellow] {id} tiene {hours} horas faltantes. Descargue un CSV actualizado de DATADIS para periodos de facturación completos.",
             "doc_adv_gen_gaps": "[yellow]• Huecos en Generación:[/yellow] La serie solar de Huawei tiene {hours} horas faltantes. Revise las exportaciones del inversor.",
             "doc_adv_inactive": "[yellow]• Contador Inactivo:[/yellow] {id} tiene un {pct}% de lecturas a cero. En la optimización, su coeficiente β será 0.00% para proteger la energía solar comunitaria.",
-            "doc_adv_weather_coverage": "[yellow]• Cobertura Meteorológica Incompleta:[/yellow] Los datos meteorológicos no cubren todo el periodo de cálculo ({period}). Ejecute 'esd weather' para los años faltantes.",
-            "doc_adv_weather_gaps": "[yellow]• Huecos Meteorológicos:[/yellow] La serie meteorológica de Open-Meteo tiene {hours} horas faltantes. Vuelva a ejecutar 'esd weather' para descargarla.",
-            "doc_adv_weather_missing": "[yellow]• Faltan Datos Meteorológicos:[/yellow] No se encontraron archivos en {dir}. Ejecute 'esd weather' para descargar el histórico.",
+            "doc_adv_weather_coverage": "[yellow]• Cobertura Meteorológica Incompleta:[/yellow] Los datos meteorológicos no cubren todo el periodo de cálculo ({period}). Ejecute 'esd calculate --refresh' para los años faltantes.",
+            "doc_adv_weather_gaps": "[yellow]• Huecos Meteorológicos:[/yellow] La serie meteorológica de Open-Meteo tiene {hours} horas faltantes. Vuelva a ejecutar 'esd calculate --refresh' para descargarla.",
+            "doc_adv_weather_missing": "[yellow]• Faltan Datos Meteorológicos:[/yellow] No se encontraron archivos en {dir}. Ejecute 'esd calculate --refresh' para descargar el histórico.",
             "doc_lbl_common_hours": "Horas Comunes:",
             "doc_lbl_healthy": "Correcto",
             "doc_lbl_overlap_range": "Rango de Fechas:",

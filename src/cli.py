@@ -37,7 +37,6 @@ from src.presentation.views.common import (
     render_init_success,
     render_not_initialized_warning,
     render_version,
-    render_weather_result,
 )
 from src.presentation.views.curate import render_curate_summary
 from src.version import get_version
@@ -45,6 +44,7 @@ from src.version import get_version
 app = typer.Typer(
     help="Electricity Share Distributor: Optimize collective PV self-consumption coefficients (RD 244/2019).",
     add_completion=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 
 
@@ -59,31 +59,28 @@ def _handle_cli_error(err: Exception | str, unexpected: bool = False) -> NoRetur
     raise typer.Exit(code=1)
 
 
+def _version_callback(value: bool) -> None:
+    """Display active CalVer application version when --version / -V is passed."""
+    if value:
+        render_version(lang=get_language())
+        raise typer.Exit()
+
+
 @app.callback(invoke_without_command=True)
-def default_callback(ctx: typer.Context) -> None:
+def default_callback(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show active CalVer application version and exit.",
+    ),
+) -> None:
     """Default entrypoint. Renders custom formatted help if no subcommand is passed."""
     if ctx.invoked_subcommand is None:
         render_help(lang=get_language())
-
-
-@app.command(name="help")
-def help_command(
-    lang: str | None = typer.Option(
-        None,
-        "--lang",
-        "-l",
-        help="Language code ('en' or 'es').",
-    ),
-) -> None:
-    """Display comprehensive command reference and user guide."""
-    target_lang = normalize_language_code(lang) if lang else get_language()
-    render_help(lang=target_lang)
-
-
-@app.command(name="version")
-def version_command() -> None:
-    """Display active CalVer application version and system info."""
-    render_version(lang=get_language())
 
 
 @app.command(name="init")
@@ -249,220 +246,20 @@ def doctor_command(
         _handle_cli_error(exc, unexpected=True)
 
 
-@app.command(name="curate")
-def curate_command(
-    consumption_dir: Path | None = typer.Option(
-        None,
-        "--consumption-dir",
-        "-c",
-        help="Path to folder containing DATADIS hourly consumption CSV files. Defaults to configured path.",
-    ),
-    generation_dir: Path | None = typer.Option(
-        None,
-        "--generation-dir",
-        "-g",
-        help="Path to folder containing Huawei FusionSolar generation Excel files. Defaults to configured path.",
-    ),
-    cups_file: Path | None = typer.Option(
-        None,
-        "--cups-file",
-        "-C",
-        help="Path to cups.json configuration file specifying CUPS uses and primary flags.",
-    ),
-    curated_dir: Path | None = typer.Option(
-        None,
-        "--curated-dir",
-        "-u",
-        "-o",
-        help="Path to directory where curated CSV files will be written. Defaults to configured path.",
-    ),
-    name: str = typer.Option(
-        "esd",
-        "--name",
-        "-n",
-        help="Base filename for generated master curated export (e.g. 'esd' produces esd.csv and esd.xlsx).",
-    ),
-    delimiter: str = typer.Option(
-        ";",
-        "--delimiter",
-        "-d",
-        help="CSV delimiter character (';' or ','). Defaults to ';'.",
-    ),
-    year: int | None = typer.Option(
-        None,
-        "--year",
-        "-y",
-        help="Optional calendar year filter (e.g. 2026).",
-    ),
-    month: int | None = typer.Option(
-        None,
-        "--month",
-        "-m",
-        help="Optional month filter (1-12).",
-    ),
-    weather_dir: Path | None = typer.Option(
-        None,
-        "--weather-dir",
-        "-w",
-        help="Directory containing Open-Meteo hourly weather CSV files. Defaults to configured path.",
-    ),
-    lang: str | None = typer.Option(
-        None,
-        "--lang",
-        "-l",
-        help="Language override for messages ('en' or 'es').",
-    ),
-) -> None:
-    """Reconcile DATADIS and Huawei time-series data and export curated CSV file."""
-    active_lang = normalize_language_code(lang) if lang else get_language()
-    cfg = load_config()
-
-    if not is_initialized():
-        render_not_initialized_warning(lang=active_lang)
-
-    target_consumption_dir = consumption_dir or Path(cfg.consumption_dir)
-    target_generation_dir = generation_dir or Path(cfg.generation_dir)
-    target_curated_dir = curated_dir or Path(cfg.curated_dir)
-    target_weather_dir = weather_dir or (
-        Path(cfg.weather_dir) if cfg and cfg.weather_dir else DEFAULT_WEATHER_DIR
-    )
-    cups_path = (
-        resolve_cups_config_path(custom_path=cups_file, config=cfg)
-        if (cups_file is not None or consumption_dir is None)
-        else None
-    )
-
-    try:
-        from src.services.curation_service import CurationRequest, CurationService
-
-        with console.status(f"[bold cyan]{t('status_curating', lang=active_lang)}[/bold cyan]"):
-            req = CurationRequest(
-                consumption_dir=target_consumption_dir,
-                generation_dir=target_generation_dir,
-                curated_dir=target_curated_dir,
-                cups_config_path=cups_path,
-                output_name=name,
-                delimiter=delimiter,
-                year=year,
-                month=month,
-                weather_dir=target_weather_dir,
-            )
-            cur_result = CurationService.execute(req)
-
-        render_curate_summary(
-            dataset=cur_result.dataset,
-            csv_path=cur_result.csv_path,
-            excel_path=cur_result.excel_path,
-            lang=active_lang,
-            generation_csv_path=cur_result.generation_csv_path,
-            generation_excel_path=cur_result.generation_excel_path,
-            consumption_csv_path=cur_result.consumption_csv_path,
-            consumption_excel_path=cur_result.consumption_excel_path,
-        )
-
-    except typer.Exit, typer.Abort:
-        raise
-    except EsdError as err:
-        _handle_cli_error(err)
-    except Exception as exc:
-        _handle_cli_error(exc, unexpected=True)
-
-
-@app.command(name="weather")
-def weather_command(
-    year: int = typer.Option(
-        ...,
-        "--year",
-        "-y",
-        help="Calendar year to download hourly weather data for (e.g. 2024).",
-    ),
-    latitude: float | None = typer.Option(
-        None,
-        "--latitude",
-        "--lat",
-        help="Geographical latitude coordinate (e.g. 40.4168). Overrides cups.json and config.",
-    ),
-    longitude: float | None = typer.Option(
-        None,
-        "--longitude",
-        "--lon",
-        help="Geographical longitude coordinate (e.g. -3.7038). Overrides cups.json and config.",
-    ),
-    cups_file: Path | None = typer.Option(
-        None,
-        "--cups-file",
-        "-C",
-        help="Path to cups.json configuration file to extract coordinates from when not provided on CLI.",
-    ),
-    weather_dir: Path | None = typer.Option(
-        None,
-        "--weather-dir",
-        "-w",
-        help="Directory to store downloaded weather CSV files. Defaults to configured path.",
-    ),
-    timezone: str = typer.Option(
-        "auto",
-        "--timezone",
-        "-tz",
-        help="Timezone for hourly timestamps (default: 'auto').",
-    ),
-    lang: str | None = typer.Option(
-        None,
-        "--lang",
-        "-l",
-        help="Language override for messages ('en' or 'es').",
-    ),
-) -> None:
-    """Download hourly weather data (temperature, cloud cover, weather code) from Open-Meteo into .input/weather."""
-    active_lang = normalize_language_code(lang) if lang else get_language()
-    cfg = load_config()
-    cups_path = resolve_cups_config_path(custom_path=cups_file, config=cfg)
-
-    status_spinner = console.status(
-        f"[bold cyan]{t('status_weather', lang=active_lang, year=year)}[/bold cyan]"
-    )
-
-    def on_progress(lat: float, lon: float, idx: int, total: int) -> None:
-        coord_str = (
-            f"{abs(lat):.4f}°{'N' if lat >= 0 else 'S'}, {abs(lon):.4f}°{'E' if lon >= 0 else 'W'}"
-        )
-        status_text = (
-            f"[bold cyan]{t('status_weather_coord', lang=active_lang, year=year, coords=coord_str)}[/bold cyan]"
-            if total > 1
-            else f"[bold cyan]{t('status_weather', lang=active_lang, year=year)}[/bold cyan]"
-        )
-        status_spinner.update(status_text)
-
-    try:
-        from src.services.weather_service import WeatherRequest, WeatherService
-
-        req = WeatherRequest(
-            year=year,
-            latitude=latitude,
-            longitude=longitude,
-            cups_file=cups_path,
-            weather_dir=weather_dir,
-            timezone=timezone,
-            config=cfg,
-            lang=active_lang,
-            resolve_cups=False,
-        )
-        with status_spinner:
-            service_result = WeatherService.execute(req, progress_callback=on_progress)
-
-        for result in service_result.results:
-            render_weather_result(result, lang=active_lang)
-
-    except typer.Exit, typer.Abort:
-        raise
-    except EsdError as err:
-        _handle_cli_error(err)
-    except Exception as exc:
-        _handle_cli_error(exc, unexpected=True)
-
-
 @app.command(name="calculate")
-def calculate_command() -> None:
+def calculate_command(
+    refresh: bool = typer.Option(
+        False,
+        "--refresh",
+        "-r",
+        help="Force re-curation from raw inputs and refresh cached weather archives.",
+    ),
+    curate_only: bool = typer.Option(
+        False,
+        "--curate-only",
+        help="Build curated CSV & Excel datasets in .curated/ without running PV optimization.",
+    ),
+) -> None:
     """Calculate optimal electricity distribution coefficients (beta_i) for collective PV installation."""
     cfg = load_config()
     active_lang = cfg.language
@@ -505,21 +302,42 @@ def calculate_command() -> None:
             strategy=OptimizationStrategy.OPTIMAL,
             precision=active_precision,
             compute_hourly=True,
+            refresh=refresh,
+            curate_only=curate_only,
             lang=active_lang,
         )
 
-        with console.status(
-            f"[bold cyan][1/4][/bold cyan] [bold white]{t('status_step_1', lang=active_lang)}[/bold white]"
-        ) as status:
+        initial_status = (
+            f"[bold cyan]{t('status_curating', lang=active_lang)}[/bold cyan]"
+            if curate_only
+            else f"[bold cyan][1/4][/bold cyan] [bold white]{t('status_step_1', lang=active_lang)}[/bold white]"
+        )
+        with console.status(initial_status) as status:
 
             def _update_step(step_idx: int, message: str) -> None:
-                status.update(
-                    f"[bold cyan][{step_idx}/4][/bold cyan] [bold white]{message}[/bold white]"
-                )
+                if not curate_only:
+                    status.update(
+                        f"[bold cyan][{step_idx}/4][/bold cyan] [bold white]{message}[/bold white]"
+                    )
 
             calc_result = CalculationService.execute(req, progress_callback=_update_step)
 
+        if curate_only and calc_result.curation_result is not None:
+            cur = calc_result.curation_result
+            render_curate_summary(
+                dataset=cur.dataset,
+                csv_path=cur.csv_path,
+                excel_path=cur.excel_path,
+                lang=active_lang,
+                generation_csv_path=cur.generation_csv_path,
+                generation_excel_path=cur.generation_excel_path,
+                consumption_csv_path=cur.consumption_csv_path,
+                consumption_excel_path=cur.consumption_excel_path,
+            )
+            return
+
         opt_result = calc_result.opt_result
+        assert opt_result is not None
         metadata = calc_result.metadata
 
         # Presentation Views
@@ -909,9 +727,8 @@ def config_command(
         _handle_cli_error(exc, unexpected=True)
 
 
-@app.command(name="cleanup")
-@app.command(name="clean", hidden=True)
-def cleanup_command(
+@app.command(name="clean")
+def clean_command(
     output_dir: Path | None = typer.Option(
         None,
         "--output-dir",

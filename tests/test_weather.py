@@ -337,67 +337,70 @@ def test_wmo_weather_codes() -> None:
 # =========================================================================
 
 
-def test_cli_weather_missing_coordinates(tmp_path: Path) -> None:
-    """Running weather command without coordinates or config coordinates fails gracefully."""
+def test_weather_service_and_removed_weather_cli_command(tmp_path: Path) -> None:
+    """Verify WeatherService handles missing/partial coords cleanly and standalone 'weather' CLI cmd is removed."""
+    from src.ingestion.schema import ValidationError
+    from src.services.weather_service import WeatherRequest, WeatherService
+
+    removed = runner.invoke(app, ["weather", "--year", "2023"])
+    assert removed.exit_code != 0
+
     config_file = tmp_path / ".esd_config.json"
     save_config(AppConfig(latitude=None, longitude=None), path=config_file)
+    with patch("src.services.weather_service.resolve_community_coordinates", return_value=[]):
+        with pytest.raises(ValidationError, match="Coordinates are required"):
+            WeatherService.execute(
+                WeatherRequest(year=2023, config=load_config(config_file), resolve_cups=False)
+            )
 
-    with (
-        patch("src.cli.load_config", return_value=load_config(config_file)),
-        patch("src.cli.resolve_cups_config_path", return_value=None),
-    ):
-        result = runner.invoke(app, ["weather", "--year", "2023"])
-
-    assert result.exit_code != 0
-    assert "Coordinates are required" in result.output
-
-
-def test_cli_weather_partial_coordinates_error() -> None:
-    """Providing only --latitude without --longitude exits with an error."""
-    result = runner.invoke(app, ["weather", "--year", "2023", "--latitude", "40.0"])
-    assert result.exit_code != 0
-    assert "Both --latitude and --longitude must be provided" in result.output
+    with pytest.raises(ValidationError, match="Both --latitude and --longitude must be provided"):
+        WeatherService.execute(WeatherRequest(year=2023, latitude=40.0, resolve_cups=False))
 
 
-def test_cli_weather_success_with_cli_coords(tmp_path: Path) -> None:
-    """Running weather command with explicit --lat and --lon downloads and renders results."""
+def test_weather_service_explicit_coords_and_render(tmp_path: Path) -> None:
+    """Running WeatherService with explicit coords downloads and render_weather_result renders EN/ES panels."""
+    from rich.console import Console
+
+    from src.presentation.views import common as common_view
+    from src.services.weather_service import WeatherRequest, WeatherService
+
     weather_dir = tmp_path / "weather"
-    config_file = tmp_path / ".esd_config.json"
-    save_config(AppConfig(weather_dir=str(weather_dir)), path=config_file)
-
     mock_resp = MagicMock()
     mock_resp.read.return_value = _mock_open_meteo_response(hours_count=24)
     mock_resp.__enter__.return_value = mock_resp
     mock_resp.__exit__.return_value = None
 
+    rec_console = Console(width=80, record=True)
     with (
-        patch("src.cli.load_config", return_value=load_config(config_file)),
         patch("urllib.request.urlopen", return_value=mock_resp),
+        patch.object(common_view, "console", rec_console),
     ):
-        result = runner.invoke(
-            app,
-            [
-                "weather",
-                "--year",
-                "2023",
-                "--latitude",
-                "40.4168",
-                "--longitude",
-                "-3.7038",
-                "--weather-dir",
-                str(weather_dir),
-            ],
+        svc_res = WeatherService.execute(
+            WeatherRequest(
+                year=2023,
+                latitude=40.4168,
+                longitude=-3.7038,
+                weather_dir=weather_dir,
+                resolve_cups=False,
+            )
         )
+        assert (weather_dir / "2023_40.4168_-3.7038_weather.csv").exists()
+        common_view.render_weather_result(svc_res.results[0], lang="en")
+        out_en = rec_console.export_text()
+        assert "OPEN-METEO HOURLY WEATHER INGESTION" in out_en
+        assert "40.4168°N, 3.7038°W" in out_en
+        assert "2023" in out_en
 
-    assert result.exit_code == 0
-    assert "OPEN-METEO HOURLY WEATHER INGESTION" in result.output
-    assert "40.4168°N, 3.7038°W" in result.output
-    assert "2023" in result.output
-    assert (weather_dir / "2023_40.4168_-3.7038_weather.csv").exists()
+        common_view.render_weather_result(svc_res.results[0], lang="es")
+        out_es = rec_console.export_text()
+        assert "INGESTA METEOROLÓGICA HORARIA OPEN-METEO" in out_es
+        assert "Coordenadas" in out_es
 
 
-def test_cli_weather_uses_cups_file_deduplicated(tmp_path: Path) -> None:
-    """When coordinates not provided on CLI, reads cups.json and downloads each unique location once."""
+def test_weather_service_uses_cups_file_deduplicated(tmp_path: Path) -> None:
+    """When coordinates not provided explicitly, reads cups.json and downloads each unique location once."""
+    from src.services.weather_service import WeatherRequest, WeatherService
+
     weather_dir = tmp_path / "weather"
     cups_file = tmp_path / "cups.json"
     cups_file.write_text(
@@ -418,28 +421,24 @@ def test_cli_weather_uses_cups_file_deduplicated(tmp_path: Path) -> None:
     mock_resp.__exit__.return_value = None
 
     with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
-        result = runner.invoke(
-            app,
-            [
-                "weather",
-                "--year",
-                "2024",
-                "--cups-file",
-                str(cups_file),
-                "--weather-dir",
-                str(weather_dir),
-            ],
+        WeatherService.execute(
+            WeatherRequest(
+                year=2024,
+                cups_file=cups_file,
+                weather_dir=weather_dir,
+                resolve_cups=False,
+            )
         )
 
-    assert result.exit_code == 0
-    # Exactly 2 unique coordinates: exactly 2 downloads despite 4 entries in cups.json!
     assert mock_urlopen.call_count == 2
     assert (weather_dir / "2024_39.4699_-0.3763_weather.csv").exists()
     assert (weather_dir / "2024_40.4168_-3.7038_weather.csv").exists()
 
 
-def test_cli_weather_uses_configured_coordinates(tmp_path: Path) -> None:
-    """Running weather command without CLI coords or cups.json uses persisted coordinates from config."""
+def test_weather_service_uses_configured_coordinates(tmp_path: Path) -> None:
+    """Running WeatherService without explicit coords or cups.json uses persisted config coordinates."""
+    from src.services.weather_service import WeatherRequest, WeatherService
+
     weather_dir = tmp_path / "weather"
     config_file = tmp_path / ".esd_config.json"
     save_config(
@@ -456,47 +455,18 @@ def test_cli_weather_uses_configured_coordinates(tmp_path: Path) -> None:
     mock_resp.__enter__.return_value = mock_resp
     mock_resp.__exit__.return_value = None
 
-    with (
-        patch("src.cli.load_config", return_value=load_config(config_file)),
-        patch("src.cli.resolve_cups_config_path", return_value=None),
-        patch("urllib.request.urlopen", return_value=mock_resp),
-    ):
-        result = runner.invoke(app, ["weather", "--year", "2023"])
-
-    assert result.exit_code == 0
-    assert "37.3891°N, 5.9845°W" in result.output
-    assert (weather_dir / "2023_37.3891_-5.9845_weather.csv").exists()
-
-
-def test_cli_weather_spanish_output(tmp_path: Path) -> None:
-    """Running weather command with --lang es renders Spanish localized headers."""
-    weather_dir = tmp_path / "weather"
-    mock_resp = MagicMock()
-    mock_resp.read.return_value = _mock_open_meteo_response(hours_count=24)
-    mock_resp.__enter__.return_value = mock_resp
-    mock_resp.__exit__.return_value = None
-
     with patch("urllib.request.urlopen", return_value=mock_resp):
-        result = runner.invoke(
-            app,
-            [
-                "weather",
-                "--year",
-                "2023",
-                "--lat",
-                "40.4168",
-                "--lon",
-                "-3.7038",
-                "-w",
-                str(weather_dir),
-                "--lang",
-                "es",
-            ],
+        svc_res = WeatherService.execute(
+            WeatherRequest(
+                year=2023,
+                weather_dir=weather_dir,
+                config=load_config(config_file),
+                resolve_cups=False,
+            )
         )
 
-    assert result.exit_code == 0
-    assert "INGESTA METEOROLÓGICA HORARIA OPEN-METEO" in result.output
-    assert "Coordenadas" in result.output
+    assert len(svc_res.results) == 1
+    assert (weather_dir / "2023_37.3891_-5.9845_weather.csv").exists()
 
 
 def test_cli_config_update_weather_and_coords(tmp_path: Path) -> None:
