@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| `DOC-1` | `P1` | Documentation | Purge all `datadis-analyzer` references across docs, guides & codebase | `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `AGENTS.md`, `src/security.py` |
 | `DOC-2` | `P1` | Documentation | Condense `README.md`, bilingual guides & `AGENTS.md` by 20–25% | `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `AGENTS.md` |
 | `COH-1` | `P2` | Cohesion | Unify consumption ingestion/filtering & $O(1)$ curated cache fingerprinting | `src/ingestion/doctor.py`, `src/curation/curator.py`, `src/services/` |
 | `SIMP-2` | `P2` | Simplicity | Standardize config-first CLI options & extract shared workspace resolver | `src/cli.py`, `tests/test_cli.py` |
@@ -59,18 +58,6 @@ _No pending tasks._
 _No pending tasks._
 
 ## 📚 Documentation
-
-### `DOC-1` `[P1]` — Purge All `datadis-analyzer` References Across Docs, Guides & Codebase
-- **Goal:** Remove every mention, link, migration table, legacy alias note, and code comment referencing `datadis-analyzer` (`da`) now that the external repository is being deleted, making `esd` read as a clean standalone platform.
-- **Target Components:**
-  - `README.md` (intro, `clean` alias comment, migration section)
-  - `docs/GUIDE_EN.md` & `docs/GUIDE_ES.md` (Section 1 intro, Section 6 guarantees intro, Section 8 migration table & section renumbering)
-  - `AGENTS.md` (Project Overview)
-  - `src/security.py` (line 47 comment)
-- **Acceptance Criteria:**
-  1. All `datadis-analyzer` / `da` migration sections, links, and comments are removed cleanly and section numbering in `GUIDE_EN.md` and `GUIDE_ES.md` is updated symmetrically.
-  2. `git grep -i "datadis.analyzer\|datadis_analyzer\|former da\|legacy da"` returns **zero matches** across the entire tracked repository (once this task is completed and removed from `BACKLOG.md`).
-  3. `python3 -m src.security` passes with zero violations.
 
 ### `DOC-2` `[P1]` — Condense `README.md`, Bilingual Guides & `AGENTS.md` by 20–25%
 - **Goal:** Tighten all user and developer documentation by **20–25%** without losing any relevant domain formula, regulatory invariant, CLI capability, deliverable specification, or architecture reference. Current baselines: `README.md` (401 lines / 3,248 words), `docs/GUIDE_EN.md` (315 lines / 4,585 words), `docs/GUIDE_ES.md` (315 lines / 5,073 words), `AGENTS.md` (100 lines / 1,488 words).

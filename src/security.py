@@ -44,7 +44,7 @@ LOCAL_PATH_PATTERN: re.Pattern[str] = re.compile(
     r"(?:file:///|/(?:Users|home)/[a-zA-Z0-9._-]+/)\S*", re.IGNORECASE
 )
 
-# Secret and credential patterns migrated from datadis-analyzer
+# Secret and credential patterns checked across files, Excel workbooks, and git history
 SECRET_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"),
     re.compile(r"(?i)\bbearer\s+[a-z0-9_\-\.]{20,}\b"),

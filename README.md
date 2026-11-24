@@ -3,7 +3,7 @@
 > Unified Python CLI for residential community energy analytics (*comunidades de propietarios*) and optimal photovoltaic self-consumption distribution coefficients ($\beta_i$) in Spain under **Real Decreto 244/2019** & **Orden TED/1247/2021**.
 
 [![Python](https://img.shields.io/badge/Python-3.14+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.11.024-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.11.025-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-SciPy%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -11,7 +11,7 @@
 [![Pre-commit](https://img.shields.io/badge/Pre--commit-Enabled-brightgreen?style=flat&logo=pre-commit&logoColor=white)](https://pre-commit.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat)](LICENSE)
 
-`electricity-share-distributor` (`esd`) is the **unified platform** combining residential community electricity analytics (consolidating and superseding [`datadis-analyzer`](https://github.com/marcosDLCS/datadis-analyzer)) and optimal collective PV distribution under **Real Decreto 244/2019** & **Orden TED/1247/2021** for homeowners associations (*comunidades de propietarios*) in Spain (such as central aerothermal heating, swimming pool, garage ventilation, common area lighting, and elevators).
+`electricity-share-distributor` (`esd`) is a **unified Python CLI platform** for residential community electricity analytics and optimal collective PV distribution under **Real Decreto 244/2019** & **Orden TED/1247/2021** across shared common services in homeowners associations (*comunidades de propietarios*) in Spain (such as central aerothermal heating, swimming pool, garage ventilation, common area lighting, and elevators).
 
 It supports both **consumption-only workflows** (`esd summary`, `esd compare`, consumption-only `esd doctor` — requiring only DATADIS CSVs) and **full solar optimization workflows** (`esd curate`, `esd calculate`). It is **not** meant for splitting bills among private domestic apartments.
 
@@ -307,12 +307,11 @@ esd config --consumption-dir /path/to/consumption --generation-dir /path/to/gene
 ```
 
 ### `esd cleanup`
-Recursively removes generated reports, charts, curated datasets, and cached weather files from `.output`, `.curated`, and `.input/weather` (preserving hidden files such as `.gitkeep`). Also supports the hidden `esd clean` command alias:
+Recursively removes generated reports, charts, curated datasets, and cached weather files from `.output`, `.curated`, and `.input/weather` (preserving hidden files such as `.gitkeep`):
 
 ```bash
-esd cleanup
-esd cleanup --force  # Skip interactive confirmation
-esd clean --force    # Alias preserved for former da users
+esd clean
+esd clean --force  # Skip interactive confirmation
 ```
 
 | Option | Flag | Description | Default |
@@ -337,23 +336,6 @@ esd version
 1. **DATADIS Consumption Files (`.input/consumption/*.csv` or `.input/consumption/<year>/*.csv`):** Discovers CSVs recursively, pre-validates headers via `DatadisValidator`, auto-detects delimiters (`;`, `,`, `\t`), decimal formats (`0,152` / `0.152`), encodings (`utf-8`, `utf-8-sig`, `latin-1`, `cp1252`), supports both `consumo_kWh` and `consumoKwh` column aliases, and conserves 25h autumn DST transition energy.
 2. **Solar Inverter Generation Files (`.input/generation/*.xlsx`):** Ingests inverter and plant generation reports, extracting PV yield (`Rendimiento FV` or `Rendimiento del inversor`), standardizing timestamps, and conserving 25h autumn DST intervals.
 3. **Open-Meteo Hourly Weather Files (`.input/weather/{YYYY}_{lat}_{lon}_weather.csv`):** Standardized CSVs containing hourly records with columns `timestamp,temperature,cloud_cover,weather_code`.
-
----
-
-## 🔄 Migrating from `datadis-analyzer` (`da` ➔ `esd`)
-
-`esd` absorbs all core workflows of [`datadis-analyzer`](https://github.com/marcosDLCS/datadis-analyzer) into one CLI so `datadis-analyzer` can be cleanly archived:
-
-| Workflow / Artifact | Former `datadis-analyzer` (`da`) | Unified `electricity-share-distributor` (`esd`) |
-| :--- | :--- | :--- |
-| **Initialize Workspace** | `da init` | `esd init` |
-| **Consumption Summary** | `da summary [--year --view --cups]` | `esd summary [--year --view --cups -C cups.json]` |
-| **Multi-Year Comparison** | `da compare [-y 2024 -y 2025 --no-charts]` | `esd compare [-y 2024 -y 2025 --no-charts --html]` |
-| **Charts Output** | Matplotlib PNG charts in `.output/charts/` | Zero-dependency native SVGs in `.output/charts/*.svg` |
-| **Input CSV Layout** | `.input/<year>/*.csv` | `.input/consumption/<year>/*.csv` (or flat `.input/consumption/*.csv`) |
-| **Clean Generated Files** | `da cleanup` / `da clean` | `esd cleanup` / `esd clean` (cleans `.output`, `.curated`, `.input/weather`) |
-| **Config & Version** | `.da_config.json`, `da version` | `.esd_config.json`, `esd config`, `esd version` |
-| **Collective PV Sizing** | *(Not available)* | `esd doctor` ➔ `esd curate` ➔ `esd calculate` |
 
 ---
 

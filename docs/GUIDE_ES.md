@@ -14,7 +14,7 @@
 
 ## 1. 🎯 ¿Cuál es el Propósito Real de `esd`?
 
-`electricity-share-distributor` (`esd`) es una **plataforma CLI unificada** de **análisis energético y cálculo del reparto óptimo de autoconsumo fotovoltaico** para los **servicios comunes e instalaciones generales de una misma comunidad de propietarios** en España. Integrando íntegramente las capacidades de `datadis-analyzer` (`da`) dentro de `esd`, presta servicio tanto a comunidades que desean auditar únicamente su consumo eléctrico DATADIS (`esd summary`, `esd compare`) como a comunidades con instalación solar colectiva (`esd doctor`, `esd curate`, `esd calculate`) bajo el Real Decreto 244/2019 y la Orden TED/1247/2021.
+`electricity-share-distributor` (`esd`) es una **plataforma CLI unificada** de **análisis energético y cálculo del reparto óptimo de autoconsumo fotovoltaico** para los **servicios comunes e instalaciones generales de una misma comunidad de propietarios** en España. Presta servicio tanto a comunidades que desean auditar únicamente su consumo eléctrico DATADIS (`esd summary`, `esd compare`) como a comunidades con instalación solar colectiva (`esd doctor`, `esd calculate`) bajo el Real Decreto 244/2019 y la Orden TED/1247/2021.
 
 ### 🚫 Lo que `esd` NO es:
 - **`esd` NO está concebido para repartir energía solar o facturas entre viviendas privadas o pisos particulares de vecinos.**
@@ -194,7 +194,7 @@ esd summary [--year 2025] [--view all|annual|monthly] [--cups ES0021000000000001
 esd compare [-y 2024 -y 2025] [--no-charts] [--html]
 ```
 
-Garantías analíticas heredadas de `datadis-analyzer`:
+Garantías analíticas clave:
 - **Invariante Exacto de Reparto al 100,00%:** Todas las cuotas anuales y mensuales de consumo suman estrictamente `100.00%` (mediante redondeo de resto mayor de Hare-Niemeyer cuando el consumo > 0).
 - **Insignias de Clasificación de Consumidores:** `★` destaca al consumidor dominante ($>30\%$ del consumo total en primera posición); `(0)` marca circuitos inactivos o despreciables ($<1\text{ kWh}$).
 - **Heurística Homogénea de Mes Completo (`[Inc]`):** En `esd compare`, cada mes se considera completo únicamente si supera el 90% de las horas esperadas y abarca más allá del día 27. Los meses parciales o ausentes muestran `[Inc]` y se excluyen simultáneamente en todos los años comparados para garantizar comparativas interanuales justas.
@@ -277,21 +277,7 @@ Al ejecutar `esd calculate`, `esd summary` o `esd compare`, se generan automáti
 
 ---
 
-## 8. 🔄 Migración desde `datadis-analyzer` (`da` ➔ `esd`)
-
-`esd` absorbe por completo las funcionalidades de [`datadis-analyzer`](https://github.com/marcosDLCS/datadis-analyzer) en una única herramienta unificada:
-
-| Antiguo `datadis-analyzer` (`da`) | Equivalente en `esd` Unificado | Notas |
-| :--- | :--- | :--- |
-| `da init` / `da config` | `esd init` / `esd config` | Ajustes persistidos en `.esd_config.json` (`esd init --lang es`) |
-| `da summary` (`--year`, `--view`, `--cups`) | `esd summary` (`-y`, `-v`, `--cups`, `-C`) | Añade enriquecimiento opcional de columna `use` vía `cups.json` |
-| `da compare` (`-y 2024 -y 2025`, `--no-charts`) | `esd compare` (`-y`, `--charts/--no-charts`, `--html`) | Sustituye PNGs por gráficos `.output/charts/*.svg` sin dependencias y cuadro de mando HTML opcional |
-| `.input/<año>/*.csv` | `.input/consumption/<año>/*.csv` | Soporta carpetas anualizadas `<año>/` y estructura plana |
-| `da cleanup` / `da clean` | `esd cleanup` / `esd clean` | Limpia recursivamente `.output`, `.curated` y `.input/weather` |
-
----
-
-## 9. 🗺️ Mapa de Código y Referencia de Trazabilidad
+## 8. 🗺️ Mapa de Código y Referencia de Trazabilidad
 
 Para desarrolladores y agentes autónomos que naveguen por la base de código:
 

@@ -14,7 +14,7 @@
 
 ## 1. 🎯 What is the Real Purpose of `esd`?
 
-`electricity-share-distributor` (`esd`) is a **unified CLI platform** for **residential community energy analytics and optimal collective photovoltaic distribution** across **shared common facilities within a single homeowners association (*comunidad de vecinos / propietarios*)** in Spain. Consolidating the capabilities of `datadis-analyzer` (`da`) directly into `esd`, it serves both communities analyzing pure DATADIS grid consumption (`esd summary`, `esd compare`) and communities optimizing collective solar generation (`esd doctor`, `esd curate`, `esd calculate`) under Real Decreto 244/2019 & Orden TED/1247/2021.
+`electricity-share-distributor` (`esd`) is a **unified CLI platform** for **residential community energy analytics and optimal collective photovoltaic distribution** across **shared common facilities within a single homeowners association (*comunidad de vecinos / propietarios*)** in Spain. It serves both communities analyzing pure DATADIS grid consumption (`esd summary`, `esd compare`) and communities optimizing collective solar generation (`esd doctor`, `esd calculate`) under Real Decreto 244/2019 & Orden TED/1247/2021.
 
 ### 🚫 What `esd` is NOT:
 - **`esd` is NOT meant to distribute energy or bills to private residential dwellings or individual apartments.**
@@ -194,7 +194,7 @@ esd summary [--year 2025] [--view all|annual|monthly] [--cups ES0021000000000001
 esd compare [-y 2024 -y 2025] [--no-charts] [--html]
 ```
 
-Key analytical guarantees preserved from `datadis-analyzer`:
+Key analytical guarantees:
 - **Exact 100.00% Fair-Share Invariant:** Annual and monthly community shares sum strictly to `100.00%` (via Hare-Niemeyer largest remainder rounding whenever consumption > 0).
 - **Consumer Classification Badges:** `★` highlights a dominant consumer accounting for $>30\%$ of community demand at rank #1; `(0)` flags inactive or negligible circuits consuming $<1\text{ kWh}$ over the period.
 - **Apples-to-Apples Calendar Completeness (`[Inc]` Heuristic):** In `esd compare`, each calendar month is marked complete only if readings exceed 90% of expected hours and reach past the 27th day. Partial or missing months are tagged `[Inc]` and excluded across all compared years from annual kWh totals, deltas, and percentage variations.
@@ -277,21 +277,7 @@ Running `esd calculate`, `esd summary`, or `esd compare` generates ready-to-use 
 
 ---
 
-## 8. 🔄 Migrating from `datadis-analyzer` (`da` ➔ `esd`)
-
-`esd` consolidates all capabilities of [`datadis-analyzer`](https://github.com/marcosDLCS/datadis-analyzer) into one unified platform:
-
-| Legacy `datadis-analyzer` (`da`) | Unified `esd` Equivalent | Notes |
-| :--- | :--- | :--- |
-| `da init` / `da config` | `esd init` / `esd config` | Settings live in `.esd_config.json` (`esd init --lang es`) |
-| `da summary` (`--year`, `--view`, `--cups`) | `esd summary` (`-y`, `-v`, `--cups`, `-C`) | Adds optional `use` label enrichment from `cups.json` |
-| `da compare` (`-y 2024 -y 2025`, `--no-charts`) | `esd compare` (`-y`, `--charts/--no-charts`, `--html`) | Replaces PNGs with zero-dependency `.output/charts/*.svg` and optional interactive HTML dashboard |
-| `.input/<year>/*.csv` | `.input/consumption/<year>/*.csv` | Supports both nested `<year>/` trees and flat CSVs |
-| `da cleanup` / `da clean` | `esd cleanup` / `esd clean` | Recursively cleans `.output`, `.curated`, and `.input/weather` |
-
----
-
-## 9. 🗺️ Code Map & Traceability Reference
+## 8. 🗺️ Code Map & Traceability Reference
 
 For developers and autonomous agents navigating the codebase:
 
