@@ -149,39 +149,43 @@ def dataframe_to_aligned_dataset(
     missing_count = int(pivot_cons.isna().sum().sum())
     pivot_cons = pivot_cons.fillna(0.0)
 
-    # Extract generation series
-    gen_series = df_clean.groupby("timestamp")["generation"].first()
-
-    # Combine into aligned DataFrame
-    aligned_df = pivot_cons.copy()
-    aligned_df["generation_kwh"] = gen_series.loc[aligned_df.index]
+    # Combine temporal metrics into a single groupby pass and align with pivoted consumption
+    agg_spec: dict[str, str] = {"generation": "first"}
     if "community_demand" in df_clean.columns:
-        aligned_df["community_demand"] = (
-            df_clean.groupby("timestamp")["community_demand"].first().loc[aligned_df.index]
-        )
-    for add_col in (
+        agg_spec["community_demand"] = "first"
+    for add_col in ("self_consumption", "exported_energy", "imported_energy"):
+        if add_col in df_clean.columns:
+            agg_spec[add_col] = "sum"
+    for weather_col in ("temperature", "cloud_cover"):
+        if weather_col in df_clean.columns:
+            agg_spec[weather_col] = "first"
+
+    ts_meta = df_clean.groupby("timestamp", sort=False).agg(agg_spec).reindex(pivot_cons.index)
+
+    aligned_df = pivot_cons.copy()
+    aligned_df["generation_kwh"] = ts_meta["generation"]
+    for col in (
+        "community_demand",
         "self_consumption",
         "exported_energy",
         "imported_energy",
+        "temperature",
+        "cloud_cover",
     ):
-        if add_col in df_clean.columns:
-            aligned_df[add_col] = df_clean.groupby("timestamp")[add_col].sum().loc[aligned_df.index]
-    if "temperature" in df_clean.columns:
-        aligned_df["temperature"] = (
-            df_clean.groupby("timestamp")["temperature"].first().loc[aligned_df.index]
-        )
-    if "cloud_cover" in df_clean.columns:
-        aligned_df["cloud_cover"] = (
-            df_clean.groupby("timestamp")["cloud_cover"].first().loc[aligned_df.index]
-        )
+        if col in ts_meta.columns:
+            aligned_df[col] = ts_meta[col]
     aligned_df = aligned_df.sort_index()
 
-    # Extract CUPS functional uses if available
+    # Extract CUPS functional uses if available (vectorized deduplication preserving last value)
     cups_uses: dict[str, str] = {}
     if "use" in df_clean.columns:
-        for cups, use_val in zip(df_clean["cups_id"], df_clean["use"], strict=False):
-            if cups and pd.notna(use_val) and str(use_val).strip():
-                cups_uses[str(cups)] = str(use_val).strip()
+        use_clean = df_clean["use"].astype("string").str.strip()
+        valid_uses = df_clean.loc[
+            df_clean["cups_id"].notna() & use_clean.notna() & (use_clean != ""),
+            ["cups_id", "use"],
+        ].drop_duplicates(subset=["cups_id"], keep="last")
+        for cups, use_val in zip(valid_uses["cups_id"], valid_uses["use"], strict=False):
+            cups_uses[str(cups)] = str(use_val).strip()
     for cid, c_point in cups_cfg.items():
         if cid in cups_list and c_point.use and cid not in cups_uses:
             cups_uses[cid] = c_point.use
@@ -189,10 +193,15 @@ def dataframe_to_aligned_dataset(
     # Extract primary CUPS if available
     resolved_primary = primary_cups
     if not resolved_primary and "primary" in df_clean.columns:
-        pri_mask = df_clean["primary"].astype(str).str.lower().isin(["true", "1"])
-        pri_rows = df_clean[pri_mask]
+        pri_vals = df_clean["primary"]
+        pri_mask = (
+            pri_vals
+            if pd.api.types.is_bool_dtype(pri_vals)
+            else pri_vals.astype(str).str.lower().isin(["true", "1"])
+        )
+        pri_rows = df_clean.loc[pri_mask, "cups_id"]
         if not pri_rows.empty:
-            cand = str(pri_rows["cups_id"].iloc[0])
+            cand = str(pri_rows.iloc[0])
             if cand in cups_list:
                 resolved_primary = cand
 
@@ -259,6 +268,8 @@ class DataCurator:
         self.cups_config_path = Path(cups_config_path) if cups_config_path else None
         self.curated_dir = Path(curated_dir)
         self.weather_dir = Path(weather_dir)
+        self._last_curated_dataset: CuratedDataset | None = None
+        self._last_curated_df: pd.DataFrame | None = None
 
     def _resolve_cups_path(self) -> Path | None:
         """Resolve cups.json path, isolating custom test directories from global workspace config."""
@@ -437,8 +448,9 @@ class DataCurator:
         curated_dir: Path | str,
         base_name: str = "generation",
         delimiter: str = ";",
+        export_excel: bool = True,
     ) -> tuple[Path, Path]:
-        """Export canonical GenerationDataset to CSV and styled Excel (.xlsx) in curated_dir."""
+        """Export canonical GenerationDataset to CSV and optionally styled Excel (.xlsx) in curated_dir."""
         from src.presentation.export import ReportExporter
 
         exporter = ReportExporter(
@@ -446,16 +458,22 @@ class DataCurator:
             delimiter=delimiter,
             decimal_char="," if delimiter == ";" else ".",
         )
+        gen_df = dataset.to_dataframe()
         csv_path = exporter.export_generation_dataset(
             dataset=dataset,
             curated_dir=curated_dir,
             base_name=base_name,
+            df=gen_df,
         )
-        excel_path = exporter.export_generation_excel(
-            dataset=dataset,
-            curated_dir=curated_dir,
-            base_name=base_name,
-        )
+        if export_excel:
+            excel_path = exporter.export_generation_excel(
+                dataset=dataset,
+                curated_dir=curated_dir,
+                base_name=base_name,
+                df=gen_df,
+            )
+        else:
+            excel_path = Path(curated_dir) / f"{base_name}.xlsx"
         return csv_path, excel_path
 
     @classmethod
@@ -531,8 +549,9 @@ class DataCurator:
         curated_dir: Path | str,
         base_name: str = "consumption",
         delimiter: str = ";",
+        export_excel: bool = True,
     ) -> tuple[Path, Path]:
-        """Export canonical ConsumptionDataset to CSV and styled Excel (.xlsx) in curated_dir."""
+        """Export canonical ConsumptionDataset to CSV and optionally styled Excel (.xlsx) in curated_dir."""
         from src.presentation.export import ReportExporter
 
         exporter = ReportExporter(
@@ -540,16 +559,22 @@ class DataCurator:
             delimiter=delimiter,
             decimal_char="," if delimiter == ";" else ".",
         )
+        cons_df = dataset.to_dataframe()
         csv_path = exporter.export_consumption_dataset(
             dataset=dataset,
             curated_dir=curated_dir,
             base_name=base_name,
+            df=cons_df,
         )
-        excel_path = exporter.export_consumption_excel(
-            dataset=dataset,
-            curated_dir=curated_dir,
-            base_name=base_name,
-        )
+        if export_excel:
+            excel_path = exporter.export_consumption_excel(
+                dataset=dataset,
+                curated_dir=curated_dir,
+                base_name=base_name,
+                df=cons_df,
+            )
+        else:
+            excel_path = Path(curated_dir) / f"{base_name}.xlsx"
         return csv_path, excel_path
 
     @classmethod
@@ -650,24 +675,18 @@ class DataCurator:
                 )
 
             c_df = pd.DataFrame(
-                [
-                    {
-                        "cups": r.cups_id,
-                        "timestamp": r.timestamp,
-                        "consumption_kwh": float(r.consumption),
-                    }
-                    for r in filtered_records
-                ],
+                {
+                    "cups": [r.cups_id for r in filtered_records],
+                    "timestamp": [r.timestamp for r in filtered_records],
+                    "consumption_kwh": [float(r.consumption) for r in filtered_records],
+                },
                 columns=["cups", "timestamp", "consumption_kwh"],
             )
             g_df = pd.DataFrame(
-                [
-                    {
-                        "timestamp": r.timestamp,
-                        "generation_kwh": float(r.generation),
-                    }
-                    for r in gen_ds.records
-                ],
+                {
+                    "timestamp": [r.timestamp for r in gen_ds.records],
+                    "generation_kwh": [float(r.generation) for r in gen_ds.records],
+                },
                 columns=["timestamp", "generation_kwh"],
             )
 
@@ -924,6 +943,7 @@ class DataCurator:
         dataset: CuratedDataset,
         curated_dir: Path | str,
         base_name: str = "esd",
+        df: pd.DataFrame | None = None,
     ) -> Path:
         """Export master ESD curated dataset to a styled Excel (.xlsx) file.
 
@@ -931,6 +951,7 @@ class DataCurator:
             dataset: The CuratedDataset to export.
             curated_dir: Directory where the Excel file should be written.
             base_name: File basename without extension (defaults to 'esd').
+            df: Optional pre-built DataFrame to avoid recomputing to_dataframe().
 
         Returns:
             Path to the generated Excel file.
@@ -942,6 +963,7 @@ class DataCurator:
             dataset=dataset,
             curated_dir=curated_dir,
             base_name=base_name,
+            df=df,
         )
 
     @classmethod
@@ -951,14 +973,18 @@ class DataCurator:
         curated_dir: Path | str,
         base_name: str = "esd",
         delimiter: str = ";",
+        export_excel: bool = True,
+        df: pd.DataFrame | None = None,
     ) -> Path:
-        """Export master ESD curated dataset to a clean CSV file and sibling styled Excel (.xlsx) file.
+        """Export master ESD curated dataset to a clean CSV file and optional sibling styled Excel (.xlsx) file.
 
         Args:
             dataset: The CuratedDataset to export.
             curated_dir: Directory where the CSV and Excel files should be written.
             base_name: File basename without extension (defaults to 'esd').
             delimiter: CSV delimiter character (defaults to ';').
+            export_excel: Whether to also generate the sibling styled Excel workbook.
+            df: Optional pre-built DataFrame to avoid recomputing to_dataframe().
 
         Returns:
             Path to the generated CSV file.
@@ -970,16 +996,20 @@ class DataCurator:
             delimiter=delimiter,
             decimal_char="," if delimiter == ";" else ".",
         )
+        curated_df = df if df is not None else dataset.to_dataframe()
         csv_file = exporter.export_curated_dataset(
             dataset=dataset,
             curated_dir=curated_dir,
             base_name=base_name,
+            df=curated_df,
         )
-        cls.export_excel(
-            dataset=dataset,
-            curated_dir=curated_dir,
-            base_name=base_name,
-        )
+        if export_excel:
+            cls.export_excel(
+                dataset=dataset,
+                curated_dir=curated_dir,
+                base_name=base_name,
+                df=curated_df,
+            )
         return csv_file
 
     def ensure_curated(
@@ -987,22 +1017,27 @@ class DataCurator:
         force: bool = False,
         base_name: str = "esd",
         delimiter: str = ";",
+        export_excel: bool = True,
     ) -> Path:
-        """Ensure aggregated generation, consumption, and master ESD CSV/Excel files exist.
+        """Ensure aggregated generation, consumption, and master ESD CSV (and optional Excel) files exist.
 
         Executes the full 3-stage pipeline if missing or forced:
-        1. Aggregate generation -> generation.csv + generation.xlsx
-        2. Aggregate consumption -> consumption.csv + consumption.xlsx
-        3. Curate master ESD dataset -> esd.csv + esd.xlsx
+        1. Aggregate generation -> generation.csv (+ generation.xlsx if export_excel)
+        2. Aggregate consumption -> consumption.csv (+ consumption.xlsx if export_excel)
+        3. Curate master ESD dataset -> esd.csv (+ esd.xlsx if export_excel)
 
         Args:
             force: If True, re-runs full aggregation and curation even if files already exist.
             base_name: Base filename for master dataset (defaults to 'esd').
             delimiter: CSV separator (defaults to ';').
+            export_excel: Whether to generate sibling styled .xlsx files (defaults to True).
 
         Returns:
             Path to the verified master ESD CSV file.
         """
+        self._last_curated_dataset = None
+        self._last_curated_df = None
+
         target_dir = self.curated_dir
         if target_dir.is_file():
             target_dir = target_dir.parent
@@ -1017,19 +1052,23 @@ class DataCurator:
 
         cups_configs = self.load_cups_config()
 
+        excel_ok = not export_excel or (
+            xlsx_path.exists()
+            and xlsx_path.stat().st_size > 0
+            and gen_xlsx.exists()
+            and cons_xlsx.exists()
+        )
         if (
             not force
             and csv_path.exists()
             and csv_path.stat().st_size > 0
-            and xlsx_path.exists()
-            and xlsx_path.stat().st_size > 0
             and gen_csv.exists()
-            and gen_xlsx.exists()
             and cons_csv.exists()
-            and cons_xlsx.exists()
+            and excel_ok
         ):
             try:
-                first_line = csv_path.read_text(encoding="utf-8").splitlines()[0]
+                with csv_path.open("r", encoding="utf-8") as fh:
+                    first_line = fh.readline().rstrip("\r\n")
                 sep = (
                     delimiter
                     if delimiter in first_line
@@ -1088,20 +1127,35 @@ class DataCurator:
                 pass
 
         gen_dataset = self.aggregate_generation()
-        self.export_generation(gen_dataset, curated_dir=target_dir, delimiter=delimiter)
+        self.export_generation(
+            gen_dataset,
+            curated_dir=target_dir,
+            delimiter=delimiter,
+            export_excel=export_excel,
+        )
 
         cons_dataset = self.aggregate_consumption(cups_configs=cups_configs)
-        self.export_consumption(cons_dataset, curated_dir=target_dir, delimiter=delimiter)
+        self.export_consumption(
+            cons_dataset,
+            curated_dir=target_dir,
+            delimiter=delimiter,
+            export_excel=export_excel,
+        )
 
         dataset = self.curate(
             generation_dataset=gen_dataset,
             consumption_dataset=cons_dataset,
         )
+        curated_df = dataset.to_dataframe()
+        self._last_curated_dataset = dataset
+        self._last_curated_df = curated_df
         return self.export_csv(
             dataset,
             curated_dir=target_dir,
             base_name=base_name,
             delimiter=delimiter,
+            export_excel=export_excel,
+            df=curated_df,
         )
 
     @classmethod

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Final
 
+import numpy as np
 import pandas as pd
 
 from src.domain.exceptions import (
@@ -74,6 +75,53 @@ ESD_COLUMNS: Final[tuple[str, ...]] = (
     "temperature",
     "cloud_cover",
 )
+
+
+def _add_calendar_columns(df: pd.DataFrame) -> None:
+    """Populate year, month, day, hour, day_of_week, and is_weekend from timestamps."""
+    codes, uniques = pd.factorize(df["timestamp"], sort=False)
+    dt_uniq = pd.to_datetime(uniques, format="%Y-%m-%d %H:%M:%S", errors="coerce")
+    if dt_uniq.isna().any():
+        dt_uniq = dt_uniq.fillna(pd.to_datetime(uniques, errors="coerce"))
+
+    valid = codes >= 0
+    if bool(valid.all()) and not bool(dt_uniq.isna().any()):
+        dow_arr = dt_uniq.day_of_week.to_numpy(dtype="int64")[codes]
+        dow_names = np.array(_DAYS_OF_WEEK, dtype=object)
+        df["year"] = pd.array(dt_uniq.year.to_numpy(dtype="int64")[codes], dtype="Int64")
+        df["month"] = pd.array(dt_uniq.month.to_numpy(dtype="int64")[codes], dtype="Int64")
+        df["day"] = pd.array(dt_uniq.day.to_numpy(dtype="int64")[codes], dtype="Int64")
+        df["hour"] = pd.array(dt_uniq.hour.to_numpy(dtype="int64")[codes], dtype="Int64")
+        df["day_of_week"] = dow_names[dow_arr]
+        df["is_weekend"] = (dow_arr >= 5).astype(bool)
+    else:
+        dt_series = pd.to_datetime(df["timestamp"], format="%Y-%m-%d %H:%M:%S", errors="coerce")
+        if dt_series.isna().any():
+            dt_series = dt_series.fillna(pd.to_datetime(df["timestamp"], errors="coerce"))
+        dow_idx = dt_series.dt.day_of_week
+        df["year"] = dt_series.dt.year.astype("Int64")
+        df["month"] = dt_series.dt.month.astype("Int64")
+        df["day"] = dt_series.dt.day.astype("Int64")
+        df["hour"] = dt_series.dt.hour.astype("Int64")
+        df["day_of_week"] = dow_idx.map(dict(enumerate(_DAYS_OF_WEEK))).fillna("")
+        df["is_weekend"] = (dow_idx >= 5).fillna(False).astype(bool)
+
+
+def _sort_by_timestamp_use_cups(df: pd.DataFrame, sort_cols: list[str]) -> pd.DataFrame:
+    """Sort DataFrame by (timestamp, use, cups_id) using fast unique-value lowercasing."""
+
+    def _key(col: pd.Series) -> pd.Series:
+        if col.name not in ("use", "cups_id"):
+            return col
+        uniq = col.unique()
+        lower_map = {val: str(val).lower() for val in uniq}
+        return col.map(lower_map)
+
+    return df.sort_values(
+        by=sort_cols,
+        key=_key,
+        ascending=[True] * len(sort_cols),
+    ).reset_index(drop=True)
 
 
 def extract_temporal_features(
@@ -183,29 +231,16 @@ class GenerationDataset:
             return pd.DataFrame(columns=columns)
 
         df = pd.DataFrame(
-            [
-                {
-                    "timestamp": r.timestamp,
-                    "generation": r.generation,
-                    "consumption": r.consumption,
-                    "self_consumption": r.self_consumption,
-                    "exported_energy": r.exported_energy,
-                    "imported_energy": r.imported_energy,
-                }
-                for r in self.records
-            ]
+            {
+                "timestamp": [r.timestamp for r in self.records],
+                "generation": [r.generation for r in self.records],
+                "consumption": [r.consumption for r in self.records],
+                "self_consumption": [r.self_consumption for r in self.records],
+                "exported_energy": [r.exported_energy for r in self.records],
+                "imported_energy": [r.imported_energy for r in self.records],
+            }
         )
-        dt_series = pd.to_datetime(df["timestamp"], format="%Y-%m-%d %H:%M:%S", errors="coerce")
-        if dt_series.isna().any():
-            dt_series = dt_series.fillna(pd.to_datetime(df["timestamp"], errors="coerce"))
-
-        dow_idx = dt_series.dt.day_of_week
-        df["year"] = dt_series.dt.year.astype("Int64")
-        df["month"] = dt_series.dt.month.astype("Int64")
-        df["day"] = dt_series.dt.day.astype("Int64")
-        df["hour"] = dt_series.dt.hour.astype("Int64")
-        df["day_of_week"] = dow_idx.map(dict(enumerate(_DAYS_OF_WEEK))).fillna("")
-        df["is_weekend"] = (dow_idx >= 5).fillna(False).astype(bool)
+        _add_calendar_columns(df)
 
         df = df[columns].sort_values(by="timestamp", ascending=True).reset_index(drop=True)
         return df
@@ -389,36 +424,18 @@ class ConsumptionDataset:
             return pd.DataFrame(columns=columns)
 
         df = pd.DataFrame(
-            [
-                {
-                    "timestamp": r.timestamp,
-                    "cups_id": r.cups_id,
-                    "use": r.use,
-                    "consumption": r.consumption,
-                }
-                for r in self.records
-            ]
+            {
+                "timestamp": [r.timestamp for r in self.records],
+                "cups_id": [r.cups_id for r in self.records],
+                "use": [r.use for r in self.records],
+                "consumption": [r.consumption for r in self.records],
+            }
         )
-        dt_series = pd.to_datetime(df["timestamp"], format="%Y-%m-%d %H:%M:%S", errors="coerce")
-        if dt_series.isna().any():
-            dt_series = dt_series.fillna(pd.to_datetime(df["timestamp"], errors="coerce"))
-
-        dow_idx = dt_series.dt.day_of_week
-        df["year"] = dt_series.dt.year.astype("Int64")
-        df["month"] = dt_series.dt.month.astype("Int64")
-        df["day"] = dt_series.dt.day.astype("Int64")
-        df["hour"] = dt_series.dt.hour.astype("Int64")
-        df["day_of_week"] = dow_idx.map(dict(enumerate(_DAYS_OF_WEEK))).fillna("")
-        df["is_weekend"] = (dow_idx >= 5).fillna(False).astype(bool)
+        _add_calendar_columns(df)
 
         df = df[columns]
         sort_cols = [col for col in ["timestamp", "use", "cups_id"] if col in df.columns]
-        df = df.sort_values(
-            by=sort_cols,
-            key=lambda col: col.astype(str).str.lower() if col.name in ("use", "cups_id") else col,
-            ascending=[True] * len(sort_cols),
-        ).reset_index(drop=True)
-        return df
+        return _sort_by_timestamp_use_cups(df, sort_cols)
 
     @classmethod
     def from_dataframe(
@@ -474,35 +491,28 @@ class ConsumptionDataset:
         cons_series = _clean_numeric_series(df_clean["consumption"]).fillna(0.0)
         df_clean["_cons_num"] = cons_series
 
-        sort_cols = ["timestamp", "use", "cups_id"]
-        df_clean = df_clean.sort_values(
-            by=sort_cols,
-            key=lambda col: col.astype(str).str.lower() if col.name in ("use", "cups_id") else col,
-            ascending=[True, True, True],
-        ).reset_index(drop=True)
+        df_clean = _sort_by_timestamp_use_cups(df_clean, ["timestamp", "use", "cups_id"])
 
-        records: list[ConsumptionRecord] = []
-        cups_totals: dict[str, float] = {}
-        total_cons = 0.0
-
-        for ts, cid, use_val, c_val in zip(
-            df_clean["timestamp"],
-            df_clean["cups_id"],
-            df_clean["use"],
-            df_clean["_cons_num"],
-            strict=False,
-        ):
-            c_float = float(c_val)
-            total_cons += c_float
-            cups_totals[str(cid)] = cups_totals.get(str(cid), 0.0) + c_float
-            records.append(
-                ConsumptionRecord(
-                    timestamp=str(ts),
-                    cups_id=str(cid),
-                    use=str(use_val),
-                    consumption=format_energy_value(c_float),
-                )
+        total_cons = float(df_clean["_cons_num"].sum())
+        cups_totals = {
+            str(k): float(v)
+            for k, v in df_clean.groupby("cups_id", sort=False)["_cons_num"].sum().items()
+        }
+        records = [
+            ConsumptionRecord(
+                timestamp=ts,
+                cups_id=cid,
+                use=use_val,
+                consumption=format_energy_value(c_val),
             )
+            for ts, cid, use_val, c_val in zip(
+                df_clean["timestamp"].tolist(),
+                df_clean["cups_id"].tolist(),
+                df_clean["use"].tolist(),
+                df_clean["_cons_num"].to_numpy(dtype=float).tolist(),
+                strict=False,
+            )
+        ]
 
         cups_list = sorted(cups_totals.keys())
         unique_ts = sorted(df_clean["timestamp"].unique())
@@ -655,29 +665,12 @@ class CuratedDataset:
             }
         )
 
-        dt_series = pd.to_datetime(df["timestamp"], format="%Y-%m-%d %H:%M:%S", errors="coerce")
-        if dt_series.isna().any():
-            dt_series = dt_series.fillna(pd.to_datetime(df["timestamp"], errors="coerce"))
-
-        dow_idx = dt_series.dt.day_of_week
-        df["year"] = dt_series.dt.year.astype("Int64")
-        df["month"] = dt_series.dt.month.astype("Int64")
-        df["day"] = dt_series.dt.day.astype("Int64")
-        df["hour"] = dt_series.dt.hour.astype("Int64")
-        df["day_of_week"] = dow_idx.map(dict(enumerate(_DAYS_OF_WEEK))).fillna("")
-        df["is_weekend"] = (dow_idx >= 5).fillna(False).astype(bool)
+        _add_calendar_columns(df)
 
         df["cloud_cover"] = pd.to_numeric(df["cloud_cover"], errors="coerce").astype("Int64")
         df["temperature"] = pd.to_numeric(df["temperature"], errors="coerce").round(1)
 
-        df = df[columns]
-        sort_cols = ["timestamp", "use", "cups_id"]
-        df = df.sort_values(
-            by=sort_cols,
-            key=lambda col: col.astype(str).str.lower() if col.name in ("use", "cups_id") else col,
-            ascending=[True, True, True],
-        ).reset_index(drop=True)
-        return df
+        return _sort_by_timestamp_use_cups(df[columns], ["timestamp", "use", "cups_id"])
 
     def to_aligned_dataset(
         self,

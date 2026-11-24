@@ -560,13 +560,13 @@ def test_cli_calculate_auto_curates_when_missing(
     result = runner.invoke(app, ["calculate"])
 
     assert result.exit_code == 0
-    # Verified: generation.csv, consumption.csv, and esd.csv were generated on the fly!
+    # Verified: generation.csv, consumption.csv, and esd.csv were generated on the fly without redundant Excel workbooks!
     assert (curated_dir / "esd.csv").exists()
-    assert (curated_dir / "esd.xlsx").exists()
+    assert not (curated_dir / "esd.xlsx").exists()
     assert (curated_dir / "generation.csv").exists()
-    assert (curated_dir / "generation.xlsx").exists()
+    assert not (curated_dir / "generation.xlsx").exists()
     assert (curated_dir / "consumption.csv").exists()
-    assert (curated_dir / "consumption.xlsx").exists()
+    assert not (curated_dir / "consumption.xlsx").exists()
     assert "COLLECTIVE SELF-CONSUMPTION COMMUNITY SUMMARY" in result.output
 
 

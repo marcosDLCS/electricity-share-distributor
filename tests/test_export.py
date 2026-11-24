@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from src.ingestion.schema import IngestionSummary
 from src.optimization.models import (
@@ -938,3 +939,98 @@ def test_formula_injection_neutralized_across_all_string_columns_and_lite_export
     assert ws.cell(row=2, column=headers.index("cups_id") + 1).value == "' =CUPS_ID"
     assert ws.cell(row=2, column=headers.index("use") + 1).value == "' =LeadingSpaceFormula"
     assert ws.cell(row=2, column=headers.index("temperature") + 1).value == -3.5
+
+
+def test_streaming_excel_export_styling_and_linearity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify write_only streaming Excel export preserves styling and reuses prebuilt DataFrames."""
+    import openpyxl
+
+    from src.curation.models import (
+        CuratedCupsReading,
+        CuratedDataset,
+        CuratedHourRecord,
+        CuratedSummary,
+    )
+
+    records = [
+        CuratedHourRecord(
+            timestamp=f"2026-05-01 {hour:02d}:00:00",
+            generation=10.0,
+            cups=[
+                CuratedCupsReading(
+                    id="ES0021000000000001AA",
+                    use="Pool",
+                    consumption=4.0,
+                    self_consumption=3.0,
+                    exported_energy=2.0,
+                    imported_energy=1.0,
+                ),
+                CuratedCupsReading(
+                    id="ES0021000000000002BB",
+                    use="Lift",
+                    consumption=2.0,
+                    self_consumption=2.0,
+                    exported_energy=3.0,
+                    imported_energy=0.0,
+                ),
+            ],
+            temperature=18.5,
+            cloud_cover=10,
+        )
+        for hour in range(3)
+    ]
+    curated_ds = CuratedDataset(
+        records=records,
+        summary=CuratedSummary(
+            total_hours=3,
+            reconciled_hours_count=0,
+            recovered_kwh=0.0,
+            total_generation_kwh=30.0,
+            total_consumption_kwh=18.0,
+            start_time="2026-05-01 00:00:00",
+            end_time="2026-05-01 02:00:00",
+            cups_count=2,
+            primary_cups=None,
+        ),
+        cups_configs={},
+    )
+    prebuilt_df = curated_ds.to_dataframe()
+    monkeypatch.setattr(
+        curated_ds,
+        "to_dataframe",
+        lambda: (_ for _ in ()).throw(AssertionError("to_dataframe should not run again")),
+    )
+
+    exporter = ReportExporter(output_dir=tmp_path, timestamp="20260531_stream")
+    xlsx_path = exporter.export_curated_excel(curated_ds, df=prebuilt_df)
+
+    wb = openpyxl.load_workbook(xlsx_path)
+    ws = wb.active
+    assert ws is not None
+    assert ws.freeze_panes == "A2"
+    assert ws.auto_filter.ref == "A1:Q7"
+    assert ws.views.sheetView[0].showGridLines is True
+    assert ws.column_dimensions["A"].width == 21
+    assert ws.cell(row=1, column=1).fill.start_color.rgb == "002B4C7E"
+    assert ws.cell(row=2, column=7).value in ("✅", "❌")
+
+    # Hour 00 (rows 2-3): plain, Hour 01 (rows 4-5): tinted, Hour 02 (rows 6-7): plain
+    assert (
+        ws.cell(row=2, column=1).fill.start_color.rgb
+        == ws.cell(row=3, column=1).fill.start_color.rgb
+    )
+    assert ws.cell(row=4, column=1).fill.start_color.rgb == "00F4F6F9"
+    assert (
+        ws.cell(row=4, column=1).fill.start_color.rgb
+        == ws.cell(row=5, column=1).fill.start_color.rgb
+    )
+    assert (
+        ws.cell(row=6, column=1).fill.start_color.rgb
+        == ws.cell(row=2, column=1).fill.start_color.rgb
+    )
+    assert (
+        ws.cell(row=4, column=1).fill.start_color.rgb
+        != ws.cell(row=2, column=1).fill.start_color.rgb
+    )

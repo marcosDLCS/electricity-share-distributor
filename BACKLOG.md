@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| `ARCH-1` | `P1` | Architecture | Fix $O(N^2)$ Excel export bottleneck & eliminate curation I/O round-trips | `src/presentation/export.py`, `src/curation/curator.py`, `src/curation/models.py`, `src/services/calculation_service.py` |
 | `ARCH-2` | `P1` | Architecture | Vectorize solver, lazy-load CLI imports & accelerate all ingestion pipelines | `src/optimization/engine.py`, `src/cli.py`, `src/ingestion/`, `src/analytics/aggregator.py`, `src/presentation/html_report.py` |
 | `SIMP-1` | `P1` | Simplicity | Consolidate CLI surface from 11 commands (+ alias) to 7 core commands | `src/cli.py`, `src/i18n.py`, `src/presentation/views/common.py`, `tests/test_cli.py` |
 | `DES-1` | `P1` | Design | Declutter default console outputs (`summary`, `doctor`, `calculate`, `compare`) | `src/presentation/views/consumption.py`, `doctor.py`, `summary.py`, `comparison.py`, `common.py` |
@@ -44,19 +43,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 _No pending tasks (deferred until active `P1` performance, simplicity, design, and documentation tasks are completed)._
 
 ## 🏗️ Architecture
-
-### `ARCH-1` `[P1]` — Fix $O(N^2)$ Excel Export Bottleneck & Eliminate Curation I/O Round-Trips
-- **Goal:** Resolve the primary root cause behind slow `esd calculate` / `esd curate` execution. Empirical profiling isolated an **$O(N^2)$ quadratic regression** in `_export_styled_dataframe_excel()` (`for c_idx, cell in enumerate(ws[r_idx], 1):` in `openpyxl` standard mode: 4.97s for 7.5k rows, ~15+ min for 128k rows in `consumption.xlsx`, ~3+ min for 60k rows in `esd.xlsx`), compounded by double `dataset.to_dataframe()` conversions per stage, reading the entire `esd.csv` into RAM just for header line 1 (`read_text().splitlines()[0]`), re-reading `esd.csv` from disk immediately after curation in `CalculationService`, and 7 redundant `groupby("timestamp")` passes in `dataframe_to_aligned_dataset()`.
-- **Target Components:**
-  - `src/presentation/export.py` (`_export_styled_dataframe_excel`, `export_generation_*`, `export_consumption_*`, `export_curated_*`)
-  - `src/curation/curator.py` (`ensure_curated`, `dataframe_to_aligned_dataset`, `export_*`)
-  - `src/curation/models.py` (`GenerationDataset`, `ConsumptionDataset`, `CuratedDataset`)
-  - `src/services/calculation_service.py` (`CalculationService.execute`)
-- **Acceptance Criteria:**
-  1. Rewrite `_export_styled_dataframe_excel()` using streaming `openpyxl.Workbook(write_only=True)` + `WriteOnlyCell` (true $O(N)$ time and $O(1)$ memory) while preserving semantic header colors, hour-grouped zebra shading, `✅`/`❌` weekend badges, column widths, freeze panes, and AutoFilter.
-  2. Build each stage's canonical DataFrame once and reuse it for CSV/Excel exports instead of calling `to_dataframe()` twice; skip redundant `.xlsx` generation during `esd calculate` auto-curation when only `esd.csv` is required (generating `.xlsx` only on explicit curation/export or via streaming under < 3s).
-  3. Read only the header line (`open().readline()`) during schema checks, pass newly curated in-memory data directly to `CalculationService` without re-reading `esd.csv`, and collapse `dataframe_to_aligned_dataset()` to a single `groupby("timestamp").agg(...)` plus vectorized `cups_uses` extraction (`drop_duplicates("cups_id")`).
-  4. Cold `esd calculate` on a full ~128k-row / 12-file dataset completes in **< 3s** (warm run **< 1.5s**); all curation, export, and integration tests pass.
 
 ### `ARCH-2` `[P1]` — Vectorize Solver, Lazy-Load CLI Imports & Accelerate All Ingestion Pipelines
 - **Goal:** Eliminate all secondary performance bottlenecks across every command (`calculate`, `summary`, `compare`, `doctor`, and lightweight commands):

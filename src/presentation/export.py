@@ -209,6 +209,7 @@ class ReportExporter:
         - Auto-fit column widths, freeze panes on header row, and native AutoFilter.
         """
         import openpyxl
+        from openpyxl.cell import WriteOnlyCell
         from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
         from openpyxl.utils import get_column_letter
 
@@ -220,9 +221,8 @@ class ReportExporter:
         if "is_weekend" in df_out.columns:
             df_out["is_weekend"] = df_out["is_weekend"].astype(bool).map({True: "✅", False: "❌"})
 
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = sheet_title
+        wb = openpyxl.Workbook(write_only=True)
+        ws = wb.create_sheet(title=sheet_title)
         if ws.views.sheetView:
             ws.views.sheetView[0].showGridLines = True
 
@@ -272,27 +272,36 @@ class ReportExporter:
         }
 
         headers = list(df_out.columns)
-        ws.append(headers)
+        ws.freeze_panes = "A2"
+        for col_idx, h in enumerate(headers, 1):
+            ws.column_dimensions[get_column_letter(col_idx)].width = col_widths.get(h, 15)
+        if headers:
+            ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{len(df_out) + 1}"
 
         header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-        for col_idx, h in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col_idx)
+        header_align = Alignment(horizontal="center", vertical="center")
+        header_fills: dict[str, PatternFill] = {}
+        header_cells: list[WriteOnlyCell] = []
+        for h in headers:
             color = header_group_colors.get(h, "2B4C7E")
-            cell.fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+            fill = header_fills.get(color)
+            if fill is None:
+                fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+                header_fills[color] = fill
+            cell = WriteOnlyCell(ws, value=h)
+            cell.fill = fill
             cell.font = header_font
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-            col_letter = get_column_letter(col_idx)
-            ws.column_dimensions[col_letter].width = col_widths.get(h, 15)
+            cell.alignment = header_align
+            header_cells.append(cell)
+        ws.append(header_cells)
 
         fill_tint = PatternFill(start_color="F4F6F9", end_color="F4F6F9", fill_type="solid")
         thin_side = Side(style="thin", color="E2E8F0")
         cell_border = Border(top=thin_side, bottom=thin_side, left=thin_side, right=thin_side)
         align_center = Alignment(horizontal="center", vertical="center")
 
-        center_col_indices = {
-            col_idx
-            for col_idx, h in enumerate(headers, 1)
-            if h
+        center_col_mask = tuple(
+            h
             in (
                 "timestamp",
                 "year",
@@ -303,31 +312,33 @@ class ReportExporter:
                 "is_weekend",
                 "cloud_cover",
             )
-        }
+            for h in headers
+        )
 
         ts_idx = headers.index("timestamp") if "timestamp" in headers else None
         df_clean = df_out.astype(object).where(pd.notna(df_out), None)
 
         current_hour_key: Any = None
         hour_toggle = 0
-        for r_idx, row_vals in enumerate(df_clean.itertuples(index=False, name=None), 2):
+        for row_vals in df_clean.itertuples(index=False, name=None):
             h_key = row_vals[ts_idx] if ts_idx is not None else None
             if h_key != current_hour_key:
                 if current_hour_key is not None:
                     hour_toggle = 1 - hour_toggle
                 current_hour_key = h_key
 
-            ws.append(row_vals)
-
             if hour_toggle == 1:
-                for c_idx, cell in enumerate(ws[r_idx], 1):
+                row_cells: list[WriteOnlyCell] = []
+                for val, is_center in zip(row_vals, center_col_mask, strict=True):
+                    cell = WriteOnlyCell(ws, value=val)
                     cell.fill = fill_tint
                     cell.border = cell_border
-                    if c_idx in center_col_indices:
+                    if is_center:
                         cell.alignment = align_center
-
-        ws.freeze_panes = "A2"
-        ws.auto_filter.ref = ws.dimensions
+                    row_cells.append(cell)
+                ws.append(row_cells)
+            else:
+                ws.append(row_vals)
 
         wb.save(excel_file)
         return excel_file
@@ -337,10 +348,11 @@ class ReportExporter:
         dataset: GenerationDataset,
         curated_dir: Path | str | None = None,
         base_name: str = "generation",
+        df: pd.DataFrame | None = None,
     ) -> Path:
         """Export aggregated canonical generation dataset to a clean CSV file."""
         return self._export_dataframe_csv(
-            df=dataset.to_dataframe(),
+            df=df if df is not None else dataset.to_dataframe(),
             target_dir=curated_dir,
             base_name=base_name,
         )
@@ -350,10 +362,11 @@ class ReportExporter:
         dataset: GenerationDataset,
         curated_dir: Path | str | None = None,
         base_name: str = "generation",
+        df: pd.DataFrame | None = None,
     ) -> Path:
         """Export aggregated canonical generation dataset to a styled Excel (.xlsx) file."""
         return self._export_styled_dataframe_excel(
-            df=dataset.to_dataframe(),
+            df=df if df is not None else dataset.to_dataframe(),
             target_dir=curated_dir,
             base_name=base_name,
             sheet_title="Generation Data",
@@ -364,10 +377,11 @@ class ReportExporter:
         dataset: ConsumptionDataset,
         curated_dir: Path | str | None = None,
         base_name: str = "consumption",
+        df: pd.DataFrame | None = None,
     ) -> Path:
         """Export aggregated canonical consumption dataset to a clean CSV file."""
         return self._export_dataframe_csv(
-            df=dataset.to_dataframe(),
+            df=df if df is not None else dataset.to_dataframe(),
             target_dir=curated_dir,
             base_name=base_name,
         )
@@ -377,10 +391,11 @@ class ReportExporter:
         dataset: ConsumptionDataset,
         curated_dir: Path | str | None = None,
         base_name: str = "consumption",
+        df: pd.DataFrame | None = None,
     ) -> Path:
         """Export aggregated canonical consumption dataset to a styled Excel (.xlsx) file."""
         return self._export_styled_dataframe_excel(
-            df=dataset.to_dataframe(),
+            df=df if df is not None else dataset.to_dataframe(),
             target_dir=curated_dir,
             base_name=base_name,
             sheet_title="Consumption Data",
@@ -391,10 +406,11 @@ class ReportExporter:
         dataset: CuratedDataset,
         curated_dir: Path | str | None = None,
         base_name: str = "esd",
+        df: pd.DataFrame | None = None,
     ) -> Path:
         """Export master ESD curated dataset to a clean CSV file."""
         return self._export_dataframe_csv(
-            df=dataset.to_dataframe(),
+            df=df if df is not None else dataset.to_dataframe(),
             target_dir=curated_dir,
             base_name=base_name,
         )
@@ -404,10 +420,11 @@ class ReportExporter:
         dataset: CuratedDataset,
         curated_dir: Path | str | None = None,
         base_name: str = "esd",
+        df: pd.DataFrame | None = None,
     ) -> Path:
         """Export master ESD curated dataset to a beautifully styled Excel (.xlsx) file."""
         return self._export_styled_dataframe_excel(
-            df=dataset.to_dataframe(),
+            df=df if df is not None else dataset.to_dataframe(),
             target_dir=curated_dir,
             base_name=base_name,
             sheet_title="ESD Data",

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src.config import DEFAULT_WEATHER_DIR
-from src.curation.curator import DataCurator
+from src.curation.curator import DataCurator, dataframe_to_aligned_dataset
 from src.domain.models import BylawConstraints
 from src.i18n import t
 from src.ingestion.schema import IngestionSummary
@@ -70,17 +70,29 @@ class CalculationService:
         )
 
         if not curated_csv.exists():
-            curated_csv = curator.ensure_curated(force=True)
+            curated_csv = curator.ensure_curated(force=True, export_excel=False)
         elif request.consumption_dir.exists() and request.generation_dir.exists():
-            curated_csv = curator.ensure_curated(force=False)
+            curated_csv = curator.ensure_curated(force=False, export_excel=False)
 
         if progress_callback:
             progress_callback(2, t("status_step_2", lang=request.lang))
 
-        aligned = curator.load_aligned_dataset(
-            curated_csv,
-            cups_config_path=curator._resolve_cups_path(),
-        )
+        resolved_cups_path = curator._resolve_cups_path()
+        if curator._last_curated_df is not None:
+            last_ds = curator._last_curated_dataset
+            primary = last_ds.summary.primary_cups if last_ds is not None else None
+            if not primary and last_ds is not None and last_ds.cups_configs:
+                primary = next((c.cups for c in last_ds.cups_configs.values() if c.primary), None)
+            aligned = dataframe_to_aligned_dataset(
+                curator._last_curated_df,
+                primary_cups=primary,
+                cups_config_path=resolved_cups_path,
+            )
+        else:
+            aligned = curator.load_aligned_dataset(
+                curated_csv,
+                cups_config_path=resolved_cups_path,
+            )
 
         if progress_callback:
             progress_callback(3, t("status_step_3", lang=request.lang))
