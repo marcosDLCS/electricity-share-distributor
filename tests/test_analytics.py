@@ -334,6 +334,8 @@ def test_cli_summary_command_workflows(tmp_path: Path, monkeypatch: pytest.Monke
     assert res_all.exit_code == 0
     assert "ES0021000000000001AA" in res_all.output
     assert "Aerotermia" in res_all.output
+    # Default view shows monthly timeline without repeating per-month CUPS breakdown tables
+    assert "Period 2025-05" not in res_all.output
     assert any(p.name.endswith("_community_summary.md") for p in out_dir.iterdir())
 
     res_es = runner.invoke(
@@ -354,6 +356,7 @@ def test_cli_summary_command_workflows(tmp_path: Path, monkeypatch: pytest.Monke
     )
     assert res_es.exit_code == 0
     assert "Cronología Mensual" in res_es.output
+    assert "Periodo 2025-05" in res_es.output
 
     res_cups = runner.invoke(
         app,

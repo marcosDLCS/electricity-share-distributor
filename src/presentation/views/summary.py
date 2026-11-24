@@ -23,50 +23,30 @@ def render_community_summary(
     opt_result: OptimizationResult | None = None,
 ) -> None:
     """Render executive dashboard with high-contrast KPI cards and community energy balance."""
-    # 1. Energy Balance KPI Cards Row
+    # 1. Borderless Energy Balance KPI Strip (inside one unified outer panel)
     solar_hours_gen = (
         tot.solar_hours_generation_kwh
         if tot.solar_hours_generation_kwh > 0
         else tot.total_generation_kwh
     )
-    solar_card = Panel(
+    kpi_grid = Table.grid(expand=True, padding=(0, 2))
+    kpi_grid.add_column(ratio=1)
+    kpi_grid.add_column(ratio=1)
+    kpi_grid.add_column(ratio=1)
+    kpi_grid.add_row(
+        f"[dim]🌞 {t('lbl_total_gen', lang=lang)}[/dim]\n"
         f"[bold yellow]{format_kwh(tot.total_generation_kwh)}[/bold yellow]\n"
         f"[dim]{t('lbl_solar_hours_gen', lang=lang)}: {format_kwh(solar_hours_gen)}[/dim]\n"
         f"[dim]{t('lbl_total_surplus', lang=lang)}: {format_kwh(tot.total_surplus_kwh)}[/dim]",
-        title=f"🌞 {t('lbl_total_gen', lang=lang)}",
-        title_align="left",
-        border_style="yellow",
-        box=box.ROUNDED,
-        padding=(0, 1),
-    )
-
-    demand_card = Panel(
+        f"[dim]⚡ {t('lbl_total_cons', lang=lang)}[/dim]\n"
         f"[bold bright_cyan]{format_kwh(tot.total_consumption_kwh)}[/bold bright_cyan]\n"
         f"[dim]{t('lbl_solar_hours_demand', lang=lang)}: {format_kwh(tot.solar_hours_consumption_kwh)}[/dim]\n"
         f"[dim]{t('col_cov_rate', lang=lang)}: {tot.solar_coverage_rate:.1f}%[/dim]",
-        title=f"⚡ {t('lbl_total_cons', lang=lang)}",
-        title_align="left",
-        border_style="cyan",
-        box=box.ROUNDED,
-        padding=(0, 1),
-    )
-
-    sc_card = Panel(
+        f"[dim]🏆 {t('lbl_total_sc', lang=lang)}[/dim]\n"
         f"[bold green]{format_kwh(tot.total_self_consumed_kwh)}[/bold green]\n"
         f"[dim]{t('col_sc_rate', lang=lang)}: {tot.self_consumption_rate:.1f}%[/dim]\n"
         f"[dim]{t('lbl_solar_hours_cov', lang=lang)}: {tot.solar_hours_coverage_rate:.1f}%[/dim]",
-        title=f"🏆 {t('lbl_total_sc', lang=lang)}",
-        title_align="left",
-        border_style="green",
-        box=box.ROUNDED,
-        padding=(0, 1),
     )
-
-    kpi_grid = Table.grid(expand=True, padding=(0, 1))
-    kpi_grid.add_column(ratio=1)
-    kpi_grid.add_column(ratio=1)
-    kpi_grid.add_column(ratio=1)
-    kpi_grid.add_row(solar_card, demand_card, sc_card)
 
     # 2. 3-Way Self-Consumption Modality Progression Table
     prog_table: Table | None = None

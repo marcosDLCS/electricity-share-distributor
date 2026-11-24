@@ -105,7 +105,9 @@ def test_cli_doctor_command() -> None:
     assert "ESD DATA DOCTOR DIAGNOSTIC REPORT" in res.output
     assert "Participating CUPS" in res.output
     assert "Consumption Data Health" in res.output
-    assert "Open-Meteo Hourly Weather" in res.output
+    assert "Data Sources (Generation & Weather)" in res.output
+    assert "Huawei PV Generation" in res.output
+    assert "Open-Meteo Weather" in res.output
     # Verify color tags are parsed and not output as literal markup tags
     assert "[green]" not in res.output
     assert "[/green]" not in res.output

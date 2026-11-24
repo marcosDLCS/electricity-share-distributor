@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| `DES-1` | `P1` | Design | Declutter default console outputs (`summary`, `doctor`, `calculate`, `compare`) | `src/presentation/views/consumption.py`, `doctor.py`, `summary.py`, `comparison.py`, `common.py` |
 | `DOC-1` | `P1` | Documentation | Purge all `datadis-analyzer` references across docs, guides & codebase | `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `AGENTS.md`, `src/security.py` |
 | `DOC-2` | `P1` | Documentation | Condense `README.md`, bilingual guides & `AGENTS.md` by 20–25% | `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `AGENTS.md` |
 | `COH-1` | `P2` | Cohesion | Unify consumption ingestion/filtering & $O(1)$ curated cache fingerprinting | `src/ingestion/doctor.py`, `src/curation/curator.py`, `src/services/` |
@@ -97,20 +96,6 @@ _No pending tasks._
   3. Every command's `--help` fits cleanly within a single screen; all CLI and service tests pass.
 
 ## 🎨 Design
-
-### `DES-1` `[P1]` — Declutter Default Console Outputs (`summary`, `doctor`, `calculate`, `compare`)
-- **Goal:** Simplify terminal outputs across all core commands so every screen is tight, scannable, and clutter-free on 80-column terminals **without losing Rich visual polish, color hierarchy, KPI cards, heatmaps, or share bars**:
-  - **`esd summary`:** Default view currently prints up to 24 separate monthly CUPS tables (~350+ lines) plus 4 stacked boxes in `render_consumption_overview`. Change default view to show a single unified overview card, annual ranked table(s), compact monthly timeline, and insights — reserving per-month CUPS breakdown tables for `--view monthly` (full breakdown always remains in the exported `.md`).
-  - **`esd doctor`:** Collapse the 6 separate panels/tables (including separate single-row Generation and Weather tables and a broken 12-char truncated `Diagnosis` column) into 2–3 crisp blocks: status header, CUPS health table, and a unified Data Sources table (Generation + Weather) + concise non-repetitive advice footer.
-  - **`esd calculate`:** Eliminate double-boxed nesting inside `render_community_summary` (replace nested inner KPI `Panel` borders with a sleek borderless metric strip inside one outer card) while keeping the 4-way modality progression, monthly trajectory, and signature $\beta_i$ heatmap matrix.
-  - **`esd compare`:** Drop the redundant `Trend` text column (already encoded via colored `▼`/`▲` in `Variation`), keep CUPS labels single-line, and merge `.md` + `.svg` + `.html` export notices into one unified compact footer.
-  - **All commands:** Replace bulky boxed `render_export_success` panels with a sleek 1–2 line `✔ Exported ...` footer component.
-- **Target Components:**
-  - `src/presentation/views/consumption.py`, `src/presentation/views/doctor.py`, `src/presentation/views/summary.py`, `src/presentation/views/comparison.py`, `src/presentation/views/common.py`, `src/cli.py`, `tests/test_presentation.py`
-- **Acceptance Criteria:**
-  1. Default terminal output height drops by **>= 30%** on `calculate`/`doctor`/`compare` and **>= 60%** on multi-year `summary` with zero loss of decision-critical KPIs or visual richness.
-  2. Strict 80-column compliance with zero 12-char diagnosis truncation or double-boxed borders across both `en` and `es`.
-  3. Updated presentation and CLI tests verify every redesigned view and pass cleanly.
 
 ### `DES-2` `[P2]` — Unify All Terminal Views onto the `CUSTOM_THEME` Semantic Design System
 - **Goal:** Standardize visual styling across all view modules. Currently `consumption.py` and `comparison.py` use semantic `CUSTOM_THEME` tokens (`[title]`, `[metric]`, `[dimmed]`, `[cups]`, `[panel.border]`, `[table.header]`), whereas `summary.py`, `trajectory.py`, `matrix.py`, `doctor.py`, and `common.py` hardcode raw Rich colors (`[bold yellow]`, `[bold bright_cyan]`, `border_style="cyan"`), mix `box.DOUBLE` with `box.ROUNDED`, and format CUPS inconsistently.

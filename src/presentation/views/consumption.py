@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from rich import box
 from rich.panel import Panel
-from rich.rule import Rule
 from rich.table import Table
 
 from src.i18n import t
@@ -59,43 +58,21 @@ def render_consumption_overview(
     file_count: int,
     lang: str | None = None,
 ) -> None:
-    """Render an executive overview card summarizing community consumption metrics."""
-    kpi_grid = Table.grid(expand=True, padding=(0, 1))
-    kpi_grid.add_column(ratio=1)
-    kpi_grid.add_column(ratio=1)
-    kpi_grid.add_column(ratio=1)
+    """Render a single unified overview card summarizing community consumption metrics."""
+    overview_grid = Table.grid(expand=True, padding=(0, 2))
+    overview_grid.add_column(ratio=1)
+    overview_grid.add_column(ratio=1)
+    overview_grid.add_column(ratio=1)
 
-    total_card = Panel(
+    overview_grid.add_row(
+        f"[dimmed]{t('summary_total_consumption', lang=lang)}[/dimmed]\n"
         f"[metric]{format_kwh(summary.total_community_kwh)}[/metric]",
-        title=f"[dimmed]{t('summary_total_consumption', lang=lang)}[/dimmed]",
-        title_align="left",
-        border_style="panel.border",
-        box=box.ROUNDED,
-        padding=(0, 1),
-    )
-    cups_card = Panel(
+        f"[dimmed]{t('summary_active_cups', lang=lang)}[/dimmed]\n"
         f"[success]{t('summary_meters_count', lang=lang, count=summary.unique_cups_count)}[/success]",
-        title=f"[dimmed]{t('summary_active_cups', lang=lang)}[/dimmed]",
-        title_align="left",
-        border_style="green",
-        box=box.ROUNDED,
-        padding=(0, 1),
-    )
-    files_card = Panel(
+        f"[dimmed]{t('summary_files_processed', lang=lang)}[/dimmed]\n"
         f"[warning]{t('summary_files_count', lang=lang, count=file_count)}[/warning]",
-        title=f"[dimmed]{t('summary_files_processed', lang=lang)}[/dimmed]",
-        title_align="left",
-        border_style="yellow",
-        box=box.ROUNDED,
-        padding=(0, 1),
     )
-    kpi_grid.add_row(total_card, cups_card, files_card)
-
-    meta_grid = Table.grid(expand=True, padding=(0, 2))
-    meta_grid.add_column(ratio=1)
-    meta_grid.add_column(ratio=1)
-    meta_grid.add_column(ratio=1)
-    meta_grid.add_row(
+    overview_grid.add_row(
         f"[dimmed]{t('summary_date_range', lang=lang)}[/dimmed]\n"
         f"[cups]{summary.date_min} ➔ {summary.date_max}[/cups]",
         f"[dimmed]{t('summary_peak_month', lang=lang)}[/dimmed]\n"
@@ -106,15 +83,12 @@ def render_consumption_overview(
 
     console.print()
     console.print(
-        Rule(f"[title]{t('summary_overview_title', lang=lang)}[/title]", style="panel.border")
-    )
-    console.print(kpi_grid)
-    console.print(
         Panel(
-            meta_grid,
+            overview_grid,
+            title=f"[title]{t('summary_overview_title', lang=lang)}[/title]",
             border_style="panel.border",
             box=box.ROUNDED,
-            padding=(0, 2),
+            padding=(0, 1),
         )
     )
     console.print()

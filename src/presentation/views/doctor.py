@@ -18,6 +18,15 @@ if TYPE_CHECKING:
     from src.ingestion.doctor import DoctorReport, GapInterval
 
 
+def _status_badge(status: str) -> str:
+    """Return compact Rich status badge for diagnostic series rows."""
+    if status == "ok":
+        return "[green]✓ OK[/green]"
+    if status == "warning":
+        return "[yellow]⚠ WARN[/yellow]"
+    return "[red]✗ FAIL[/red]"
+
+
 def render_doctor_report(
     report: DoctorReport,
     verbose: bool = False,
@@ -68,7 +77,7 @@ def render_doctor_report(
             subtitle=badge,
             border_style=border_col,
             box=box.ROUNDED,
-            padding=(1, 2),
+            padding=(0, 2),
         )
     )
 
@@ -80,7 +89,7 @@ def render_doctor_report(
             padding=(0, 1),
             show_lines=False,
         )
-        c_table.add_column(t("col_cups_desc", lang=lang), style="bold cyan", width=22, no_wrap=True)
+        c_table.add_column(t("col_cups_desc", lang=lang), style="bold cyan", min_width=22)
         c_table.add_column(
             t("lbl_doctor_readings", lang=lang),
             justify="right",
@@ -97,25 +106,11 @@ def render_doctor_report(
         c_table.add_column(
             t("lbl_doctor_status", lang=lang), justify="center", width=7, no_wrap=True
         )
-        c_table.add_column(
-            t("lbl_doctor_diagnosis", lang=lang), style="dim", width=12, no_wrap=True
-        )
 
         for c in report.consumption_results:
-            if c.status == "ok":
-                st_badge = "[green]✓ OK[/green]"
-            elif c.status == "warning":
-                st_badge = "[yellow]⚠ WARN[/yellow]"
-            else:
-                st_badge = "[red]✗ FAIL[/red]"
-
-            note_str = c.notes[0] if c.notes else t("doc_lbl_healthy", lang=lang)
-            if len(note_str) > 12:
-                note_str = note_str[:11] + "…"
-
             if c.use:
                 pri_star = " [bold green]★[/bold green]" if c.is_primary else ""
-                cups_cell = f"{c.identifier}\n[dim white]{c.use}{pri_star}[/dim white]"
+                cups_cell = f"{c.identifier} [dim white]({c.use}{pri_star})[/dim white]"
             else:
                 cups_cell = c.identifier
 
@@ -124,113 +119,60 @@ def render_doctor_report(
                 f"{c.total_records:,}",
                 f"{c.zero_ratio_pct:.1f}%",
                 str(c.missing_hours),
-                st_badge,
-                note_str,
+                _status_badge(c.status),
             )
 
         console.print(c_table)
         console.print()
 
-    # 3. Generation File Health Table
-    if report.generation_result:
-        g = report.generation_result
-        g_table = Table(
-            title=t("title_doctor_gen", lang=lang),
+    # 3. Unified Data Sources Table (Generation + Weather)
+    if report.generation_result or report.weather_result:
+        s_table = Table(
+            title=t("title_doctor_sources", lang=lang),
             box=box.ROUNDED,
             padding=(0, 1),
             show_lines=False,
         )
-        g_table.add_column(
-            t("lbl_doctor_source", lang=lang), style="bold yellow", width=20, no_wrap=True
+        s_table.add_column(
+            t("lbl_doctor_source", lang=lang), style="bold yellow", width=22, no_wrap=True
         )
-        g_table.add_column(
-            t("lbl_doctor_files", lang=lang), justify="right", style="white", width=8, no_wrap=True
+        s_table.add_column(
+            t("lbl_doctor_files", lang=lang), justify="right", style="white", width=7, no_wrap=True
         )
-        g_table.add_column(
+        s_table.add_column(
             t("lbl_doctor_readings", lang=lang),
             justify="right",
             style="white",
-            width=8,
+            width=9,
             no_wrap=True,
         )
-        g_table.add_column(
+        s_table.add_column(
             t("lbl_doctor_gaps", lang=lang), justify="right", style="yellow", width=6, no_wrap=True
         )
-        g_table.add_column(
+        s_table.add_column(
             t("lbl_doctor_status", lang=lang), justify="center", width=7, no_wrap=True
         )
-        g_table.add_column(
-            t("lbl_doctor_diagnosis", lang=lang), style="dim", width=12, no_wrap=True
-        )
 
-        g_badge = "[green]✓ OK[/green]" if g.status == "ok" else "[yellow]⚠ WARN[/yellow]"
-        g_note = g.notes[0] if g.notes else t("doc_lbl_healthy", lang=lang)
-        if len(g_note) > 12:
-            g_note = g_note[:11] + "…"
+        if report.generation_result:
+            g = report.generation_result
+            s_table.add_row(
+                t("doc_source_huawei", lang=lang),
+                str(g.files_count),
+                f"{g.total_records:,}",
+                str(g.missing_hours),
+                _status_badge(g.status),
+            )
+        if report.weather_result:
+            w = report.weather_result
+            s_table.add_row(
+                t("doc_source_weather", lang=lang),
+                str(w.files_count),
+                f"{w.total_records:,}",
+                str(w.missing_hours),
+                _status_badge(w.status),
+            )
 
-        g_table.add_row(
-            t("doc_source_huawei", lang=lang),
-            str(g.files_count),
-            f"{g.total_records:,}",
-            str(g.missing_hours),
-            g_badge,
-            g_note,
-        )
-        console.print(g_table)
-        console.print()
-
-    # 4. Weather Ingestion Health Table
-    if report.weather_result:
-        w = report.weather_result
-        w_table = Table(
-            title=t("title_doctor_weather", lang=lang),
-            box=box.ROUNDED,
-            padding=(0, 1),
-            show_lines=False,
-        )
-        w_table.add_column(
-            t("lbl_doctor_source", lang=lang), style="bold bright_cyan", width=20, no_wrap=True
-        )
-        w_table.add_column(
-            t("lbl_doctor_files", lang=lang), justify="right", style="white", width=8, no_wrap=True
-        )
-        w_table.add_column(
-            t("lbl_doctor_readings", lang=lang),
-            justify="right",
-            style="white",
-            width=8,
-            no_wrap=True,
-        )
-        w_table.add_column(
-            t("lbl_doctor_gaps", lang=lang), justify="right", style="yellow", width=6, no_wrap=True
-        )
-        w_table.add_column(
-            t("lbl_doctor_status", lang=lang), justify="center", width=7, no_wrap=True
-        )
-        w_table.add_column(
-            t("lbl_doctor_diagnosis", lang=lang), style="dim", width=12, no_wrap=True
-        )
-
-        if w.status == "ok":
-            w_badge = "[green]✓ OK[/green]"
-        elif w.status == "warning":
-            w_badge = "[yellow]⚠ WARN[/yellow]"
-        else:
-            w_badge = "[red]✗ FAIL[/red]"
-
-        w_note = w.notes[0] if w.notes else t("doc_lbl_healthy", lang=lang)
-        if len(w_note) > 12:
-            w_note = w_note[:11] + "…"
-
-        w_table.add_row(
-            t("doc_source_weather", lang=lang),
-            str(w.files_count),
-            f"{w.total_records:,}",
-            str(w.missing_hours),
-            w_badge,
-            w_note,
-        )
-        console.print(w_table)
+        console.print(s_table)
         console.print()
 
     # 5. Detailed Gap Breakdown (if gaps exist or verbose)
@@ -300,10 +242,19 @@ def render_doctor_report(
             advice_items.append(
                 t("doc_adv_cons_gaps", lang=lang, id=display_id, hours=c.missing_hours)
             )
-    if report.generation_result and report.generation_result.missing_hours > 0:
-        advice_items.append(
-            t("doc_adv_gen_gaps", lang=lang, hours=report.generation_result.missing_hours)
-        )
+        if c.duplicate_records > 0 or c.negative_records > 0 or c.null_records > 0:
+            for note in c.notes:
+                if any(kw in note for kw in ("duplicate", "negative", "null")):
+                    advice_items.append(f"[yellow]• {escape(display_id)}:[/yellow] {escape(note)}")
+    if report.generation_result:
+        g_res = report.generation_result
+        if g_res.missing_hours > 0:
+            advice_items.append(t("doc_adv_gen_gaps", lang=lang, hours=g_res.missing_hours))
+        for note in g_res.notes:
+            if any(kw in note for kw in ("duplicate", "negative", "null", "telemetry outage")):
+                advice_items.append(
+                    f"[yellow]• {escape(t('doc_source_huawei', lang=lang))}:[/yellow] {escape(note)}"
+                )
     if report.weather_result:
         w = report.weather_result
         if w.files_count == 0:
@@ -317,10 +268,16 @@ def render_doctor_report(
                 else ""
             )
             advice_items.append(t("doc_adv_weather_coverage", lang=lang, period=period_str))
+        for note in w.notes:
+            if any(kw in note for kw in ("duplicate", "null", "cloud cover")):
+                advice_items.append(
+                    f"[yellow]• {escape(t('doc_source_weather', lang=lang))}:[/yellow] {escape(note)}"
+                )
 
     for msg in report.summary_messages:
         advice_items.append(f"[yellow]ℹ[/yellow] {escape(msg)}")
 
+    advice_items = list(dict.fromkeys(advice_items))
     if not advice_items:
         advice_items.append(t("doc_adv_clean", lang=lang))
 
@@ -332,7 +289,7 @@ def render_doctor_report(
             title=t("doc_title_advice", lang=lang),
             border_style="cyan",
             box=box.ROUNDED,
-            padding=(1, 2),
+            padding=(0, 2),
         )
     )
     console.print()

@@ -155,7 +155,6 @@ def render_monthly_comparison_table(comparison: ComparisonSummary, lang: str | N
         table.add_column(f"{year}", justify="right", style="metric", no_wrap=True)
     table.add_column(t("compare_diff_col", lang=lang), justify="right", no_wrap=True)
     table.add_column(t("compare_var_col", lang=lang), justify="right", no_wrap=True)
-    table.add_column(t("compare_trend_col", lang=lang), justify="center", no_wrap=True)
 
     for m in comparison.monthly_comparisons:
         m_label = get_month_name(m.month, lang=lang, short=True)
@@ -184,24 +183,14 @@ def render_monthly_comparison_table(comparison: ComparisonSummary, lang: str | N
         if m.pct_change is not None:
             if m.pct_change < 0.0:
                 var_cell = f"[delta.saving]▼ {m.pct_change:.1f}%[/delta.saving]"
-                trend_cell = f"[delta.saving]{t('compare_trend_reduced', lang=lang)}[/delta.saving]"
             elif m.pct_change > 0.0:
                 var_cell = f"[delta.increase]▲ +{m.pct_change:.1f}%[/delta.increase]"
-                trend_cell = (
-                    f"[delta.increase]{t('compare_trend_increased', lang=lang)}[/delta.increase]"
-                )
             else:
                 var_cell = "[delta.neutral]— 0.0%[/delta.neutral]"
-                trend_cell = f"[delta.neutral]{t('compare_trend_equal', lang=lang)}[/delta.neutral]"
         else:
             var_cell = "[dimmed]—[/dimmed]"
-            trend_cell = (
-                f"[dimmed]{t('compare_no_data', lang=lang)}[/dimmed]"
-                if not m.is_complete
-                else "[dimmed]—[/dimmed]"
-            )
 
-        table.add_row(m_label, *year_cells, diff_cell, var_cell, trend_cell)
+        table.add_row(m_label, *year_cells, diff_cell, var_cell)
 
     table.add_section()
     if comparison.comparable_months:
@@ -229,36 +218,24 @@ def render_monthly_comparison_table(comparison: ComparisonSummary, lang: str | N
         if pct_tot is not None:
             if pct_tot < 0.0:
                 total_var_cell = f"[delta.saving]▼ {pct_tot:.1f}%[/delta.saving]"
-                total_trend_cell = (
-                    f"[delta.saving]{t('compare_trend_reduced', lang=lang)}[/delta.saving]"
-                )
             elif pct_tot > 0.0:
                 total_var_cell = f"[delta.increase]▲ +{pct_tot:.1f}%[/delta.increase]"
-                total_trend_cell = (
-                    f"[delta.increase]{t('compare_trend_increased', lang=lang)}[/delta.increase]"
-                )
             else:
                 total_var_cell = "[delta.neutral]— 0.0%[/delta.neutral]"
-                total_trend_cell = (
-                    f"[delta.neutral]{t('compare_trend_equal', lang=lang)}[/delta.neutral]"
-                )
         else:
             total_var_cell = "[dimmed]—[/dimmed]"
-            total_trend_cell = "[dimmed]—[/dimmed]"
 
         table.add_row(
             f"[bold]{total_label}[/bold]",
             *total_year_cells,
             total_diff_cell,
             total_var_cell,
-            total_trend_cell,
         )
     else:
         raw_year_cells = [format_kwh(comparison.annual_totals[y]) for y in comparison.years]
         table.add_row(
             "[bold]Total[/bold]",
             *raw_year_cells,
-            "[dimmed]—[/dimmed]",
             "[dimmed]—[/dimmed]",
             "[dimmed]—[/dimmed]",
         )
@@ -299,11 +276,7 @@ def render_cups_comparison_table(comparison: ComparisonSummary, lang: str | None
     for idx, c in enumerate(comparison.cups_comparisons, start=1):
         c_kwh_base = c.yearly_kwh.get(earliest_y, 0.0)
         c_kwh_target = c.yearly_kwh.get(latest_y, 0.0)
-        cups_cell = (
-            f"{format_cups_label(c.cups)}\n[cups.use]{c.use}[/cups.use]"
-            if c.use
-            else format_cups_label(c.cups)
-        )
+        cups_cell = format_cups_label(c.cups, use=c.use)
 
         if c.diff_kwh < 0.0:
             diff_cell = f"[delta.saving]-{format_kwh(abs(c.diff_kwh))}[/delta.saving]"

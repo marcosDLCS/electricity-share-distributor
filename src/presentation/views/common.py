@@ -222,25 +222,32 @@ def render_cleanup_result(count: int, output_dir: str, lang: str | None = None) 
     console.print()
 
 
-def render_export_success(exported_paths: list[Path], lang: str | None = None) -> None:
-    """Render list of generated report files."""
-    if not exported_paths:
+def render_export_success(
+    exported_paths: list[Path],
+    lang: str | None = None,
+    extra_note: str | None = None,
+) -> None:
+    """Render a compact 1-2 line export footer listing generated deliverables."""
+    if not exported_paths and not extra_note:
         return
 
-    text = Text()
-    for p in exported_paths:
-        text.append(f"  • {p}\n", style="bold green")
+    label = t("export_footer_label", lang=lang)
+    parts: list[str] = []
+    if len(exported_paths) == 1:
+        parts.append(f"[dim]{exported_paths[0]}[/dim]")
+    elif exported_paths:
+        parent_dirs = {p.parent for p in exported_paths}
+        if len(parent_dirs) == 1:
+            parent = exported_paths[0].parent
+            names = ", ".join(p.name for p in exported_paths)
+            parts.append(f"[bold cyan]{parent}[/bold cyan]: [dim]{names}[/dim]")
+        else:
+            parts.append(f"[dim]{' · '.join(str(p) for p in exported_paths)}[/dim]")
 
-    console.print(
-        Panel(
-            text,
-            title=f"[bold green]{t('export_success_title', lang=lang)}[/bold green]",
-            border_style="green",
-            box=box.ROUNDED,
-            padding=(1, 2),
-        )
-    )
-    console.print()
+    if extra_note:
+        parts.append(f"[dim]{extra_note}[/dim]")
+
+    console.print(f"[bold green]✔[/bold green] {label}: {' · '.join(parts)}\n")
 
 
 def render_config_view(cfg: AppConfig, lang: str | None = None) -> None:

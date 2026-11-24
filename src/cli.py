@@ -476,6 +476,7 @@ def summary_command(
                     filter_year=year,
                     lang=active_lang,
                 )
+            if view_clean == "monthly":
                 render_detailed_monthly_consumption(
                     result.summary,
                     filter_year=year,
@@ -594,15 +595,18 @@ def compare_command(
             exported_reports.append(result.report_path)
         if result.html_report_path is not None:
             exported_reports.append(result.html_report_path)
-        if exported_reports:
-            render_export_success(exported_reports, lang=active_lang)
-
-        if result.chart_paths:
-            charts_dir = target_output_dir / "charts"
-            console.print(
-                f"[bold green]✔[/bold green] "
-                f"{t('compare_charts_generated', lang=active_lang, count=len(result.chart_paths), path=str(charts_dir))}\n"
+        charts_note = (
+            t(
+                "compare_charts_generated",
+                lang=active_lang,
+                count=len(result.chart_paths),
+                path=str(target_output_dir / "charts"),
             )
+            if result.chart_paths
+            else None
+        )
+        if exported_reports or charts_note:
+            render_export_success(exported_reports, lang=active_lang, extra_note=charts_note)
 
     except typer.Exit, typer.Abort:
         raise
