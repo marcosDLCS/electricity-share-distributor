@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| `SIMP-2` | `P2` | Simplicity | Standardize config-first CLI options & extract shared workspace resolver | `src/cli.py`, `tests/test_cli.py` |
 | `DES-2` | `P2` | Design | Unify all terminal views onto the `CUSTOM_THEME` semantic design system | `src/presentation/console.py`, `src/presentation/views/` |
 
 ---
@@ -54,14 +53,7 @@ _No pending tasks._
 
 ## 🧹 Simplicity
 
-### `SIMP-2` `[P2]` — Standardize Config-First CLI Options & Extract Shared Workspace Resolver
-- **Goal:** Align `summary`, `compare`, `doctor`, and `clean` with `calculate`'s clean config-first model instead of duplicating 5–7 directory/config override options (`-c`, `-g`, `-w`, `-u`, `-o`, `-C`) and repeated `load_config()` / `resolve_cups_config_path()` boilerplate across every command in `src/cli.py`.
-- **Target Components:**
-  - `src/cli.py`, `tests/test_cli.py`
-- **Acceptance Criteria:**
-  1. Keep only task-specific analytical options on each command (`summary`: `--year`, `--view`, `--cups`; `compare`: `--years`, `--no-charts`, `--html`; `doctor`: `--verbose`; `calculate`: `--refresh`, `--curate-only`; `clean`: `--force`; `init`: `--lang`, `--precision`; `config`: path/lang/precision/coords setters) plus optional `-l`/`--lang` override where appropriate, delegating workspace paths to `esd config` (and keeping full path parameters on Service Request DTOs for programmatic/test isolation).
-  2. Extract a single `_resolve_workspace_context()` helper in `src/cli.py` eliminating repeated config/CUPS/language resolution code and reducing `src/cli.py` length by **>= 30%**.
-  3. Every command's `--help` fits cleanly within a single screen; all CLI and service tests pass.
+_No pending tasks._
 
 ## 🎨 Design
 

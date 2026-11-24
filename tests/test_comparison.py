@@ -309,25 +309,21 @@ def test_cli_compare_command_workflows(tmp_path: Path, monkeypatch: pytest.Monke
         encoding="utf-8",
     )
 
+    from src.config import AppConfig
+
     monkeypatch.setattr("src.cli.is_initialized", lambda: True)
+    monkeypatch.setattr(
+        "src.cli.load_config",
+        lambda: AppConfig(
+            consumption_dir=str(cons_dir),
+            output_dir=str(out_dir),
+            cups_config_path=str(cups_file),
+            language="en",
+        ),
+    )
     runner = CliRunner()
 
-    res_ok = runner.invoke(
-        app,
-        [
-            "compare",
-            "-c",
-            str(cons_dir),
-            "-o",
-            str(out_dir),
-            "-C",
-            str(cups_file),
-            "-y",
-            "2024",
-            "-y",
-            "2025",
-        ],
-    )
+    res_ok = runner.invoke(app, ["compare", "-y", "2024", "-y", "2025"])
     assert res_ok.exit_code == 0
     assert "2024 ➔ 2025" in res_ok.output
     assert "Aerotermia" in res_ok.output
@@ -335,29 +331,24 @@ def test_cli_compare_command_workflows(tmp_path: Path, monkeypatch: pytest.Monke
     assert any(p.name.endswith("_comparison_2024_2025.md") for p in out_dir.iterdir())
 
     out_nc = tmp_path / "output_nc"
+    monkeypatch.setattr(
+        "src.cli.load_config",
+        lambda: AppConfig(
+            consumption_dir=str(cons_dir),
+            output_dir=str(out_nc),
+            cups_config_path=str(cups_file),
+            language="en",
+        ),
+    )
     res_es_nc = runner.invoke(
         app,
-        [
-            "compare",
-            "-c",
-            str(cons_dir),
-            "-o",
-            str(out_nc),
-            "--years",
-            "2024,2025",
-            "--no-charts",
-            "-l",
-            "es",
-        ],
+        ["compare", "--years", "2024,2025", "--no-charts", "-l", "es"],
     )
     assert res_es_nc.exit_code == 0
     assert "Comparativa Energética Interanual" in res_es_nc.output
     assert not (out_nc / "charts").exists()
 
-    res_bad_year = runner.invoke(
-        app,
-        ["compare", "-c", str(cons_dir), "-o", str(out_dir), "-y", "abc"],
-    )
+    res_bad_year = runner.invoke(app, ["compare", "-y", "abc"])
     assert res_bad_year.exit_code == 1
     assert "Invalid year" in res_bad_year.output
 
@@ -366,12 +357,15 @@ def test_cli_compare_command_workflows(tmp_path: Path, monkeypatch: pytest.Monke
         single_dir / "2024" / "only2024.csv",
         [("ES0021000000000001AA", 2024, 1, 31, 10.0)],
     )
-    res_single = runner.invoke(
-        app,
-        ["compare", "-c", str(single_dir), "-o", str(out_dir)],
+    monkeypatch.setattr(
+        "src.cli.load_config",
+        lambda: AppConfig(consumption_dir=str(single_dir), output_dir=str(out_dir), language="en"),
     )
+    res_single = runner.invoke(app, ["compare"])
     assert res_single.exit_code == 1
     assert "At least two years" in res_single.output
+
+    assert runner.invoke(app, ["compare", "-c", str(cons_dir)]).exit_code != 0
 
 
 def test_polished_svg_gradients_and_excluded_month_highlighting() -> None:
@@ -618,21 +612,25 @@ def test_comparison_html_i18n_parity_exporter_and_cli_flag(
         [("ES0021000000000001AA", 2025, 5, 31, 8.0)],
     )
 
+    from src.config import AppConfig
+
     monkeypatch.setattr("src.cli.is_initialized", lambda: True)
     runner = CliRunner()
 
-    res_def = runner.invoke(
-        app,
-        ["compare", "-c", str(cons_dir), "-o", str(out_default), "--no-charts"],
+    monkeypatch.setattr(
+        "src.cli.load_config",
+        lambda: AppConfig(consumption_dir=str(cons_dir), output_dir=str(out_default)),
     )
+    res_def = runner.invoke(app, ["compare", "--no-charts"])
     assert res_def.exit_code == 0
     assert any(p.name.endswith("_comparison_2024_2025.md") for p in out_default.iterdir())
     assert not any(p.name.endswith("_esd_comparison_report.html") for p in out_default.iterdir())
 
-    res_html = runner.invoke(
-        app,
-        ["compare", "-c", str(cons_dir), "-o", str(out_with_html), "--html"],
+    monkeypatch.setattr(
+        "src.cli.load_config",
+        lambda: AppConfig(consumption_dir=str(cons_dir), output_dir=str(out_with_html)),
     )
+    res_html = runner.invoke(app, ["compare", "--html"])
     assert res_html.exit_code == 0
     assert any(p.name.endswith("_comparison_2024_2025.md") for p in out_with_html.iterdir())
     assert any(p.name.endswith("_esd_comparison_report.html") for p in out_with_html.iterdir())

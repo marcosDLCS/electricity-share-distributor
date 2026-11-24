@@ -176,10 +176,10 @@ graph TD
 ```
 
 ### Step 1: Initialize Workspace & Config (`esd init` / `esd config`)
-Creates `.input/`, `.curated/`, and `.output/`, configures UI language (`en`/`es`), decimal precision (`0`/`1`/`2`), Open-Meteo coordinates (`--latitude`/`--longitude`), and folder paths in `.esd_config.json`:
+Creates `.input/`, `.curated/`, and `.output/`, configures UI language (`en`/`es`), decimal precision (`0`/`1`/`2`), Open-Meteo coordinates (`--latitude`/`--longitude`), and folder or `cups.json` paths (`--cups-file`) once in `.esd_config.json` (shared automatically across `doctor`, `summary`, `compare`, `calculate`, and `clean`):
 ```bash
 esd init [--lang en|es] [--precision 0|1|2]
-esd config [--lang es] [--precision 2] [--latitude 40.4168 --longitude -3.7038]
+esd config [--lang es] [--precision 2] [--latitude 40.4168 --longitude -3.7038] [--cups-file .input/cups/cups.json]
 ```
 
 ### Step 2: Check Data Health (`esd doctor`)

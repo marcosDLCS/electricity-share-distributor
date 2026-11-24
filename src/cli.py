@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 
 import typer
 
 from src.config import (
-    DEFAULT_CONSUMPTION_DIR,
     DEFAULT_CUPS_CONFIG_PATH,
-    DEFAULT_CURATED_DIR,
     DEFAULT_SHARE_PRECISION,
     DEFAULT_WEATHER_DIR,
+    AppConfig,
     clear_output_directory,
     ensure_directories,
     get_language,
@@ -42,10 +44,25 @@ from src.presentation.views.curate import render_curate_summary
 from src.version import get_version
 
 app = typer.Typer(
-    help="Electricity Share Distributor: Optimize collective PV self-consumption coefficients (RD 244/2019).",
+    help="Electricity Share Distributor: collective PV analytics & optimization (RD 244/2019).",
     add_completion=False,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
+
+
+@dataclass(frozen=True)
+class _WorkspaceContext:
+    """Resolved workspace settings, directories, and CUPS config from .esd_config.json."""
+
+    config: AppConfig
+    lang: str
+    precision: int
+    consumption_dir: Path
+    generation_dir: Path
+    weather_dir: Path
+    curated_dir: Path
+    output_dir: Path
+    cups_path: Path | None
 
 
 def _handle_cli_error(err: Exception | str, unexpected: bool = False) -> NoReturn:
@@ -57,6 +74,54 @@ def _handle_cli_error(err: Exception | str, unexpected: bool = False) -> NoRetur
     )
     console.print(f"\n{prefix} {err}\n")
     raise typer.Exit(code=1)
+
+
+@contextmanager
+def _cli_error_boundary() -> Iterator[None]:
+    """Translate domain and unexpected errors into clean exit-code-1 CLI messages."""
+    try:
+        yield
+    except typer.Exit, typer.Abort:
+        raise
+    except EsdError as err:
+        _handle_cli_error(err)
+    except Exception as exc:
+        _handle_cli_error(exc, unexpected=True)
+
+
+def _resolve_workspace_context(
+    lang: str | None = None,
+    check_initialized: bool = False,
+) -> _WorkspaceContext:
+    """Load persistent config, validate active language, and resolve workspace paths once."""
+    from src.ingestion.consumption import resolve_effective_cups_path
+
+    cfg = load_config()
+    try:
+        active_lang = normalize_language_code(lang) if lang else cfg.language
+    except ValueError as err:
+        _handle_cli_error(err)
+
+    if check_initialized and not is_initialized():
+        render_not_initialized_warning(lang=active_lang)
+
+    consumption_dir = Path(cfg.consumption_dir)
+    if cfg.cups_config_path and cfg.cups_config_path != str(DEFAULT_CUPS_CONFIG_PATH):
+        cups_path = resolve_cups_config_path(custom_path=cfg.cups_config_path, config=cfg)
+    else:
+        cups_path = resolve_effective_cups_path(consumption_dir)
+
+    return _WorkspaceContext(
+        config=cfg,
+        lang=active_lang,
+        precision=cfg.share_precision,
+        consumption_dir=consumption_dir,
+        generation_dir=Path(cfg.generation_dir),
+        weather_dir=Path(cfg.weather_dir) if cfg.weather_dir else DEFAULT_WEATHER_DIR,
+        curated_dir=Path(cfg.curated_dir),
+        output_dir=Path(cfg.output_dir),
+        cups_path=cups_path,
+    )
 
 
 def _version_callback(value: bool) -> None:
@@ -78,45 +143,27 @@ def default_callback(
         help="Show active CalVer application version and exit.",
     ),
 ) -> None:
-    """Default entrypoint. Renders custom formatted help if no subcommand is passed."""
+    """Render formatted CLI help when no subcommand is passed."""
     if ctx.invoked_subcommand is None:
         render_help(lang=get_language())
 
 
 @app.command(name="init")
 def init_command(
-    lang: str | None = typer.Option(
-        None,
-        "--lang",
-        "-l",
-        help="Language preference: 'en' (English) or 'es' (Español). Defaults to 'en'.",
-    ),
+    lang: str | None = typer.Option(None, "--lang", "-l", help="Language: 'en' or 'es'."),
     precision: int | None = typer.Option(
-        None,
-        "--precision",
-        "-p",
-        help="Share percentage precision: 0 (e.g. 53%), 1 (e.g. 52.8%), or 2 (e.g. 52.86%). Defaults to 0.",
+        None, "--precision", "-p", help="Share decimals: 0, 1, or 2."
     ),
 ) -> None:
-    """Initialize workspace: create dirs, clear .output, configure language and precision.
-
-    Safe to call multiple times — always re-applies settings, clears .output, and creates
-    missing directories. Defaults to English ('en') and zero precision (0) if omitted.
-    """
-    try:
+    """Initialize workspace dirs, clear .output, and save language and precision."""
+    with _cli_error_boundary():
         cfg = load_config()
         was_already = is_initialized()
-
-        # 1. Clear .output (always on init / re-init)
         cleared_count = clear_output_directory(Path(cfg.output_dir))
 
-        # 2. Ask user for desired language if not explicitly provided
         if lang is None:
             try:
-                raw_lang = typer.prompt(
-                    t("prompt_lang", lang=cfg.language),
-                    default="en",
-                )
+                raw_lang = typer.prompt(t("prompt_lang", lang=cfg.language), default="en")
             except typer.exceptions.Abort, EOFError:
                 raw_lang = "en"
         else:
@@ -127,7 +174,6 @@ def init_command(
         except ValueError as err:
             _handle_cli_error(err)
 
-        # 3. Ask user for desired precision if not explicitly provided
         if precision is None:
             try:
                 raw_precision = typer.prompt(
@@ -145,14 +191,10 @@ def init_command(
         except ValueError as err:
             _handle_cli_error(err)
 
-        # 4. Ensure all workspace directories exist
         ensure_directories(config=cfg)
-
-        # 5. Persist settings and record initialization timestamp
         set_language(target_lang)
         set_precision(target_precision)
         ts = mark_initialized(version=get_version())
-
         render_init_success(
             lang=target_lang,
             initialized_at=ts,
@@ -160,157 +202,70 @@ def init_command(
             was_already=was_already,
             cleared_files=cleared_count,
         )
-    except typer.Exit, typer.Abort:
-        raise
-    except EsdError as err:
-        _handle_cli_error(err)
-    except Exception as exc:
-        _handle_cli_error(exc, unexpected=True)
 
 
 @app.command(name="doctor")
 def doctor_command(
-    consumption_dir: Path | None = typer.Option(
-        None,
-        "--consumption-dir",
-        "-c",
-        help="Path to folder containing DATADIS hourly consumption CSV files. Defaults to configured path.",
-    ),
-    generation_dir: Path | None = typer.Option(
-        None,
-        "--generation-dir",
-        "-g",
-        help="Path to folder containing Huawei FusionSolar generation Excel files. Defaults to configured path.",
-    ),
-    cups_file: Path | None = typer.Option(
-        None,
-        "--cups-file",
-        "-C",
-        help="Path to cups.json configuration file specifying CUPS uses and primary flags.",
-    ),
-    weather_dir: Path | None = typer.Option(
-        None,
-        "--weather-dir",
-        "-w",
-        help="Directory containing Open-Meteo hourly weather CSV files. Defaults to configured path.",
-    ),
-    verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        "-v",
-        help="Show complete list of all detected missing intervals and timestamps.",
-    ),
-    lang: str | None = typer.Option(
-        None,
-        "--lang",
-        "-l",
-        help="Language override for messages ('en' or 'es').",
-    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show all missing intervals."),
+    lang: str | None = typer.Option(None, "--lang", "-l", help="Language override ('en'|'es')."),
 ) -> None:
-    """Audit input data files to detect gaps, missing hourly intervals, and inconsistencies."""
-    try:
+    """Audit configured DATADIS, generation, and weather data for gaps and overlap."""
+    with _cli_error_boundary():
         from src.presentation.views.doctor import render_doctor_report
         from src.services.doctor_service import DoctorRequest, DoctorService
 
-        active_lang = normalize_language_code(lang) if lang else get_language()
-        cfg = load_config()
-        target_consumption_dir = consumption_dir or Path(cfg.consumption_dir)
-        target_generation_dir = generation_dir or Path(cfg.generation_dir)
-        target_weather_dir = weather_dir or (
-            Path(cfg.weather_dir) if cfg and cfg.weather_dir else DEFAULT_WEATHER_DIR
-        )
-        cups_path = (
-            resolve_cups_config_path(custom_path=cups_file, config=cfg)
-            if (cups_file is not None or consumption_dir is None)
-            else None
-        )
-
-        with console.status(f"[bold cyan]{t('status_doctor', lang=active_lang)}[/bold cyan]"):
-            req = DoctorRequest(
-                consumption_dir=target_consumption_dir,
-                generation_dir=target_generation_dir,
-                weather_dir=target_weather_dir,
-                cups_config_path=cups_path,
+        ctx = _resolve_workspace_context(lang=lang)
+        with console.status(f"[bold cyan]{t('status_doctor', lang=ctx.lang)}[/bold cyan]"):
+            report = DoctorService.execute(
+                DoctorRequest(
+                    consumption_dir=ctx.consumption_dir,
+                    generation_dir=ctx.generation_dir,
+                    weather_dir=ctx.weather_dir,
+                    cups_config_path=ctx.cups_path,
+                )
             )
-            report = DoctorService.execute(req)
-
-        render_doctor_report(report, verbose=verbose, lang=active_lang)
-
+        render_doctor_report(report, verbose=verbose, lang=ctx.lang)
         if not report.can_calculate:
             raise typer.Exit(code=1)
-    except typer.Exit, typer.Abort:
-        raise
-    except EsdError as err:
-        _handle_cli_error(err)
-    except Exception as exc:
-        _handle_cli_error(exc, unexpected=True)
 
 
 @app.command(name="calculate")
 def calculate_command(
     refresh: bool = typer.Option(
-        False,
-        "--refresh",
-        "-r",
-        help="Force re-curation from raw inputs and refresh cached weather archives.",
+        False, "--refresh", "-r", help="Refresh cached weather and force re-curation."
     ),
     curate_only: bool = typer.Option(
-        False,
-        "--curate-only",
-        help="Build curated CSV & Excel datasets in .curated/ without running PV optimization.",
+        False, "--curate-only", help="Build CSV & styled Excel datasets in .curated/ only."
     ),
 ) -> None:
-    """Calculate optimal electricity distribution coefficients (beta_i) for collective PV installation."""
-    cfg = load_config()
-    active_lang = cfg.language
-    active_precision = cfg.share_precision
-
-    if not is_initialized():
-        render_not_initialized_warning(lang=active_lang)
-
-    target_consumption_dir = Path(cfg.consumption_dir)
-    target_generation_dir = Path(cfg.generation_dir)
-    target_output_dir = Path(cfg.output_dir)
-    target_curated_dir = Path(cfg.curated_dir)
-    target_weather_dir = Path(cfg.weather_dir) if cfg and cfg.weather_dir else DEFAULT_WEATHER_DIR
-
-    is_default_dirs = (
-        target_consumption_dir == DEFAULT_CONSUMPTION_DIR
-        and target_curated_dir == DEFAULT_CURATED_DIR
-    )
-    if cfg.cups_config_path != str(DEFAULT_CUPS_CONFIG_PATH):
-        cups_path = resolve_cups_config_path(custom_path=cfg.cups_config_path, config=cfg)
-    elif is_default_dirs:
-        cups_path = resolve_cups_config_path(custom_path=None, config=cfg)
-    else:
-        cups_path = None
-
-    try:
+    """Calculate optimal PV distribution coefficients (beta_i) and export deliverables."""
+    with _cli_error_boundary():
         from src.optimization import OptimizationStrategy
         from src.presentation.views.matrix import render_coefficients_matrix_table
         from src.presentation.views.summary import render_community_summary
         from src.presentation.views.trajectory import render_monthly_trajectory_table
         from src.services.calculation_service import CalculationRequest, CalculationService
 
+        ctx = _resolve_workspace_context(check_initialized=True)
         req = CalculationRequest(
-            consumption_dir=target_consumption_dir,
-            generation_dir=target_generation_dir,
-            curated_dir=target_curated_dir,
-            output_dir=target_output_dir,
-            weather_dir=target_weather_dir,
-            cups_config_path=cups_path,
+            consumption_dir=ctx.consumption_dir,
+            generation_dir=ctx.generation_dir,
+            curated_dir=ctx.curated_dir,
+            output_dir=ctx.output_dir,
+            weather_dir=ctx.weather_dir,
+            cups_config_path=ctx.cups_path,
             strategy=OptimizationStrategy.OPTIMAL,
-            precision=active_precision,
+            precision=ctx.precision,
             compute_hourly=True,
             refresh=refresh,
             curate_only=curate_only,
-            lang=active_lang,
+            lang=ctx.lang,
         )
 
         initial_status = (
-            f"[bold cyan]{t('status_curating', lang=active_lang)}[/bold cyan]"
+            f"[bold cyan]{t('status_curating', lang=ctx.lang)}[/bold cyan]"
             if curate_only
-            else f"[bold cyan][1/4][/bold cyan] [bold white]{t('status_step_1', lang=active_lang)}[/bold white]"
+            else f"[bold cyan][1/4][/bold cyan] [bold white]{t('status_step_1', lang=ctx.lang)}[/bold white]"
         )
         with console.status(initial_status) as status:
 
@@ -328,7 +283,7 @@ def calculate_command(
                 dataset=cur.dataset,
                 csv_path=cur.csv_path,
                 excel_path=cur.excel_path,
-                lang=active_lang,
+                lang=ctx.lang,
                 generation_csv_path=cur.generation_csv_path,
                 generation_excel_path=cur.generation_excel_path,
                 consumption_csv_path=cur.consumption_csv_path,
@@ -338,90 +293,25 @@ def calculate_command(
 
         opt_result = calc_result.opt_result
         assert opt_result is not None
-        metadata = calc_result.metadata
-
-        # Presentation Views
         render_community_summary(
-            metadata, opt_result.total_summary, lang=active_lang, opt_result=opt_result
+            calc_result.metadata, opt_result.total_summary, lang=ctx.lang, opt_result=opt_result
         )
-        render_monthly_trajectory_table(opt_result, lang=active_lang)
-        render_coefficients_matrix_table(opt_result, lang=active_lang, precision=active_precision)
+        render_monthly_trajectory_table(opt_result, lang=ctx.lang)
+        render_coefficients_matrix_table(opt_result, lang=ctx.lang, precision=ctx.precision)
 
-        # File Exports Feedback
         if calc_result.exported_paths:
-            render_export_success(calc_result.exported_paths, lang=active_lang)
-
-    except typer.Exit, typer.Abort:
-        raise
-    except EsdError as err:
-        _handle_cli_error(err)
-    except Exception as exc:
-        _handle_cli_error(exc, unexpected=True)
+            render_export_success(calc_result.exported_paths, lang=ctx.lang)
 
 
 @app.command(name="summary")
 def summary_command(
-    consumption_dir: Path | None = typer.Option(
-        None,
-        "--consumption-dir",
-        "-c",
-        help="Path to folder containing DATADIS hourly consumption CSV files. Defaults to configured path.",
-    ),
-    output_dir: Path | None = typer.Option(
-        None,
-        "--output-dir",
-        "-o",
-        help="Destination folder for generated Markdown reports. Defaults to configured path.",
-    ),
-    year: int | None = typer.Option(
-        None,
-        "--year",
-        "-y",
-        help="Optional calendar year filter (e.g. 2025).",
-    ),
-    view: str = typer.Option(
-        "all",
-        "--view",
-        "-v",
-        help="Output view mode: 'all', 'annual', or 'monthly'.",
-    ),
-    cups: str | None = typer.Option(
-        None,
-        "--cups",
-        help="Filter display to a single CUPS trajectory.",
-    ),
-    cups_file: Path | None = typer.Option(
-        None,
-        "--cups-file",
-        "-C",
-        help="Optional path to cups.json configuration file for CUPS use labels.",
-    ),
-    lang: str | None = typer.Option(
-        None,
-        "--lang",
-        "-l",
-        help="Language override for messages ('en' or 'es').",
-    ),
+    year: int | None = typer.Option(None, "--year", "-y", help="Filter to a calendar year."),
+    view: str = typer.Option("all", "--view", "-v", help="Mode: 'all', 'annual', or 'monthly'."),
+    cups: str | None = typer.Option(None, "--cups", help="Filter to a single CUPS trajectory."),
+    lang: str | None = typer.Option(None, "--lang", "-l", help="Language override ('en'|'es')."),
 ) -> None:
     """Aggregate community consumption by year and month, show fair shares, and export Markdown."""
-    try:
-        try:
-            active_lang = normalize_language_code(lang) if lang else get_language()
-        except ValueError as err:
-            _handle_cli_error(err)
-
-        cfg = load_config()
-        if not is_initialized():
-            render_not_initialized_warning(lang=active_lang)
-
-        target_consumption_dir = consumption_dir or Path(cfg.consumption_dir)
-        target_output_dir = output_dir or Path(cfg.output_dir)
-        cups_path = (
-            resolve_cups_config_path(custom_path=cups_file, config=cfg)
-            if (cups_file is not None or consumption_dir is None)
-            else None
-        )
-
+    with _cli_error_boundary():
         from src.presentation.views.consumption import (
             render_annual_consumption_tables,
             render_consumption_insights,
@@ -433,118 +323,59 @@ def summary_command(
         )
         from src.services.summary_service import SummaryRequest, SummaryService
 
-        req = SummaryRequest(
-            consumption_dir=target_consumption_dir,
-            output_dir=target_output_dir,
-            cups_config_path=cups_path,
-            year=year,
-            cups=cups,
-            view=view,
-            lang=active_lang,
-            export_markdown=True,
-        )
+        ctx = _resolve_workspace_context(lang=lang, check_initialized=True)
+        with console.status(f"[bold cyan]{t('status_summarizing', lang=ctx.lang)}[/bold cyan]"):
+            result = SummaryService.execute(
+                SummaryRequest(
+                    consumption_dir=ctx.consumption_dir,
+                    output_dir=ctx.output_dir,
+                    cups_config_path=ctx.cups_path,
+                    year=year,
+                    cups=cups,
+                    view=view,
+                    lang=ctx.lang,
+                    export_markdown=True,
+                )
+            )
 
-        with console.status(f"[bold cyan]{t('status_summarizing', lang=active_lang)}[/bold cyan]"):
-            result = SummaryService.execute(req)
-
-        render_validation_warnings(result.validation_results, lang=active_lang)
+        render_validation_warnings(result.validation_results, lang=ctx.lang)
         render_consumption_overview(
-            result.summary,
-            file_count=result.valid_file_count,
-            lang=active_lang,
+            result.summary, file_count=result.valid_file_count, lang=ctx.lang
         )
 
         if cups and cups.strip():
             render_cups_consumption_trajectory(
-                result.summary,
-                target_cups=cups.strip().upper(),
-                filter_year=year,
-                lang=active_lang,
+                result.summary, target_cups=cups.strip().upper(), filter_year=year, lang=ctx.lang
             )
-            render_consumption_insights(result.summary, lang=active_lang)
         else:
             view_clean = view.lower().strip()
             if view_clean in ("all", "annual"):
-                render_annual_consumption_tables(
-                    result.summary,
-                    filter_year=year,
-                    lang=active_lang,
-                )
+                render_annual_consumption_tables(result.summary, filter_year=year, lang=ctx.lang)
             if view_clean in ("all", "monthly"):
-                render_monthly_consumption_overview(
-                    result.summary,
-                    filter_year=year,
-                    lang=active_lang,
-                )
+                render_monthly_consumption_overview(result.summary, filter_year=year, lang=ctx.lang)
             if view_clean == "monthly":
-                render_detailed_monthly_consumption(
-                    result.summary,
-                    filter_year=year,
-                    lang=active_lang,
-                )
-            render_consumption_insights(result.summary, lang=active_lang)
+                render_detailed_monthly_consumption(result.summary, filter_year=year, lang=ctx.lang)
+        render_consumption_insights(result.summary, lang=ctx.lang)
 
         if result.report_path is not None:
-            render_export_success([result.report_path], lang=active_lang)
-
-    except typer.Exit, typer.Abort:
-        raise
-    except EsdError as err:
-        _handle_cli_error(err)
-    except Exception as exc:
-        _handle_cli_error(exc, unexpected=True)
+            render_export_success([result.report_path], lang=ctx.lang)
 
 
 @app.command(name="compare")
 def compare_command(
-    consumption_dir: Path | None = typer.Option(
-        None,
-        "--consumption-dir",
-        "-c",
-        help="Path to folder containing DATADIS hourly consumption CSV files. Defaults to configured path.",
-    ),
     years: list[str] | None = typer.Option(
-        None,
-        "--years",
-        "-y",
-        help="Years to compare (e.g. -y 2024 -y 2025 or --years 2024,2025). Defaults to all available years.",
-    ),
-    output_dir: Path | None = typer.Option(
-        None,
-        "--output-dir",
-        "-o",
-        help="Destination folder for Markdown reports and SVG charts. Defaults to configured path.",
-    ),
-    cups_file: Path | None = typer.Option(
-        None,
-        "--cups-file",
-        "-C",
-        help="Optional path to cups.json configuration file for CUPS use labels.",
+        None, "--years", "-y", help="Years to compare (e.g. -y 2024 -y 2025 or 2024,2025)."
     ),
     charts: bool = typer.Option(
-        True,
-        "--charts/--no-charts",
-        help="Generate monthly SVG comparison bar charts in .output/charts/.",
+        True, "--charts/--no-charts", help="Generate SVG bar charts in .output/charts/."
     ),
     html: bool = typer.Option(
-        False,
-        "--html",
-        help="Export an interactive multi-year HTML comparison report in .output/.",
+        False, "--html", help="Export standalone interactive HTML dashboard."
     ),
-    lang: str | None = typer.Option(
-        None,
-        "--lang",
-        "-l",
-        help="Language override for messages ('en' or 'es').",
-    ),
+    lang: str | None = typer.Option(None, "--lang", "-l", help="Language override ('en'|'es')."),
 ) -> None:
     """Compare community consumption across multiple years with apples-to-apples completeness."""
-    try:
-        try:
-            active_lang = normalize_language_code(lang) if lang else get_language()
-        except ValueError as err:
-            _handle_cli_error(err)
-
+    with _cli_error_boundary():
         from src.presentation.views.comparison import (
             render_comparison_overview,
             render_cups_comparison_table,
@@ -557,124 +388,76 @@ def compare_command(
             parse_years_option,
         )
 
+        ctx = _resolve_workspace_context(lang=lang, check_initialized=True)
         target_years = parse_years_option(years)
 
-        cfg = load_config()
-        if not is_initialized():
-            render_not_initialized_warning(lang=active_lang)
+        with console.status(f"[bold cyan]{t('status_comparing', lang=ctx.lang)}[/bold cyan]"):
+            result = ComparisonService.execute(
+                ComparisonRequest(
+                    consumption_dir=ctx.consumption_dir,
+                    output_dir=ctx.output_dir,
+                    cups_config_path=ctx.cups_path,
+                    years=target_years,
+                    generate_charts=charts,
+                    lang=ctx.lang,
+                    export_markdown=True,
+                    export_html=html,
+                )
+            )
 
-        target_consumption_dir = consumption_dir or Path(cfg.consumption_dir)
-        target_output_dir = output_dir or Path(cfg.output_dir)
-        cups_path = (
-            resolve_cups_config_path(custom_path=cups_file, config=cfg)
-            if (cups_file is not None or consumption_dir is None)
-            else None
-        )
+        render_validation_warnings(result.validation_results, lang=ctx.lang)
+        render_comparison_overview(result.comparison, lang=ctx.lang)
+        render_monthly_comparison_table(result.comparison, lang=ctx.lang)
+        render_cups_comparison_table(result.comparison, lang=ctx.lang)
 
-        req = ComparisonRequest(
-            consumption_dir=target_consumption_dir,
-            output_dir=target_output_dir,
-            cups_config_path=cups_path,
-            years=target_years,
-            generate_charts=charts,
-            lang=active_lang,
-            export_markdown=True,
-            export_html=html,
-        )
-
-        with console.status(f"[bold cyan]{t('status_comparing', lang=active_lang)}[/bold cyan]"):
-            result = ComparisonService.execute(req)
-
-        render_validation_warnings(result.validation_results, lang=active_lang)
-        render_comparison_overview(result.comparison, lang=active_lang)
-        render_monthly_comparison_table(result.comparison, lang=active_lang)
-        render_cups_comparison_table(result.comparison, lang=active_lang)
-
-        exported_reports: list[Path] = []
-        if result.report_path is not None:
-            exported_reports.append(result.report_path)
-        if result.html_report_path is not None:
-            exported_reports.append(result.html_report_path)
+        exported = [p for p in (result.report_path, result.html_report_path) if p is not None]
         charts_note = (
             t(
                 "compare_charts_generated",
-                lang=active_lang,
+                lang=ctx.lang,
                 count=len(result.chart_paths),
-                path=str(target_output_dir / "charts"),
+                path=str(ctx.output_dir / "charts"),
             )
             if result.chart_paths
             else None
         )
-        if exported_reports or charts_note:
-            render_export_success(exported_reports, lang=active_lang, extra_note=charts_note)
-
-    except typer.Exit, typer.Abort:
-        raise
-    except EsdError as err:
-        _handle_cli_error(err)
-    except Exception as exc:
-        _handle_cli_error(exc, unexpected=True)
+        if exported or charts_note:
+            render_export_success(exported, lang=ctx.lang, extra_note=charts_note)
 
 
 @app.command(name="config")
 def config_command(
-    lang: str | None = typer.Option(
-        None,
-        "--lang",
-        "-l",
-        help="Update default language ('en' or 'es').",
-    ),
+    lang: str | None = typer.Option(None, "--lang", "-l", help="Set default language ('en'|'es')."),
     precision: int | None = typer.Option(
-        None,
-        "--precision",
-        "-p",
-        help="Update share percentage precision (0, 1, or 2 decimals).",
+        None, "--precision", "-p", help="Set share percentage decimals (0, 1, or 2)."
     ),
     consumption_dir: Path | None = typer.Option(
-        None,
-        "--consumption-dir",
-        "-c",
-        help="Update default consumption directory path.",
+        None, "--consumption-dir", "-c", help="Set default DATADIS consumption directory."
     ),
     generation_dir: Path | None = typer.Option(
-        None,
-        "--generation-dir",
-        "-g",
-        help="Update default generation directory path.",
+        None, "--generation-dir", "-g", help="Set default PV generation directory."
     ),
     weather_dir: Path | None = typer.Option(
-        None,
-        "--weather-dir",
-        "-w",
-        help="Update default weather directory path.",
-    ),
-    latitude: float | None = typer.Option(
-        None,
-        "--latitude",
-        "--lat",
-        help="Update default latitude coordinate.",
-    ),
-    longitude: float | None = typer.Option(
-        None,
-        "--longitude",
-        "--lon",
-        help="Update default longitude coordinate.",
-    ),
-    output_dir: Path | None = typer.Option(
-        None,
-        "--output-dir",
-        "-o",
-        help="Update default output directory path.",
+        None, "--weather-dir", "-w", help="Set default Open-Meteo weather directory."
     ),
     curated_dir: Path | None = typer.Option(
-        None,
-        "--curated-dir",
-        "-u",
-        help="Update default curated directory path.",
+        None, "--curated-dir", "-u", help="Set default curated dataset directory."
+    ),
+    output_dir: Path | None = typer.Option(
+        None, "--output-dir", "-o", help="Set default output directory."
+    ),
+    cups_file: Path | None = typer.Option(
+        None, "--cups-file", "-C", help="Set default path to cups.json configuration file."
+    ),
+    latitude: float | None = typer.Option(
+        None, "--latitude", "--lat", help="Set default latitude (-90..90)."
+    ),
+    longitude: float | None = typer.Option(
+        None, "--longitude", "--lon", help="Set default longitude (-180..180)."
     ),
 ) -> None:
-    """View or update persistent application configuration."""
-    try:
+    """View or update persistent application configuration in .esd_config.json."""
+    with _cli_error_boundary():
         cfg = load_config()
         modified = False
         active_lang = cfg.language
@@ -692,15 +475,6 @@ def config_command(
                 modified = True
             except ValueError as err:
                 _handle_cli_error(err)
-        if consumption_dir is not None:
-            cfg.consumption_dir = str(consumption_dir)
-            modified = True
-        if generation_dir is not None:
-            cfg.generation_dir = str(generation_dir)
-            modified = True
-        if weather_dir is not None:
-            cfg.weather_dir = str(weather_dir)
-            modified = True
         if latitude is not None:
             if not (-90.0 <= latitude <= 90.0):
                 _handle_cli_error(t("err_lat_range", lang=active_lang, val=latitude))
@@ -711,108 +485,58 @@ def config_command(
                 _handle_cli_error(t("err_lon_range", lang=active_lang, val=longitude))
             cfg.longitude = longitude
             modified = True
-        if output_dir is not None:
-            cfg.output_dir = str(output_dir)
-            modified = True
-        if curated_dir is not None:
-            cfg.curated_dir = str(curated_dir)
-            modified = True
+
+        for attr, val in (
+            ("consumption_dir", consumption_dir),
+            ("generation_dir", generation_dir),
+            ("weather_dir", weather_dir),
+            ("curated_dir", curated_dir),
+            ("output_dir", output_dir),
+            ("cups_config_path", cups_file),
+        ):
+            if val is not None:
+                setattr(cfg, attr, str(val))
+                modified = True
 
         if modified:
             save_config(cfg)
             console.print(f"[bold green]{t('msg_config_updated', lang=cfg.language)}[/bold green]")
 
         render_config_view(cfg, lang=cfg.language)
-    except typer.Exit, typer.Abort:
-        raise
-    except EsdError as err:
-        _handle_cli_error(err)
-    except Exception as exc:
-        _handle_cli_error(exc, unexpected=True)
 
 
 @app.command(name="clean")
 def clean_command(
-    output_dir: Path | None = typer.Option(
-        None,
-        "--output-dir",
-        "-o",
-        help="Output directory to clean up. Defaults to configured output directory.",
-    ),
-    curated_dir: Path | None = typer.Option(
-        None,
-        "--curated-dir",
-        "-u",
-        help="Curated directory to clean up. Defaults to configured curated directory.",
-    ),
-    weather_dir: Path | None = typer.Option(
-        None,
-        "--weather-dir",
-        "-w",
-        help="Weather directory to clean up. Defaults to configured weather directory.",
-    ),
-    force: bool = typer.Option(
-        False,
-        "--force",
-        "-f",
-        help="Force deletion without interactive confirmation.",
-    ),
-    lang: str | None = typer.Option(
-        None,
-        "--lang",
-        "-l",
-        help="Language override for messages ('en' or 'es').",
-    ),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation prompt."),
+    lang: str | None = typer.Option(None, "--lang", "-l", help="Language override ('en'|'es')."),
 ) -> None:
-    """Clean up generated files from .output, .curated, and .input/weather directories."""
-    try:
-        active_lang = normalize_language_code(lang) if lang else get_language()
-        cfg = load_config()
-        out_dir = output_dir or Path(cfg.output_dir)
-        cur_dir = curated_dir or Path(cfg.curated_dir)
-        wth_dir = weather_dir or (
-            Path(cfg.weather_dir) if cfg and cfg.weather_dir else DEFAULT_WEATHER_DIR
-        )
-
-        target_dirs = [out_dir, cur_dir, wth_dir]
+    """Clean generated files in configured .output, .curated, and .input/weather dirs."""
+    with _cli_error_boundary():
+        ctx = _resolve_workspace_context(lang=lang)
+        target_dirs = [ctx.output_dir, ctx.curated_dir, ctx.weather_dir]
         dirs_display = ", ".join(str(d) for d in target_dirs)
 
-        items: list[Path] = []
-        for d in target_dirs:
-            if d.exists() and d.is_dir():
-                items.extend(
-                    item
-                    for item in d.iterdir()
-                    if not item.name.startswith(".")
-                    and (item.is_file() or item.is_symlink() or item.is_dir())
-                )
-
+        items = [
+            item
+            for d in target_dirs
+            if d.exists() and d.is_dir()
+            for item in d.iterdir()
+            if (not item.name.startswith(".") or item.name == ".esd_manifest.json")
+            and (item.is_file() or item.is_symlink() or item.is_dir())
+        ]
         if not items:
-            render_cleanup_result(count=0, output_dir=dirs_display, lang=active_lang)
+            render_cleanup_result(count=0, output_dir=dirs_display, lang=ctx.lang)
             return
 
-        if not force:
-            confirm = typer.confirm(
-                t(
-                    "prompt_cleanup_confirm",
-                    lang=active_lang,
-                    count=len(items),
-                    dir=dirs_display,
-                ),
-                default=False,
-            )
-            if not confirm:
-                console.print(f"[yellow]{t('cleanup_aborted', lang=active_lang)}[/yellow]")
-                return
+        if not force and not typer.confirm(
+            t("prompt_cleanup_confirm", lang=ctx.lang, count=len(items), dir=dirs_display),
+            default=False,
+        ):
+            console.print(f"[yellow]{t('cleanup_aborted', lang=ctx.lang)}[/yellow]")
+            return
 
         count = sum(clear_output_directory(d) for d in target_dirs)
-        render_cleanup_result(count=count, output_dir=dirs_display, lang=active_lang)
-    except typer.Exit, typer.Abort:
-        raise
-    except EsdError as err:
-        _handle_cli_error(err)
-    except Exception as exc:
-        _handle_cli_error(exc, unexpected=True)
+        render_cleanup_result(count=count, output_dir=dirs_display, lang=ctx.lang)
 
 
 def main() -> None:

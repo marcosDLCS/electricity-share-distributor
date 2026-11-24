@@ -268,6 +268,7 @@ def render_config_view(cfg: AppConfig, lang: str | None = None) -> None:
     table.add_row("weather_dir", str(cfg.weather_dir))
     table.add_row("curated_dir", str(cfg.curated_dir))
     table.add_row("output_dir", str(cfg.output_dir))
+    table.add_row("cups_config_path", str(cfg.cups_config_path))
     coords_val = (
         f"{cfg.latitude}, {cfg.longitude}"
         if cfg.latitude is not None and cfg.longitude is not None

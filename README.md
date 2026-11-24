@@ -3,7 +3,7 @@
 > Unified Python CLI for residential community energy analytics (*comunidades de propietarios*) and optimal photovoltaic self-consumption distribution coefficients ($\beta_i$) in Spain under **Real Decreto 244/2019** & **Orden TED/1247/2021**.
 
 [![Python](https://img.shields.io/badge/Python-3.14+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.11.027-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.11.028-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-Water--Filling%20%2B%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -135,7 +135,7 @@ esd init [--lang en|es] [--precision 0|1|2]
 | `--precision` | `-p` | Decimal places for share percentages (`0`, `1`, or `2`) | Prompt / `0` |
 
 ### `esd config`
-Inspects active settings or persists language, share decimal precision, Open-Meteo coordinates, and workspace directories into `.esd_config.json`:
+Inspects active settings or persists language, share decimal precision, Open-Meteo coordinates, `cups.json`, and workspace directories into `.esd_config.json` (used automatically across all analytical commands):
 
 ```bash
 # View active persistent configuration
@@ -147,8 +147,8 @@ esd config --lang es --precision 2
 # Save community geographical coordinates for Open-Meteo queries
 esd config --latitude 40.4168 --longitude -3.7038
 
-# Update default input, curated, and output directories
-esd config -c /path/cons -g /path/gen -w /path/weather -u /path/curated -o /path/output
+# Update default input, CUPS, curated, and output paths
+esd config -c /path/cons -g /path/gen -w /path/weather -u /path/curated -o /path/output -C /path/cups.json
 ```
 
 | Option | Flag | Description |
@@ -157,6 +157,7 @@ esd config -c /path/cons -g /path/gen -w /path/weather -u /path/curated -o /path
 | `--latitude` / `--longitude` | `--lat` / `--lon` | Persist community geographic coordinates (`-90..90`, `-180..180`) |
 | `--consumption-dir` / `--generation-dir` | `-c` / `-g` | Persist default DATADIS and solar inverter input folders |
 | `--weather-dir` / `--curated-dir` / `--output-dir` | `-w` / `-u` / `-o` | Persist Open-Meteo archive, curated cache, and report output folders |
+| `--cups-file` | `-C` | Persist default path to `cups.json` configuration file |
 
 ### Root Flags (`esd`)
 Running bare `esd` prints the compact 7-command Rich reference, `-h`/`--help` displays Typer usage, and `-V`/`--version` displays active CalVer release metadata:
@@ -168,21 +169,17 @@ esd --help      # Show CLI usage and available commands (alias: -h)
 ```
 
 ### `esd doctor`
-Audits DATADIS CSVs, solar inverter `.xlsx` exports, and Open-Meteo weather archives for gaps, duplicates, inactive meters (`>=99%` zeros), prolonged inverter outages (`>=48h`), and timestamp overlap. Runs in **consumption-only mode** when `.input/generation/` is empty (`can_calculate=False`, exit status `1`).
+Audits configured DATADIS CSVs, solar inverter `.xlsx` exports, and Open-Meteo weather archives for gaps, duplicates, inactive meters (`>=99%` zeros), prolonged inverter outages (`>=48h`), and timestamp overlap. Runs in **consumption-only mode** when `.input/generation/` is empty (`can_calculate=False`, exit status `1`).
 ```bash
-esd doctor [--verbose] [-c DIR] [-g DIR] [-w DIR] [-C CUPS_JSON] [-l en|es]
+esd doctor [--verbose] [--lang en|es]
 ```
 | Option | Flag | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--consumption-dir` | `-c` | Folder containing DATADIS consumption CSVs | From config |
-| `--generation-dir` | `-g` | Folder containing solar inverter `.xlsx` exports | From config |
-| `--weather-dir` | `-w` | Folder containing Open-Meteo weather CSVs | From config |
-| `--cups-file` | `-C` | Path to `cups.json` with facility uses & primary flags | `.input/cups/cups.json` |
 | `--verbose` | `-v` | Show complete list of missing hourly intervals | `False` |
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |
 
 ### `esd summary`
-Aggregates DATADIS community demand by year and month under the **100.00% fair-share invariant**, tags `★` (`>30%` rank #1) and `(0)` (`<1 kWh`) meters, renders 80-column tables (hiding detailed per-CUPS monthly tables unless `--view monthly`), and exports `*_esd_consumption_summary.md`:
+Aggregates DATADIS community demand from configured paths by year and month under the **100.00% fair-share invariant**, tags `★` (`>30%` rank #1) and `(0)` (`<1 kWh`) meters, renders 80-column tables (hiding detailed per-CUPS monthly tables unless `--view monthly`), and exports `*_esd_consumption_summary.md`:
 ```bash
 esd summary                               # Overview + annual shares + Markdown export
 esd summary --year 2025 --view monthly    # Add per-CUPS monthly breakdown
@@ -190,25 +187,19 @@ esd summary --cups ES0021000000000001AA   # Trajectory for a single CUPS
 ```
 | Option | Flag | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--consumption-dir` | `-c` | Folder containing DATADIS CSVs (flat or `<year>/`) | From config |
-| `--output-dir` | `-o` | Destination folder for Markdown reports | From config |
 | `--year` | `-y` | Filter display and report to a specific calendar year | `None` (all) |
 | `--view` | `-v` | View mode: `all`, `annual`, or `monthly` | `all` |
 | `--cups` | — | Filter display to a single CUPS trajectory | `None` (all) |
-| `--cups-file` | `-C` | Optional `cups.json` path for functional `use` labels | `.input/cups/cups.json` |
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |
 
 ### `esd compare`
-Performs apples-to-apples multi-year consumption comparisons, flagging incomplete months `[Inc]` and excluding them from annual totals and deltas. Exports `*_esd_consumption_comparison.md`, grouped SVG charts in `.output/charts/`, and an optional standalone `--html` dashboard:
+Performs apples-to-apples multi-year comparisons from configured paths, flagging incomplete months `[Inc]` and excluding them from annual totals and deltas. Exports `*_esd_consumption_comparison.md`, grouped SVG charts in `.output/charts/`, and an optional standalone `--html` dashboard:
 ```bash
-esd compare -y 2024 -y 2025 [--no-charts] [--html] [-c DIR] [-o DIR] [-C CUPS_JSON] [-l en|es]
+esd compare -y 2024 -y 2025 [--no-charts] [--html] [--lang en|es]
 ```
 | Option | Flag | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--consumption-dir` | `-c` | Folder containing DATADIS CSVs | From config |
 | `--years` | `-y` | Years to compare (`-y 2024 -y 2025` or `--years 2024,2025`) | `None` (all) |
-| `--output-dir` | `-o` | Destination folder for Markdown, HTML, and SVG charts | From config |
-| `--cups-file` | `-C` | Optional `cups.json` path for functional `use` labels | `.input/cups/cups.json` |
 | `--charts/--no-charts` | — | Toggle native monthly SVG grouped bar charts | `True` |
 | `--html` | — | Export standalone interactive comparison HTML report | `False` |
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |
@@ -235,15 +226,12 @@ esd calculate --curate-only   # Build CSV + styled Excel datasets in .curated/ a
 | `*_esd_hourly_shares.csv` | CSV (`;`) | Hourly time-series shares (1% active floor) and integer Solar Efficiency Index (`0`–`100`) |
 
 ### `esd clean`
-Recursively removes generated files and subdirectories in `.output/`, `.curated/`, and `.input/weather/` (preserving hidden files such as `.gitkeep`):
+Recursively removes generated files and subdirectories in the configured `.output/`, `.curated/`, and `.input/weather/` directories (preserving hidden files such as `.gitkeep`):
 ```bash
-esd clean [--force] [-o OUTPUT_DIR] [-u CURATED_DIR] [-w WEATHER_DIR] [-l en|es]
+esd clean [--force] [--lang en|es]
 ```
 | Option | Flag | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--output-dir` | `-o` | Output directory to clean | From config (`.output`) |
-| `--curated-dir` | `-u` | Curated directory to clean | From config (`.curated`) |
-| `--weather-dir` | `-w` | Weather cache directory to clean | From config (`.input/weather`) |
 | `--force` | `-f` | Force deletion without confirmation | `False` |
 | `--lang` | `-l` | Language override (`en` or `es`) | From config |
 

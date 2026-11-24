@@ -6,6 +6,7 @@ from pathlib import Path
 
 import openpyxl
 import pandas as pd
+import pytest
 from typer.testing import CliRunner
 
 from src.cli import app
@@ -265,18 +266,30 @@ def test_doctor_weather_incomplete_coverage(tmp_path: Path) -> None:
     assert report.can_calculate is True
 
 
-def test_cli_doctor_custom_flags(tmp_path: Path) -> None:
-    """Ensure doctor CLI accepts --cups-file and --weather-dir options."""
+def test_cli_doctor_config_first_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure doctor resolves custom cups_file and weather_dir from config and rejects legacy flags."""
+    from src.config import AppConfig
+
     cups_file = tmp_path / "custom_cups.json"
     cups_file.write_text("[]", encoding="utf-8")
     w_dir = tmp_path / "custom_weather"
     w_dir.mkdir()
 
-    res = runner.invoke(
-        app, ["doctor", "--cups-file", str(cups_file), "--weather-dir", str(w_dir), "--lang", "en"]
+    monkeypatch.setattr(
+        "src.cli.load_config",
+        lambda: AppConfig(
+            cups_config_path=str(cups_file),
+            weather_dir=str(w_dir),
+            language="en",
+        ),
     )
+
+    res = runner.invoke(app, ["doctor", "--lang", "en"])
     assert res.exit_code == 0
     assert "ESD DATA DOCTOR DIAGNOSTIC REPORT" in res.output
+
+    assert runner.invoke(app, ["doctor", "--cups-file", str(cups_file)]).exit_code != 0
+    assert runner.invoke(app, ["doctor", "--weather-dir", str(w_dir)]).exit_code != 0
 
 
 def test_doctor_detects_prolonged_inverter_telemetry_outage(tmp_path: Path) -> None:

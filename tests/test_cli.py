@@ -329,8 +329,10 @@ def test_cli_calculate_dynamic_defaults_from_config(
     assert len(exported_html) == 1
 
 
-def test_cli_clean_with_dir_overrides(tmp_path: Path) -> None:
-    """Ensure clean -o, -u, -w cleans all three overridden directories."""
+def test_cli_clean_rejects_dir_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure clean reads configured paths rather than legacy directory override flags."""
+    from src.config import AppConfig
+
     out_dir = tmp_path / "clean_out"
     cur_dir = tmp_path / "clean_cur"
     wth_dir = tmp_path / "clean_wth"
@@ -341,19 +343,18 @@ def test_cli_clean_with_dir_overrides(tmp_path: Path) -> None:
     (cur_dir / "temp_cur.csv").write_text("dummy")
     (wth_dir / "temp_wth.csv").write_text("dummy")
 
-    result = runner.invoke(
-        app,
-        [
-            "clean",
-            "-o",
-            str(out_dir),
-            "-u",
-            str(cur_dir),
-            "-w",
-            str(wth_dir),
-            "--force",
-        ],
+    assert runner.invoke(app, ["clean", "-o", str(out_dir), "--force"]).exit_code != 0
+    assert (out_dir / "temp_out.csv").exists()
+
+    monkeypatch.setattr(
+        "src.cli.load_config",
+        lambda: AppConfig(
+            output_dir=str(out_dir),
+            curated_dir=str(cur_dir),
+            weather_dir=str(wth_dir),
+        ),
     )
+    result = runner.invoke(app, ["clean", "--force"])
     assert result.exit_code == 0
     assert not (out_dir / "temp_out.csv").exists()
     assert not (cur_dir / "temp_cur.csv").exists()
@@ -539,3 +540,29 @@ def test_cli_clean_recursive_and_no_cleanup_alias(
     assert res_help.exit_code == 0
     assert " clean " in res_help.output
     assert " cleanup " not in res_help.output
+
+
+def test_cli_config_cups_file_and_single_screen_help(tmp_path: Path) -> None:
+    """Verify esd config --cups-file persists cups_config_path and all 7 commands have single-screen help."""
+    from src.config import CONFIG_FILE_PATH, AppConfig, load_config, save_config
+
+    cfg_path = tmp_path / ".esd_config.json"
+    cups_file = tmp_path / "custom_cups.json"
+    cups_file.write_text("[]", encoding="utf-8")
+    save_config(AppConfig(), path=cfg_path)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("src.config.CONFIG_FILE_PATH", cfg_path)
+        mp.setattr("src.cli.load_config", lambda: load_config(cfg_path))
+        mp.setattr("src.cli.save_config", lambda c: save_config(c, cfg_path))
+
+        res_cfg = runner.invoke(app, ["config", "--cups-file", str(cups_file)])
+        assert res_cfg.exit_code == 0
+        assert "cups_config_path" in res_cfg.output
+        assert load_config(cfg_path).cups_config_path == str(cups_file)
+    assert CONFIG_FILE_PATH.name == ".esd_config.json"
+
+    for cmd in ("init", "doctor", "summary", "compare", "calculate", "config", "clean"):
+        h_res = runner.invoke(app, [cmd, "--help"])
+        assert h_res.exit_code == 0, f"{cmd} --help failed"
+        assert len(h_res.output.splitlines()) <= 35, f"{cmd} --help exceeded one terminal screen"

@@ -176,10 +176,10 @@ graph TD
 ```
 
 ### Paso 1: Inicialización y Configuración (`esd init` / `esd config`)
-Crea `.input/`, `.curated/` y `.output/`, y configura idioma (`en`/`es`), decimales (`0`/`1`/`2`), coordenadas Open-Meteo (`--latitude`/`--longitude`) y directorios en `.esd_config.json`:
+Crea `.input/`, `.curated/` y `.output/`, y configura idioma (`en`/`es`), decimales (`0`/`1`/`2`), coordenadas Open-Meteo (`--latitude`/`--longitude`), directorios y ruta a `cups.json` (`--cups-file`) una sola vez en `.esd_config.json` (compartido automáticamente por `doctor`, `summary`, `compare`, `calculate` y `clean`):
 ```bash
 esd init [--lang en|es] [--precision 0|1|2]
-esd config [--lang es] [--precision 2] [--latitude 40.4168 --longitude -3.7038]
+esd config [--lang es] [--precision 2] [--latitude 40.4168 --longitude -3.7038] [--cups-file .input/cups/cups.json]
 ```
 
 ### Paso 2: Comprobar Salud de Datos (`esd doctor`)

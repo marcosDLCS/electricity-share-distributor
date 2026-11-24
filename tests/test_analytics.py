@@ -316,21 +316,21 @@ def test_cli_summary_command_workflows(tmp_path: Path, monkeypatch: pytest.Monke
         encoding="utf-8",
     )
 
+    from src.config import AppConfig
+
     monkeypatch.setattr("src.cli.is_initialized", lambda: True)
+    monkeypatch.setattr(
+        "src.cli.load_config",
+        lambda: AppConfig(
+            consumption_dir=str(cons_dir),
+            output_dir=str(out_dir),
+            cups_config_path=str(cups_file),
+            language="en",
+        ),
+    )
     runner = CliRunner()
 
-    res_all = runner.invoke(
-        app,
-        [
-            "summary",
-            "-c",
-            str(cons_dir),
-            "-o",
-            str(out_dir),
-            "-C",
-            str(cups_file),
-        ],
-    )
+    res_all = runner.invoke(app, ["summary"])
     assert res_all.exit_code == 0
     assert "ES0021000000000001AA" in res_all.output
     assert "Aerotermia" in res_all.output
@@ -340,19 +340,7 @@ def test_cli_summary_command_workflows(tmp_path: Path, monkeypatch: pytest.Monke
 
     res_es = runner.invoke(
         app,
-        [
-            "summary",
-            "-c",
-            str(cons_dir),
-            "-o",
-            str(out_dir),
-            "-y",
-            "2025",
-            "-v",
-            "monthly",
-            "-l",
-            "es",
-        ],
+        ["summary", "-y", "2025", "-v", "monthly", "-l", "es"],
     )
     assert res_es.exit_code == 0
     assert "Cronología Mensual" in res_es.output
@@ -360,32 +348,24 @@ def test_cli_summary_command_workflows(tmp_path: Path, monkeypatch: pytest.Monke
 
     res_cups = runner.invoke(
         app,
-        [
-            "summary",
-            "-c",
-            str(cons_dir),
-            "-o",
-            str(out_dir),
-            "--cups",
-            "ES0021000000000001AA",
-        ],
+        ["summary", "--cups", "ES0021000000000001AA"],
     )
     assert res_cups.exit_code == 0
     assert "Monthly Trajectory" in res_cups.output
 
-    res_bad_view = runner.invoke(
-        app,
-        ["summary", "-c", str(cons_dir), "-o", str(out_dir), "--view", "badview"],
-    )
+    res_bad_view = runner.invoke(app, ["summary", "--view", "badview"])
     assert res_bad_view.exit_code == 1
     assert "Invalid view mode" in res_bad_view.output
 
     res_bad_cups = runner.invoke(
         app,
-        ["summary", "-c", str(cons_dir), "-o", str(out_dir), "--cups", "ES0021000000000099ZZ"],
+        ["summary", "--cups", "ES0021000000000099ZZ"],
     )
     assert res_bad_cups.exit_code == 1
     assert "was not found" in res_bad_cups.output
+
+    # Legacy directory/cups flags should be rejected on summary (managed via esd config)
+    assert runner.invoke(app, ["summary", "-c", str(cons_dir)]).exit_code != 0
 
 
 def test_format_cups_label_and_custom_theme() -> None:
