@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| `DOC-2` | `P1` | Documentation | Condense `README.md`, bilingual guides & `AGENTS.md` by 20–25% | `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `AGENTS.md` |
 | `COH-1` | `P2` | Cohesion | Unify consumption ingestion/filtering & $O(1)$ curated cache fingerprinting | `src/ingestion/doctor.py`, `src/curation/curator.py`, `src/services/` |
 | `SIMP-2` | `P2` | Simplicity | Standardize config-first CLI options & extract shared workspace resolver | `src/cli.py`, `tests/test_cli.py` |
 | `DES-2` | `P2` | Design | Unify all terminal views onto the `CUSTOM_THEME` semantic design system | `src/presentation/console.py`, `src/presentation/views/` |
@@ -59,17 +58,7 @@ _No pending tasks._
 
 ## 📚 Documentation
 
-### `DOC-2` `[P1]` — Condense `README.md`, Bilingual Guides & `AGENTS.md` by 20–25%
-- **Goal:** Tighten all user and developer documentation by **20–25%** without losing any relevant domain formula, regulatory invariant, CLI capability, deliverable specification, or architecture reference. Current baselines: `README.md` (401 lines / 3,248 words), `docs/GUIDE_EN.md` (315 lines / 4,585 words), `docs/GUIDE_ES.md` (315 lines / 5,073 words), `AGENTS.md` (100 lines / 1,488 words).
-- **Target Components:**
-  - `README.md` (target: ~300–320 lines / ~2,435–2,600 words)
-  - `docs/GUIDE_EN.md` (target: ~235–252 lines / ~3,440–3,670 words)
-  - `docs/GUIDE_ES.md` (target: ~235–252 lines / ~3,800–4,060 words)
-  - `AGENTS.md` (target: ~75–85 lines / ~1,120–1,200 words)
-- **Acceptance Criteria:**
-  1. Replace the stale 48-line terminal preview in `README.md` with a compact (~20-line) accurate preview of the current redesigned CLI output; collapse repeated per-command flag tables and synchronize commands with `SIMP-1` / `SIMP-2`.
-  2. Deduplicate repeated prose across Sections 3, 4, 5, and 7 of `GUIDE_EN.md` and `GUIDE_ES.md` in strict bilingual parity while preserving every mathematical formula (RD 244/2019, SEI, Hare-Niemeyer, $1/k_m$, DST conservation, `[Inc]`), both Mermaid diagrams, the `.output/` deliverables table, and the Code Map.
-  3. Combined length of `README.md`, `docs/GUIDE_EN.md`, and `docs/GUIDE_ES.md` drops by **20–25%** (verified via `wc -l -w`), with zero broken markdown links and clean `python3 -m src.security` verification.
+_No pending tasks._
 
 ## 🧹 Simplicity
 
