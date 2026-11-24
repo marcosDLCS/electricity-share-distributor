@@ -278,6 +278,8 @@ class DataCurator:
         self.weather_dir = Path(weather_dir)
         self._last_curated_dataset: CuratedDataset | None = None
         self._last_curated_df: pd.DataFrame | None = None
+        self._last_consumption_df: pd.DataFrame | None = None
+        self._last_generation_df: pd.DataFrame | None = None
 
     def _resolve_cups_path(self) -> Path | None:
         """Resolve cups.json path, isolating custom test directories from global workspace config."""
@@ -377,6 +379,7 @@ class DataCurator:
         base_name: str = "generation",
         delimiter: str = ";",
         export_excel: bool = True,
+        df: pd.DataFrame | None = None,
     ) -> tuple[Path, Path]:
         """Export canonical GenerationDataset to CSV and optionally styled Excel (.xlsx) in curated_dir."""
         from src.presentation.export import ReportExporter
@@ -386,7 +389,7 @@ class DataCurator:
             delimiter=delimiter,
             decimal_char="," if delimiter == ";" else ".",
         )
-        gen_df = dataset.to_dataframe()
+        gen_df = df if df is not None else dataset.to_dataframe()
         csv_path = exporter.export_generation_dataset(
             dataset=dataset,
             curated_dir=curated_dir,
@@ -475,6 +478,7 @@ class DataCurator:
         base_name: str = "consumption",
         delimiter: str = ";",
         export_excel: bool = True,
+        df: pd.DataFrame | None = None,
     ) -> tuple[Path, Path]:
         """Export canonical ConsumptionDataset to CSV and optionally styled Excel (.xlsx) in curated_dir."""
         from src.presentation.export import ReportExporter
@@ -484,7 +488,7 @@ class DataCurator:
             delimiter=delimiter,
             decimal_char="," if delimiter == ";" else ".",
         )
-        cons_df = dataset.to_dataframe()
+        cons_df = df if df is not None else dataset.to_dataframe()
         csv_path = exporter.export_consumption_dataset(
             dataset=dataset,
             curated_dir=curated_dir,
@@ -1042,6 +1046,8 @@ class DataCurator:
         """
         self._last_curated_dataset = None
         self._last_curated_df = None
+        self._last_consumption_df = None
+        self._last_generation_df = None
 
         target_dir = self.curated_dir
         if target_dir.is_file():
@@ -1151,19 +1157,25 @@ class DataCurator:
                 pass
 
         gen_dataset = self.aggregate_generation()
+        gen_df = gen_dataset.to_dataframe()
+        self._last_generation_df = gen_df
         self.export_generation(
             gen_dataset,
             curated_dir=target_dir,
             delimiter=delimiter,
             export_excel=export_excel,
+            df=gen_df,
         )
 
         cons_dataset = self.aggregate_consumption(cups_configs=cups_configs)
+        cons_df = cons_dataset.to_dataframe()
+        self._last_consumption_df = cons_df
         self.export_consumption(
             cons_dataset,
             curated_dir=target_dir,
             delimiter=delimiter,
             export_excel=export_excel,
+            df=cons_df,
         )
 
         dataset = self.curate(

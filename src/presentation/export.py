@@ -22,6 +22,7 @@ if TYPE_CHECKING:
         CupsConsumptionShare,
     )
     from src.curation.models import ConsumptionDataset, CuratedDataset, GenerationDataset
+    from src.presentation.story_data import StoryReportContext
 
 FORMULA_INJECTION_PREFIXES: Final[tuple[str, ...]] = ("=", "+", "-", "@", "\t", "\r")
 
@@ -773,6 +774,7 @@ class ReportExporter:
         lang: str | None = None,
         precision: int | None = None,
         aligned_dataset: AlignedDataset | None = None,
+        story_context: StoryReportContext | None = None,
     ) -> list[Path]:
         """Execute exports according to the specified format flag.
 
@@ -784,21 +786,24 @@ class ReportExporter:
 
         exported: list[Path] = []
 
+        if fmt in ("all", "csv", "html") and (
+            not opt_result.fortnight_results and aligned_dataset is not None
+        ):
+            from src.optimization.engine import DistributionOptimizer
+            from src.optimization.models import OptimizationStrategy
+
+            opt_result.fortnight_results = DistributionOptimizer._evaluate_calendar_fortnights(
+                aligned_dataset=aligned_dataset,
+                cups_list=aligned_dataset.cups_list,
+                strategy=OptimizationStrategy(opt_result.strategy),
+                precision=precision or 0,
+                cups_uses=opt_result.cups_uses,
+                constraints=opt_result.constraints,
+            )
+
         if fmt in ("all", "csv"):
             exported.append(self.export_monthly_shares_csv(opt_result, precision=precision))
             exported.append(self.export_monthly_shares_lite_csv(opt_result, precision=precision))
-            if not opt_result.fortnight_results and aligned_dataset is not None:
-                from src.optimization.engine import DistributionOptimizer
-                from src.optimization.models import OptimizationStrategy
-
-                opt_result.fortnight_results = DistributionOptimizer._evaluate_calendar_fortnights(
-                    aligned_dataset=aligned_dataset,
-                    cups_list=aligned_dataset.cups_list,
-                    strategy=OptimizationStrategy(opt_result.strategy),
-                    precision=precision or 0,
-                    cups_uses=opt_result.cups_uses,
-                    constraints=opt_result.constraints,
-                )
             exported.append(self.export_fortnight_shares_csv(opt_result, precision=precision))
             exported.append(self.export_fortnight_shares_lite_csv(opt_result, precision=precision))
             if opt_result.hourly_result is None and aligned_dataset is not None:
@@ -825,6 +830,8 @@ class ReportExporter:
                     ingestion_summary,
                     lang=lang,
                     precision=precision,
+                    story_context=story_context,
+                    aligned_dataset=aligned_dataset,
                 )
             )
 
@@ -837,6 +844,8 @@ class ReportExporter:
         lang: str | None = None,
         precision: int | None = None,
         timestamp: str | None = None,
+        story_context: StoryReportContext | None = None,
+        aligned_dataset: AlignedDataset | None = None,
     ) -> Path:
         """Export standalone offline interactive HTML report."""
         from src.presentation.html_report import generate_interactive_html_report
@@ -848,6 +857,8 @@ class ReportExporter:
             ingestion_summary,
             lang=lang,
             precision=precision,
+            story_context=story_context,
+            aligned_dataset=aligned_dataset,
         )
         file_path.write_text(html_content, encoding="utf-8")
         return file_path

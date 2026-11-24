@@ -220,7 +220,7 @@ esd clean [--force]
 
 | Nombre de Archivo | Formato | Comando de Origen y Utilidad Práctica |
 | :--- | :--- | :--- |
-| `*_esd_interactive_report.html` | HTML (Independiente) | `calculate`: Cuadro de mando ejecutivo interactivo offline ES/EN con 4 tarjetas KPI, perfil horario 24h (Orden TED/1247/2021), barras de trayectoria, gráfico SEI y mapa de calor mensual. |
+| `*_esd_interactive_report.html` | HTML (Independiente) | `calculate`: Informe narrativo vecinal interactivo offline ES/EN accesible con tabla de CUPS activos (`cups.json`), gráficos de líneas multianuales de Consumo y Generación (`[Inc]`), comparativa Invierno vs. Verano, progresión en 4 pasos, simulador 100 kWh, matrices Mensual y Quincenal, glosario, temas Claro/Oscuro/Alto Contraste y ajuste tipográfico. |
 | `*_esd_monthly_shares.csv` | CSV (`;`) | `calculate`: Desglose mensual completo por CUPS: consumo, generación, porcentaje ($\beta_i$ %), kWh autoconsumidos, excedentes y demanda residual, ordenado por mes y `use`. |
 | `*_esd_monthly_shares_lite.csv` | CSV (`;`) | `calculate`: Matriz mensual compacta con porcentajes de reparto $\beta_i$ % (`cups`, `use` en eje Y frente a meses `01`..`12` en eje X). |
 | `*_esd_fortnight_shares.csv` | CSV (`;`) | `calculate`: Desglose quincenal completo (`1`: días 1–15, `2`: días 16–fin) y balance energético por CUPS. |
@@ -245,5 +245,5 @@ esd clean [--force]
 | **Ingesta: Clima y Auditoría** | [`src/ingestion/weather.py`](../src/ingestion/weather.py), [`doctor.py`](../src/ingestion/doctor.py) | `OpenMeteoWeatherDownloader`, `WeatherLoader`, `DataDoctor` | Descargas Open-Meteo, ingesta climática y auditoría de huecos/solapes. |
 | **Curado y Alineación** | [`src/curation/`](../src/curation), [`aligner.py`](../src/ingestion/aligner.py) | `DataCurator`, `TimeSeriesAligner`, `GenerationDataset`, `ConsumptionDataset`, `CuratedDataset` | Agregación en 3 etapas, reconciliación principal, clima y exportación `.curated/`. |
 | **Optimización** | [`src/optimization/`](../src/optimization) | `DistributionOptimizer`, `CoefficientsMatrix`, `HourlyProfileMatrix` | Solver vectorizado *water-filling* (verificado HiGHS), $1/k_m$, 4 vías y Hare-Niemeyer. |
-| **Presentación y Exportación** | [`src/presentation/`](../src/presentation) | `views/`, `charts.py`, `html_report.py`, `ReportExporter` | Vistas perezosas PEP 562 de 80 cols, SVG, informe HTML y `.xlsx`/CSV/MD. |
+| **Presentación y Exportación** | [`src/presentation/`](../src/presentation) | `views/`, `charts.py`, `story_data.py`, `story_report.py`, `html_report.py`, `ReportExporter` | Vistas perezosas PEP 562 de 80 cols, SVG, informe narrativo HTML y `.xlsx`/CSV/MD. |
 | **Seguridad y Versionado** | [`src/security.py`](../src/security.py), [`src/version.py`](../src/version.py) | `check_privacy`, `scan_xlsx_file`, `scan_git_history`, `bump` | Auditoría RGPD de CUPS/coordenadas/rutas/secretos y gestor CalVer. |

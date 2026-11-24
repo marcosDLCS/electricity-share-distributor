@@ -220,7 +220,7 @@ esd clean [--force]
 
 | File Name | Format | Source Command & Practical Purpose |
 | :--- | :--- | :--- |
-| `*_esd_interactive_report.html` | HTML (Standalone) | `calculate`: Offline interactive ES/EN executive dashboard with 4 KPI cards, 24h diurnal profile (Orden TED/1247/2021), energy trajectory multi-bars, SEI graphic & monthly heatmap. |
+| `*_esd_interactive_report.html` | HTML (Standalone) | `calculate`: Offline accessible ES/EN community storytelling report with active CUPS table (`cups.json`), interactive multi-year Consumption & Generation line graphs (`[Inc]` aware), Winter vs. Summer spotlight, 4-step collective sharing story, 100 kWh simulator, tabbed Monthly & Fortnight matrices, glossary, Light/Dark/High-Contrast themes & text-size controls. |
 | `*_esd_monthly_shares.csv` | CSV (`;`) | `calculate`: Monthly allocation breakdown per CUPS: consumption, generation, share percentage ($\beta_i$ %), self-consumed kWh, solar surplus & remaining grid demand ordered by month and `use`. |
 | `*_esd_monthly_shares_lite.csv` | CSV (`;`) | `calculate`: Compact monthly $\beta_i$ % matrix with CUPS (`cups`, `use`) on the Y axis and months (`01`..`12`) on the X axis. |
 | `*_esd_fortnight_shares.csv` | CSV (`;`) | `calculate`: Fortnight (`1`: days 1–15, `2`: days 16–end) allocation breakdown per CUPS with monthly half-period balances. |
@@ -245,5 +245,5 @@ esd clean [--force]
 | **Ingestion: Weather & Audit** | [`src/ingestion/weather.py`](../src/ingestion/weather.py), [`doctor.py`](../src/ingestion/doctor.py) | `OpenMeteoWeatherDownloader`, `WeatherLoader`, `DataDoctor` | Open-Meteo archive downloads, weather CSV parsing & health/gap diagnostics. |
 | **Curation & Alignment** | [`src/curation/`](../src/curation), [`aligner.py`](../src/ingestion/aligner.py) | `DataCurator`, `TimeSeriesAligner`, `GenerationDataset`, `ConsumptionDataset`, `CuratedDataset` | 3-stage aggregation, primary reconciliation, weather join & `.curated/` export. |
 | **Optimization** | [`src/optimization/`](../src/optimization) | `DistributionOptimizer`, `CoefficientsMatrix`, `HourlyProfileMatrix` | Vectorized water-filling solver (HiGHS verified), $1/k_m$, 4-way & Hare-Niemeyer. |
-| **Presentation & Export** | [`src/presentation/`](../src/presentation) | `views/`, `charts.py`, `html_report.py`, `ReportExporter` | PEP 562 lazy 80-col Rich views, SVG charts, HTML & streaming `.xlsx`/CSV/MD. |
+| **Presentation & Export** | [`src/presentation/`](../src/presentation) | `views/`, `charts.py`, `story_data.py`, `story_report.py`, `html_report.py`, `ReportExporter` | PEP 562 lazy 80-col Rich views, SVG charts, storytelling HTML & streaming `.xlsx`/CSV/MD. |
 | **Security & Versioning** | [`src/security.py`](../src/security.py), [`src/version.py`](../src/version.py) | `check_privacy`, `scan_xlsx_file`, `scan_git_history`, `bump` | GDPR CUPS/coords/path/secret scanner and per-commit CalVer manager. |

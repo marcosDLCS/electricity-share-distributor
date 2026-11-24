@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.config import DEFAULT_WEATHER_DIR
-from src.curation.curator import DataCurator, dataframe_to_aligned_dataset
+from src.curation.curator import DataCurator, dataframe_to_aligned_dataset, read_curated_csv
 from src.domain.models import BylawConstraints
 from src.i18n import t
 from src.ingestion.schema import IngestionSummary
@@ -16,8 +16,11 @@ from src.ingestion.weather import resolve_community_coordinates
 from src.optimization.engine import DistributionOptimizer
 from src.optimization.models import OptimizationResult, OptimizationStrategy
 from src.presentation.export import ReportExporter
+from src.presentation.story_data import build_story_context
 
 if TYPE_CHECKING:
+    import pandas as pd
+
     from src.services.curation_service import CurationResult
 
 
@@ -219,6 +222,42 @@ class CalculationService:
         if progress_callback:
             progress_callback(4, t("status_step_4", lang=request.lang))
 
+        curated_base_dir = curated_csv.parent
+        consumption_df: pd.DataFrame | None = curator._last_consumption_df
+        if consumption_df is None:
+            cons_csv = curated_base_dir / "consumption.csv"
+            if cons_csv.is_file():
+                try:
+                    consumption_df = read_curated_csv(
+                        cons_csv,
+                        dtype={"cups_id": str, "timestamp": str},
+                        dataset_label="consumption",
+                    )
+                except Exception:
+                    consumption_df = None
+
+        generation_df: pd.DataFrame | None = curator._last_generation_df
+        if generation_df is None:
+            gen_csv = curated_base_dir / "generation.csv"
+            if gen_csv.is_file():
+                try:
+                    generation_df = read_curated_csv(
+                        gen_csv,
+                        dtype={"timestamp": str},
+                        dataset_label="generation",
+                    )
+                except Exception:
+                    generation_df = None
+
+        story_context = build_story_context(
+            opt_result=opt_result,
+            ingestion_summary=aligned.metadata,
+            cups_configs=cups_cfg or None,
+            consumption_df=consumption_df,
+            generation_df=generation_df,
+            aligned_dataset=aligned,
+        )
+
         exporter = ReportExporter(output_dir=request.output_dir)
         exported_paths = exporter.export_all(
             opt_result,
@@ -227,6 +266,7 @@ class CalculationService:
             lang=request.lang,
             precision=request.precision,
             aligned_dataset=aligned,
+            story_context=story_context,
         )
 
         return CalculationResult(
