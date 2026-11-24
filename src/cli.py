@@ -28,48 +28,18 @@ from src.config import (
 )
 from src.domain.exceptions import EsdError
 from src.i18n import t
-from src.optimization import OptimizationStrategy
 from src.presentation.console import console
-from src.presentation.views import (
-    render_annual_consumption_tables,
+from src.presentation.views.common import (
     render_cleanup_result,
-    render_coefficients_matrix_table,
-    render_community_summary,
-    render_comparison_overview,
     render_config_view,
-    render_consumption_insights,
-    render_consumption_overview,
-    render_cups_comparison_table,
-    render_cups_consumption_trajectory,
-    render_curate_summary,
-    render_detailed_monthly_consumption,
-    render_doctor_report,
     render_export_success,
     render_help,
     render_init_success,
-    render_monthly_comparison_table,
-    render_monthly_consumption_overview,
-    render_monthly_trajectory_table,
     render_not_initialized_warning,
-    render_validation_warnings,
     render_version,
     render_weather_result,
 )
-from src.services import (
-    CalculationRequest,
-    CalculationService,
-    ComparisonRequest,
-    ComparisonService,
-    CurationRequest,
-    CurationService,
-    DoctorRequest,
-    DoctorService,
-    SummaryRequest,
-    SummaryService,
-    WeatherRequest,
-    WeatherService,
-    parse_years_option,
-)
+from src.presentation.views.curate import render_curate_summary
 from src.version import get_version
 
 app = typer.Typer(
@@ -242,6 +212,9 @@ def doctor_command(
 ) -> None:
     """Audit input data files to detect gaps, missing hourly intervals, and inconsistencies."""
     try:
+        from src.presentation.views.doctor import render_doctor_report
+        from src.services.doctor_service import DoctorRequest, DoctorService
+
         active_lang = normalize_language_code(lang) if lang else get_language()
         cfg = load_config()
         target_consumption_dir = consumption_dir or Path(cfg.consumption_dir)
@@ -360,6 +333,8 @@ def curate_command(
     )
 
     try:
+        from src.services.curation_service import CurationRequest, CurationService
+
         with console.status(f"[bold cyan]{t('status_curating', lang=active_lang)}[/bold cyan]"):
             req = CurationRequest(
                 consumption_dir=target_consumption_dir,
@@ -459,6 +434,8 @@ def weather_command(
         status_spinner.update(status_text)
 
     try:
+        from src.services.weather_service import WeatherRequest, WeatherService
+
         req = WeatherRequest(
             year=year,
             latitude=latitude,
@@ -512,6 +489,12 @@ def calculate_command() -> None:
         cups_path = None
 
     try:
+        from src.optimization import OptimizationStrategy
+        from src.presentation.views.matrix import render_coefficients_matrix_table
+        from src.presentation.views.summary import render_community_summary
+        from src.presentation.views.trajectory import render_monthly_trajectory_table
+        from src.services.calculation_service import CalculationRequest, CalculationService
+
         req = CalculationRequest(
             consumption_dir=target_consumption_dir,
             generation_dir=target_generation_dir,
@@ -620,6 +603,17 @@ def summary_command(
             if (cups_file is not None or consumption_dir is None)
             else None
         )
+
+        from src.presentation.views.consumption import (
+            render_annual_consumption_tables,
+            render_consumption_insights,
+            render_consumption_overview,
+            render_cups_consumption_trajectory,
+            render_detailed_monthly_consumption,
+            render_monthly_consumption_overview,
+            render_validation_warnings,
+        )
+        from src.services.summary_service import SummaryRequest, SummaryService
 
         req = SummaryRequest(
             consumption_dir=target_consumption_dir,
@@ -731,6 +725,18 @@ def compare_command(
             active_lang = normalize_language_code(lang) if lang else get_language()
         except ValueError as err:
             _handle_cli_error(err)
+
+        from src.presentation.views.comparison import (
+            render_comparison_overview,
+            render_cups_comparison_table,
+            render_monthly_comparison_table,
+        )
+        from src.presentation.views.consumption import render_validation_warnings
+        from src.services.comparison_service import (
+            ComparisonRequest,
+            ComparisonService,
+            parse_years_option,
+        )
 
         target_years = parse_years_option(years)
 

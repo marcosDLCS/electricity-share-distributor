@@ -67,10 +67,17 @@ class DatadisValidator:
 
         try:
             with file_path.open(encoding=encoding, errors="replace") as handle:
-                reader = csv.reader(handle, delimiter=delimiter)
-                try:
-                    raw_headers = next(reader)
-                except StopIteration:
+                header_line = handle.readline()
+                if not header_line:
+                    return ValidationResult(
+                        file_path=file_path,
+                        is_valid=False,
+                        delimiter=delimiter,
+                        encoding=encoding,
+                        error_message="File has no headers.",
+                    )
+                raw_headers = next(csv.reader([header_line], delimiter=delimiter), [])
+                if not raw_headers:
                     return ValidationResult(
                         file_path=file_path,
                         is_valid=False,
@@ -97,7 +104,8 @@ class DatadisValidator:
                         error_message=f"Missing required columns: {', '.join(missing)}",
                     )
 
-                row_count = sum(1 for row in reader if any(cell.strip() for cell in row))
+                strip_chars = f" \t\r\n{delimiter}"
+                row_count = sum(1 for line in handle if line.strip(strip_chars))
                 if row_count == 0:
                     return ValidationResult(
                         file_path=file_path,
@@ -177,16 +185,21 @@ class DatadisConsumptionLoader:
         return DatadisValidator.detect_delimiter(file_path, encoding)
 
     @classmethod
-    def parse_file(cls, file_path: Path) -> pd.DataFrame:
+    def parse_file(
+        cls,
+        file_path: Path,
+        encoding: str | None = None,
+        delimiter: str | None = None,
+    ) -> pd.DataFrame:
         """Parse a single DATADIS CSV file into a normalized DataFrame."""
-        encoding = cls.detect_encoding(file_path)
-        delimiter = cls.detect_delimiter(file_path, encoding)
+        enc = encoding or cls.detect_encoding(file_path)
+        delim = delimiter or cls.detect_delimiter(file_path, enc)
 
         try:
             df = pd.read_csv(
                 file_path,
-                sep=delimiter,
-                encoding=encoding,
+                sep=delim,
+                encoding=enc,
                 dtype=str,
             )
         except Exception as err:
@@ -223,21 +236,34 @@ class DatadisConsumptionLoader:
         # Parse numeric consumption (handling decimal comma, dot, quotes, and spaces)
         clean_df["consumption_kwh"] = clean_numeric_series(clean_df["consumo_raw"], fill_na=0.0)
 
-        # Convert fecha and hora to interval-start canonical timestamps YYYY-MM-DD HH:MM:SS
-        norm_date = (
-            clean_df["fecha"]
+        # Normalize unique fecha strings once instead of running 3 regexes over all rows
+        fecha_codes, uniq_fecha = pd.factorize(clean_df["fecha"], sort=False)
+        norm_uniq_fecha = (
+            pd.Series(uniq_fecha, dtype="string")
             .str.strip()
             .str.replace(r"^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$", r"\3-\2-\1", regex=True)
             .str.replace("/", "-", regex=False)
+            .str.replace(r"^(\d{4})-(\d{1})-(\d{1,2})$", r"\1-0\2-\3", regex=True)
+            .str.replace(r"^(\d{4})-(\d{2})-(\d{1})$", r"\1-\2-0\3", regex=True)
+            .to_numpy(dtype=object)
         )
-        # Pad single-digit month and day if present (e.g. 2026-5-1 -> 2026-05-01)
-        norm_date = norm_date.str.replace(r"^(\d{4})-(\d{1})-(\d{1,2})$", r"\1-0\2-\3", regex=True)
-        norm_date = norm_date.str.replace(r"^(\d{4})-(\d{2})-(\d{1})$", r"\1-\2-0\3", regex=True)
+        norm_date = pd.Series(
+            np.where(fecha_codes >= 0, norm_uniq_fecha[np.maximum(fecha_codes, 0)], ""),
+            index=clean_df.index,
+            dtype=object,
+        )
         clean_df["fecha"] = norm_date
 
-        # Parse hour integer from hora column (e.g. "01:00" -> 1)
-        h_extracted = clean_df["hora"].str.split(":").str[0]
-        h_series = pd.to_numeric(h_extracted, errors="coerce")
+        # Factorize unique hora strings for fast hour extraction
+        hora_codes, uniq_hora = pd.factorize(clean_df["hora"], sort=False)
+        uniq_h_num = pd.to_numeric(
+            pd.Series(uniq_hora, dtype="string").str.split(":").str[0],
+            errors="coerce",
+        ).to_numpy(dtype=float)
+        h_series = pd.Series(
+            np.where(hora_codes >= 0, uniq_h_num[np.maximum(hora_codes, 0)], np.nan),
+            index=clean_df.index,
+        )
 
         group_cols = ["cups", "fecha"] if clean_df["cups"].nunique() > 1 else "fecha"
         idx_series = clean_df.groupby(group_cols, sort=False).cumcount()
@@ -264,8 +290,9 @@ class DatadisConsumptionLoader:
             np.where(spring_mask, h_spring, h_standard),
         )
 
-        h_str = pd.Series(h_start, index=clean_df.index).astype(str).str.zfill(2)
-        clean_df["timestamp"] = norm_date + " " + h_str + ":00:00"
+        h_lookup = np.array([f" {h:02d}:00:00" for h in range(24)], dtype=object)
+        h_suffix = h_lookup[np.clip(np.asarray(h_start, dtype=int), 0, 23)]
+        clean_df["timestamp"] = clean_df["fecha"].astype(str) + h_suffix
         return clean_df[["cups", "timestamp", "consumption_kwh"]]
 
     @staticmethod
@@ -276,21 +303,39 @@ class DatadisConsumptionLoader:
 
         ts_str = df["timestamp"].astype(str)
         is_oct_02 = ts_str.str.slice(5, 7).eq("10") & ts_str.str.endswith(" 02:00:00")
-        if not is_oct_02.any():
+        if not bool(is_oct_02.any()):
             return df
 
-        dates = ts_str.str.slice(0, 10)
-        ts_counts = df.groupby(["cups", "timestamp"], sort=False)["consumption_kwh"].transform(
-            "size"
-        )
-        day_counts = (
-            df.assign(_d=dates)
+        # Check duplicate (cups, timestamp) only inside the tiny ~31-row October 02:00 slice first
+        oct_02_df = df.loc[is_oct_02]
+        oct_dups = oct_02_df.duplicated(subset=["cups", "timestamp"], keep=False)
+        if not bool(oct_dups.any()):
+            return df
+
+        dup_dates_raw = ts_str.loc[oct_02_df.index[oct_dups]].str.slice(0, 10)
+        cand_dates_set = set(dup_dates_raw.unique())
+        dst_dates = {str(d) for d in cand_dates_set if is_autumn_dst_date(str(d))}
+
+        # Also check day row count == 25 only on candidate duplicate dates
+        all_dates = ts_str.str.slice(0, 10)
+        cand_rows_mask = all_dates.isin(cand_dates_set)
+        cand_day_counts = (
+            df.loc[cand_rows_mask]
+            .assign(_d=all_dates.loc[cand_rows_mask])
             .groupby(["cups", "_d"], sort=False)["consumption_kwh"]
             .transform("size")
+            .reindex(df.index, fill_value=0)
         )
-        dst_dates = {str(d) for d in dates[is_oct_02].unique() if is_autumn_dst_date(str(d))}
-        dst_mask = is_oct_02 & (ts_counts == 2) & (dates.isin(dst_dates) | (day_counts == 25))
-        if not dst_mask.any():
+
+        ts_counts = (
+            oct_02_df.groupby(["cups", "timestamp"], sort=False)["consumption_kwh"]
+            .transform("size")
+            .reindex(df.index, fill_value=0)
+        )
+        dst_mask = (
+            is_oct_02 & (ts_counts == 2) & (all_dates.isin(dst_dates) | (cand_day_counts == 25))
+        )
+        if not bool(dst_mask.any()):
             return df
 
         non_dst = df.loc[~dst_mask]
@@ -327,7 +372,13 @@ class DatadisConsumptionLoader:
             validation_results.append(val_res)
             if val_res.is_valid:
                 try:
-                    dfs.append(self.parse_file(file_path))
+                    dfs.append(
+                        self.parse_file(
+                            file_path,
+                            encoding=val_res.encoding,
+                            delimiter=val_res.delimiter,
+                        )
+                    )
                 except Exception as exc:
                     val_res.is_valid = False
                     val_res.error_message = str(exc)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import calendar
 
+import numpy as np
 import pandas as pd
 
 from src.analytics.models import (
@@ -34,16 +35,28 @@ class ConsumptionAggregator:
 
         work = df.copy()
         work["cups"] = work["cups"].astype(str).str.strip()
-        dt = pd.to_datetime(work["timestamp"], errors="coerce")
-        valid_mask = dt.notna()
-        if not valid_mask.any():
+        ts_raw = work["timestamp"]
+        codes, uniques = pd.factorize(ts_raw, sort=False)
+        dt_uniq = pd.to_datetime(uniques, format="%Y-%m-%d %H:%M:%S", errors="coerce")
+        if dt_uniq.isna().any():
+            missing_uniq = dt_uniq.isna()
+            dt_uniq = dt_uniq.where(
+                ~missing_uniq, pd.to_datetime(uniques[missing_uniq], errors="coerce")
+            )
+
+        uniq_valid = ~dt_uniq.isna()
+        valid_mask = (codes >= 0) & (np.where(codes >= 0, uniq_valid[np.maximum(codes, 0)], False))
+        if not bool(valid_mask.any()):
             raise EsdError("No valid timestamps found in consumption DataFrame.")
 
         work = work.loc[valid_mask].copy()
-        dt_valid = dt.loc[valid_mask]
-        work["date_str"] = dt_valid.dt.strftime("%Y-%m-%d")
-        work["year"] = dt_valid.dt.year.astype(int)
-        work["month"] = dt_valid.dt.month.astype(int)
+        valid_codes = codes[valid_mask]
+        date_uniq = dt_uniq.strftime("%Y-%m-%d").to_numpy(dtype=object)
+        year_uniq = dt_uniq.year.fillna(0).to_numpy(dtype=int)
+        month_uniq = dt_uniq.month.fillna(0).to_numpy(dtype=int)
+        work["date_str"] = date_uniq[valid_codes]
+        work["year"] = year_uniq[valid_codes]
+        work["month"] = month_uniq[valid_codes]
         work["consumption_kwh"] = (
             pd.to_numeric(work["consumption_kwh"], errors="coerce").fillna(0.0).astype(float)
         )

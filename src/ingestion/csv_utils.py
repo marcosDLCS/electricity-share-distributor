@@ -18,7 +18,8 @@ def detect_file_encoding(file_path: Path) -> str:
     'utf-8-sig', then tries the configured supported encodings before falling back
     to 'latin-1'.
     """
-    raw_bytes = file_path.read_bytes()[:8192]
+    with file_path.open("rb") as handle:
+        raw_bytes = handle.read(8192)
     if raw_bytes.startswith(b"\xef\xbb\xbf"):
         return "utf-8-sig"
 
@@ -65,15 +66,21 @@ def sniff_csv_delimiter(file_path: Path, encoding: str = "utf-8", default: str =
 def clean_numeric_series(series: pd.Series, fill_na: float | None = None) -> pd.Series:
     """Normalize a pandas Series with potential string comma decimals into float values."""
     if pd.api.types.is_string_dtype(series.dtype) or series.dtype == object:
-        cleaned = (
-            series.astype(str)
-            .str.strip()
-            .str.strip('"')
-            .str.strip("'")
-            .str.replace(" ", "", regex=False)
-            .str.replace(",", ".", regex=False)
-        )
+        cleaned = series.astype(str).str.replace(",", ".", regex=False)
         numeric = pd.to_numeric(cleaned, errors="coerce")
+        if bool(numeric.isna().any()):
+            bad_mask = numeric.isna() & series.notna()
+            if bool(bad_mask.any()):
+                recleaned = (
+                    series.loc[bad_mask]
+                    .astype(str)
+                    .str.strip()
+                    .str.strip('"')
+                    .str.strip("'")
+                    .str.replace(" ", "", regex=False)
+                    .str.replace(",", ".", regex=False)
+                )
+                numeric.loc[bad_mask] = pd.to_numeric(recleaned, errors="coerce")
     else:
         numeric = pd.to_numeric(series, errors="coerce")
 

@@ -53,10 +53,26 @@ def _sanitize_dataframe_strings(df: pd.DataFrame) -> pd.DataFrame:
     df_out = df.copy()
     if df_out.empty:
         return df_out
+
+    formula_pattern = r"^(?:[=+\-@\t\r]|\s+[=+\-@])"
     for col in df_out.columns:
-        dtype = df_out[col].dtype
-        if pd.api.types.is_object_dtype(dtype) or pd.api.types.is_string_dtype(dtype):
-            df_out[col] = df_out[col].map(sanitize_formula_injection)
+        series = df_out[col]
+        dtype = series.dtype
+        if pd.api.types.is_object_dtype(dtype):
+            as_str = series.astype("string")
+            risky = as_str.str.contains(formula_pattern, regex=True, na=False)
+            if not bool(risky.any()):
+                continue
+            # Only escape actual str elements; keep numeric values like -3.5 intact.
+            is_str_val = series.loc[risky].map(lambda v: isinstance(v, str))
+            risky_str_idx = is_str_val[is_str_val].index
+            if len(risky_str_idx) > 0:
+                df_out.loc[risky_str_idx, col] = "'" + series.loc[risky_str_idx].astype(str)
+        elif pd.api.types.is_string_dtype(dtype):
+            as_str = series.astype("string")
+            risky = as_str.str.contains(formula_pattern, regex=True, na=False)
+            if bool(risky.any()):
+                df_out.loc[risky, col] = "'" + series.loc[risky].astype(str)
     return df_out
 
 
@@ -726,16 +742,24 @@ class ReportExporter:
 
         df = opt_result.hourly_result.time_series_df.copy()
         if not df.empty:
-            sort_cols = [c for c in ["timestamp", "use", "cups"] if c in df.columns]
-            df = df.sort_values(
-                by=sort_cols,
-                key=lambda col: col.astype(str).str.lower() if col.name in ("use", "cups") else col,
-                ascending=[True] * len(sort_cols),
-            ).reset_index(drop=True)
+            if not df.attrs.get("_sorted_ts_use_cups"):
+                sort_cols = [c for c in ["timestamp", "use", "cups"] if c in df.columns]
+                df = df.sort_values(
+                    by=sort_cols,
+                    key=lambda col: (
+                        col.map({v: str(v).lower() for v in col.unique()})
+                        if col.name in ("use", "cups")
+                        else col
+                    ),
+                    ascending=[True] * len(sort_cols),
+                ).reset_index(drop=True)
 
-            for col in ["share_pct", "estimated_share_pct"]:
-                if col in df.columns:
-                    df[col] = df[col].astype(str).str.replace(".", self.decimal_char, regex=False)
+            if self.decimal_char != ".":
+                for col in ["share_pct", "estimated_share_pct"]:
+                    if col in df.columns:
+                        df[col] = (
+                            df[col].astype(str).str.replace(".", self.decimal_char, regex=False)
+                        )
 
         df = _sanitize_dataframe_strings(df)
         df.to_csv(file_path, index=False, sep=self.delimiter, decimal=self.decimal_char)

@@ -37,91 +37,151 @@ class HuaweiGenerationLoader:
             )
         return files
 
+    @staticmethod
+    def _locate_generation_columns(
+        columns: list[str], file_name: str
+    ) -> tuple[str, str, str | None, str | None, str | None, str | None]:
+        """Identify canonical timestamp, PV generation, and optional balance column names."""
+        ts_col = next(
+            (
+                col
+                for col in columns
+                if "período estadístico" in col.lower() or "periodo estadistico" in col.lower()
+            ),
+            columns[0],
+        )
+
+        gen_col = next((col for col in columns if "rendimiento fv" in col.lower()), None)
+        if not gen_col:
+            gen_col = next(
+                (col for col in columns if "rendimiento del inversor" in col.lower()),
+                None,
+            )
+        if not gen_col:
+            raise ValidationError(
+                f"File {file_name} does not contain 'Rendimiento FV' or 'Rendimiento del inversor' column."
+            )
+
+        cons_col = next(
+            (
+                col
+                for col in columns
+                if col.lower().startswith("consumo")
+                or "consumo (kwh)" in col.lower()
+                or col.lower().startswith("consumption")
+            ),
+            None,
+        )
+        self_cons_col = next(
+            (
+                col
+                for col in columns
+                if "autoconsumo" in col.lower()
+                or "self-consumption" in col.lower()
+                or "self_consumption" in col.lower()
+            ),
+            None,
+        )
+        exp_col = next(
+            (
+                col
+                for col in columns
+                if (
+                    "exportada" in col.lower()
+                    or "exported" in col.lower()
+                    or "export" in col.lower()
+                )
+                and "pérdida" not in col.lower()
+                and "perdida" not in col.lower()
+            ),
+            None,
+        )
+        imp_col = next(
+            (
+                col
+                for col in columns
+                if "importación" in col.lower()
+                or "importacion" in col.lower()
+                or "imported" in col.lower()
+                or "import" in col.lower()
+            ),
+            None,
+        )
+        return ts_col, gen_col, cons_col, self_cons_col, exp_col, imp_col
+
+    @classmethod
+    def _read_excel_fast(cls, file_path: Path) -> pd.DataFrame:
+        """Read Huawei workbook row 1 headers + selected columns using read_only openpyxl for .xlsx."""
+        if file_path.suffix.lower() != ".xlsx":
+            df = pd.read_excel(file_path, header=1)
+            if df.empty:
+                raise ValidationError(f"Excel file {file_path.name} is empty.")
+            df.columns = [str(c).strip() for c in df.columns]
+            return df
+
+        import openpyxl
+
+        wb = None
+        try:
+            wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+            ws = wb.worksheets[0]
+            rows_iter = ws.iter_rows(values_only=True)
+            # Row 0 is the Huawei report title; row 1 contains headers.
+            next(rows_iter, None)
+            header_row = next(rows_iter, None)
+            if header_row is None:
+                raise ValidationError(f"Excel file {file_path.name} is empty.")
+
+            headers = [str(c).strip() if c is not None else "" for c in header_row]
+            if not any(headers):
+                raise ValidationError(f"Excel file {file_path.name} is empty.")
+
+            ts_col, gen_col, cons_col, self_cons_col, exp_col, imp_col = (
+                cls._locate_generation_columns(headers, file_path.name)
+            )
+            selected_cols = [
+                col
+                for col in (ts_col, gen_col, cons_col, self_cons_col, exp_col, imp_col)
+                if col is not None
+            ]
+            col_indices = [headers.index(col) for col in selected_cols]
+
+            col_data: dict[str, list[object]] = {col: [] for col in selected_cols}
+            has_rows = False
+            for row in rows_iter:
+                row_len = len(row)
+                has_rows = True
+                for col_name, idx in zip(selected_cols, col_indices, strict=True):
+                    col_data[col_name].append(row[idx] if idx < row_len else None)
+
+            if not has_rows:
+                raise ValidationError(f"Excel file {file_path.name} is empty.")
+
+            return pd.DataFrame(col_data)
+        except ValidationError:
+            raise
+        except Exception as err:
+            raise ParseError(f"Failed to read Excel file {file_path.name}: {err}") from err
+        finally:
+            if wb is not None:
+                wb.close()
+
     @classmethod
     def parse_file(cls, file_path: Path) -> pd.DataFrame:
         """Parse a single Huawei FusionSolar generation report into a normalized DataFrame."""
         try:
-            # Huawei reports typically have title on row 0 and headers on row 1
-            df = pd.read_excel(file_path, header=1)
+            df = cls._read_excel_fast(file_path)
+        except ValidationError, ParseError:
+            raise
         except Exception as err:
             raise ParseError(f"Failed to read Excel file {file_path.name}: {err}") from err
 
         if df.empty:
             raise ValidationError(f"Excel file {file_path.name} is empty.")
 
-        # Clean column names
-        df.columns = [str(c).strip() for c in df.columns]
-
-        # Locate timestamp column
-        ts_col = None
-        for col in df.columns:
-            if "período estadístico" in col.lower() or "periodo estadistico" in col.lower():
-                ts_col = col
-                break
-        if not ts_col:
-            # Check first column as fallback
-            ts_col = df.columns[0]
-
-        # Locate PV generation column
-        gen_col = None
-        for col in df.columns:
-            if "rendimiento fv" in col.lower():
-                gen_col = col
-                break
-        if not gen_col:
-            for col in df.columns:
-                if "rendimiento del inversor" in col.lower():
-                    gen_col = col
-                    break
-        if not gen_col:
-            raise ValidationError(
-                f"File {file_path.name} does not contain 'Rendimiento FV' or 'Rendimiento del inversor' column."
-            )
-
-        # Locate consumption column if present (e.g. 'Consumo (kWh)', 'Consumption (kWh)')
-        cons_col = None
-        for col in df.columns:
-            c_low = col.lower()
-            if (
-                c_low.startswith("consumo")
-                or "consumo (kwh)" in c_low
-                or c_low.startswith("consumption")
-            ):
-                cons_col = col
-                break
-
-        # Locate self-consumption column if present (e.g. 'Autoconsumo (kWh)', 'Self-consumption (kWh)')
-        self_cons_col = None
-        for col in df.columns:
-            c_low = col.lower()
-            if "autoconsumo" in c_low or "self-consumption" in c_low or "self_consumption" in c_low:
-                self_cons_col = col
-                break
-
-        # Locate export column if present (e.g. 'Energía exportada (kWh)', 'Exported energy (kWh)')
-        exp_col = None
-        for col in df.columns:
-            c_low = col.lower()
-            if (
-                ("exportada" in c_low or "exported" in c_low or "export" in c_low)
-                and "pérdida" not in c_low
-                and "perdida" not in c_low
-            ):
-                exp_col = col
-                break
-
-        # Locate import column if present (e.g. 'Importación (kWh)', 'Importacion (kWh)', 'Imported energy (kWh)')
-        imp_col = None
-        for col in df.columns:
-            c_low = col.lower()
-            if (
-                "importación" in c_low
-                or "importacion" in c_low
-                or "imported" in c_low
-                or "import" in c_low
-            ):
-                imp_col = col
-                break
+        ts_col, gen_col, cons_col, self_cons_col, exp_col, imp_col = cls._locate_generation_columns(
+            list(df.columns), file_path.name
+        )
 
         # Drop rows where timestamp is NaN
         clean_df = df.dropna(subset=[ts_col]).copy()

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pandas as pd
 
 from src.config import DEFAULT_CONSUMPTION_DIR, DEFAULT_GENERATION_DIR, DEFAULT_WEATHER_DIR
@@ -420,17 +421,16 @@ class DataDoctor:
         all_missing = full_range.difference(sorted_ts)
 
         # Separate expected Spring DST skips (last Sunday of March at 02:00) from unexpected gaps
-        unexpected_missing: list[pd.Timestamp] = []
-        dst_shifts = 0
+        is_spring_dst = (
+            (all_missing.month == 3)
+            & (all_missing.day_of_week == 6)
+            & (all_missing.day >= 25)
+            & (all_missing.hour == 2)
+        )
+        dst_shifts = int(is_spring_dst.sum())
+        unexpected_idx = all_missing[~is_spring_dst].sort_values()
 
-        for dt in all_missing:
-            # Check if dt is the European spring DST skip (last Sunday of March, 02:00)
-            if dt.month == 3 and dt.weekday() == 6 and dt.day >= 25 and dt.hour == 2:
-                dst_shifts += 1
-            else:
-                unexpected_missing.append(dt)
-
-        missing_hours = len(unexpected_missing)
+        missing_hours = len(unexpected_idx)
         gaps: list[GapInterval] = []
 
         if dst_shifts > 0:
@@ -440,24 +440,19 @@ class DataDoctor:
             status = "warning" if status != "error" else status
             notes.append(f"{missing_hours} unexpected missing hourly intervals detected.")
 
-            missing_series = pd.Series(unexpected_missing).sort_values()
-            gap_starts = [missing_series.iloc[0]]
-            gap_ends: list[pd.Timestamp] = []
+            diffs = np.diff(unexpected_idx.to_numpy())
+            breaks = np.flatnonzero(diffs != np.timedelta64(1, "h"))
+            start_positions = np.concatenate(([0], breaks + 1))
+            end_positions = np.concatenate((breaks, [missing_hours - 1]))
 
-            for i in range(1, len(missing_series)):
-                diff = missing_series.iloc[i] - missing_series.iloc[i - 1]
-                if diff > pd.Timedelta(hours=1):
-                    gap_ends.append(missing_series.iloc[i - 1])
-                    gap_starts.append(missing_series.iloc[i])
-            gap_ends.append(missing_series.iloc[-1])
-
-            for g_start, g_end in zip(gap_starts, gap_ends, strict=True):
-                g_hours = int((g_end - g_start) / pd.Timedelta(hours=1)) + 1
+            for s_pos, e_pos in zip(start_positions.tolist(), end_positions.tolist(), strict=True):
+                g_start = unexpected_idx[s_pos]
+                g_end = unexpected_idx[e_pos]
                 gaps.append(
                     GapInterval(
                         start_time=g_start.strftime("%Y-%m-%d %H:%M"),
                         end_time=g_end.strftime("%Y-%m-%d %H:%M"),
-                        missing_hours=g_hours,
+                        missing_hours=e_pos - s_pos + 1,
                     )
                 )
 

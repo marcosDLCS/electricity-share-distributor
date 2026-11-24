@@ -1436,3 +1436,94 @@ def test_optimizer_uses_pre_resolved_metadata_without_curator_disk_read(
     assert opt_result.cups_uses == {c1: "Garaje", c2: "Piscina"}
     assert opt_result.hourly_result is not None
     assert opt_result.hourly_result.profile_matrix.cups_uses == {c1: "Garaje", c2: "Piscina"}
+
+
+def test_water_filling_matches_highs_lp() -> None:
+    """Verify exact vectorized water-filling solver matches scipy HiGHS LP objective (< 1e-6)."""
+    import scipy.optimize as opt
+    from scipy.sparse import dok_matrix
+
+    from src.domain.models import BylawConstraints
+
+    def _solve_reference_lp(
+        consumption: np.ndarray,
+        generation: np.ndarray,
+        cups_list: list[str],
+        constraints: BylawConstraints | None,
+    ) -> float:
+        sun_idx = np.where(generation > 1e-4)[0]
+        if len(sun_idx) == 0:
+            return 0.0
+        n_cups = consumption.shape[1]
+        n_sun = len(sun_idx)
+        n_vars = n_cups + n_cups * n_sun
+        c = np.zeros(n_vars)
+        c[:n_cups] = -1e-5
+        c[n_cups:] = -1.0
+        a_ub = dok_matrix((1 + n_cups * n_sun, n_vars))
+        b_ub = np.zeros(1 + n_cups * n_sun)
+        b_ub[0] = 1.0
+        for i in range(n_cups):
+            a_ub[0, i] = 1.0
+        row = 1
+        for k, t_idx in enumerate(sun_idx):
+            g_k = float(generation[t_idx])
+            for i in range(n_cups):
+                a_ub[row, n_cups + i * n_sun + k] = 1.0
+                a_ub[row, i] = -g_k
+                row += 1
+        bounds: list[tuple[float, float]] = []
+        for cups in cups_list:
+            l_b, u_b = constraints.get_bounds(cups) if constraints else (0.0, 1.0)
+            l_b = max(0.01, l_b)
+            u_b = max(l_b, u_b)
+            bounds.append((float(l_b), float(u_b)))
+        for i in range(n_cups):
+            for t_idx in sun_idx:
+                bounds.append((0.0, max(0.0, float(consumption[t_idx, i]))))
+        res = opt.linprog(c, A_ub=a_ub.tocsc(), b_ub=b_ub, bounds=bounds, method="highs")
+        assert res.success
+        betas = np.array([res.x[i] for i in range(n_cups)], dtype=float)
+        return float(np.sum(np.minimum(consumption, betas * generation[:, np.newaxis])))
+
+    rng = np.random.default_rng(42)
+    cups = [f"ES002100000000000{i}AA" for i in range(1, 6)]
+
+    # 1. Unconstrained mixed demand/solar
+    cons_mixed = rng.uniform(0.0, 8.0, size=(240, 5))
+    gen_mixed = np.maximum(0.0, np.sin(np.linspace(0, 20, 240)) * 18.0)
+    betas_1 = DistributionOptimizer._solve_optimal_betas(cons_mixed, gen_mixed, cups, None)
+    obj_wf_1 = float(np.sum(np.minimum(cons_mixed, betas_1 * gen_mixed[:, np.newaxis])))
+    obj_lp_1 = _solve_reference_lp(cons_mixed, gen_mixed, cups, None)
+    assert abs(obj_wf_1 - obj_lp_1) < 1e-6
+    assert abs(float(np.sum(betas_1)) - 1.0) < 1e-6
+    assert np.all(betas_1 >= 0.01 - 1e-9)
+
+    # 2. Bylaw min/max constrained
+    bylaw = BylawConstraints(
+        min_share=0.05,
+        cups_min_shares={cups[0]: 0.30, cups[4]: 0.05},
+        cups_max_shares={cups[0]: 0.45, cups[1]: 0.25},
+    )
+    betas_2 = DistributionOptimizer._solve_optimal_betas(cons_mixed, gen_mixed, cups, bylaw)
+    obj_wf_2 = float(np.sum(np.minimum(cons_mixed, betas_2 * gen_mixed[:, np.newaxis])))
+    obj_lp_2 = _solve_reference_lp(cons_mixed, gen_mixed, cups, bylaw)
+    assert abs(obj_wf_2 - obj_lp_2) < 1e-6
+    assert abs(float(np.sum(betas_2)) - 1.0) < 1e-6
+    for idx, c_id in enumerate(cups):
+        lo, hi = bylaw.get_bounds(c_id)
+        assert betas_2[idx] >= max(0.01, lo) - 1e-9
+        assert betas_2[idx] <= hi + 1e-9
+
+    # 3. Surplus-dominated generation & 4. Zero-demand
+    gen_surplus = np.full(48, 200.0)
+    betas_3 = DistributionOptimizer._solve_optimal_betas(cons_mixed[:48], gen_surplus, cups, None)
+    obj_wf_3 = float(np.sum(np.minimum(cons_mixed[:48], betas_3 * gen_surplus[:, np.newaxis])))
+    obj_lp_3 = _solve_reference_lp(cons_mixed[:48], gen_surplus, cups, None)
+    assert abs(obj_wf_3 - obj_lp_3) < 1e-6
+    assert abs(float(np.sum(betas_3)) - 1.0) < 1e-6
+
+    zero_cons = np.zeros((24, 5))
+    betas_4 = DistributionOptimizer._solve_optimal_betas(zero_cons, gen_surplus[:24], cups, None)
+    assert abs(float(np.sum(betas_4)) - 1.0) < 1e-6
+    assert np.all(betas_4 >= 0.01 - 1e-9)

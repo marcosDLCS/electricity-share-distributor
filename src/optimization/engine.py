@@ -6,8 +6,6 @@ import calendar
 
 import numpy as np
 import pandas as pd
-import scipy.optimize as opt
-from scipy.sparse import dok_matrix
 
 from src.domain.exceptions import (
     EsdError as EsdError,
@@ -101,88 +99,68 @@ class DistributionOptimizer:
             return raw
 
         # -------------------------------------------------------------------------
-        # Linear Programming Epigraph Formulation (RD 244/2019):
-        # We want to solve:
-        #   max sum_{i, k} min(C_{i, k}, beta_i * G_k)
-        #
-        # Because min(A, B) is non-linear, we introduce auxiliary variables s_{i, k}:
-        #   s_{i, k} represents the self-consumed energy by CUPS i in hour k.
-        #
-        # For each hour k and CUPS i:
-        #   s_{i, k} <= C_{i, k}          (upper bounded by demand)
-        #   s_{i, k} <= beta_i * G_k      (upper bounded by allocated generation)
-        #
-        # Rewriting the second inequality as a standard form constraint:
-        #   s_{i, k} - beta_i * G_k <= 0
-        #
-        # Decision Variables Vector:
-        #   [beta_0, ..., beta_{N-1}, s_{0, 0}, ..., s_{N-1, n_sun-1}]
-        #   Length: n_cups (the share coefficients) + n_cups * n_sun (hourly self-consumption)
+        # Exact Vectorized Separable Concave Water-Filling Solver (RD 244/2019):
+        # Maximizes sum_{i, k} min(C_{i, k}, beta_i * G_k) subject to:
+        #   l_i <= beta_i <= u_i  and  sum_i beta_i <= 1.0
+        # Because each term is piecewise-linear concave in beta_i with breakpoints
+        # r_{k, i} = C_{k, i} / G_k and marginal slope sum_{m: r_{m,i} >= beta_i} G_m,
+        # greedy steepest-slope allocation from beta_i = l_i finds the exact global optimum.
         # -------------------------------------------------------------------------
-        n_vars = n_cups + n_cups * n_sun
-
-        # Objective: Maximize sum(s_{i, k}) with slight incentive to allocate generation up to bounds
-        c = np.zeros(n_vars)
-        c[:n_cups] = -1e-5
-        c[n_cups:] = -1.0
-
-        # Constraints Matrix (A_ub * x <= b_ub):
-        # Constraint 1: sum(beta_i) <= 1.0 (Regulatory constraint: total share cannot exceed 100%)
-        # Constraint 2..M: s_{i, k} - beta_i * G_k <= 0 (Self-consumption cannot exceed allocated generation)
-        n_constraints = 1 + n_cups * n_sun
-        a_ub = dok_matrix((n_constraints, n_vars))
-        b_ub = np.zeros(n_constraints)
-
-        # Constraint 1: sum(beta_i) <= 1.0
-        for i in range(n_cups):
-            a_ub[0, i] = 1.0
-        b_ub[0] = 1.0
-
-        # Constraints 2..M: s_{i, k} - beta_i * G_{sun[k]} <= 0
-        row = 1
-        for k, t_idx in enumerate(sun_indices):
-            g_k = float(generation[t_idx])
-            for i in range(n_cups):
-                var_idx = n_cups + i * n_sun + k
-                a_ub[row, var_idx] = 1.0
-                a_ub[row, i] = -g_k
-                row += 1
-
-        # Variable Bounds:
-        # beta_i in [lower_bound, upper_bound] (minimum 1% floor per CUPS)
-        # s_{i, k} in [0.0, C_{i, k}] (cannot self-consume more than actual demand)
-        bounds: list[tuple[float, float]] = []
+        l_bounds = np.empty(n_cups, dtype=float)
+        u_bounds = np.empty(n_cups, dtype=float)
         for i in range(n_cups):
             cups = cups_list[i] if cups_list and i < len(cups_list) else str(i)
             l_b, u_b = constraints.get_bounds(cups) if constraints else (0.0, 1.0)
-            l_b = max(0.01, l_b)
-            u_b = max(l_b, u_b)
-            bounds.append((float(l_b), float(u_b)))
+            l_b = max(0.01, float(l_b))
+            u_b = max(l_b, float(u_b))
+            l_bounds[i] = l_b
+            u_bounds[i] = u_b
 
-        for i in range(n_cups):
-            for t_idx in sun_indices:
-                c_val = float(consumption[t_idx, i])
-                bounds.append((0.0, max(0.0, c_val)))
+        if float(np.sum(l_bounds)) > 1.0 + 1e-9:
+            raise OptimizationError(
+                "Linear programming optimization failed: Lower share bounds exceed 100%."
+            )
 
-        # Solve LP using SciPy HiGHS simplex/interior-point solver
-        res = opt.linprog(
-            c,
-            A_ub=a_ub.tocsc(),
-            b_ub=b_ub,
-            bounds=bounds,
-            method="highs",
-        )
+        sun_g = np.asarray(generation[sun_indices], dtype=float)
+        sun_c = np.maximum(0.0, np.asarray(consumption[sun_indices, :], dtype=float))
 
-        if not res.success:
-            raise OptimizationError(f"Linear programming optimization failed: {res.message}")
+        ratios = sun_c / sun_g[:, np.newaxis]
+        order = np.argsort(ratios, axis=0, kind="mergesort")
+        r_s = np.take_along_axis(ratios, order, axis=0)
+        g_s = sun_g[order]
+        slopes = np.cumsum(g_s[::-1, :], axis=0)[::-1, :]
 
-        betas = np.zeros(n_cups)
-        for i in range(n_cups):
-            cups = cups_list[i] if cups_list and i < len(cups_list) else str(i)
-            l_b, u_b = constraints.get_bounds(cups) if constraints else (0.0, 1.0)
-            l_b = max(0.01, l_b)
-            u_b = max(l_b, u_b)
-            betas[i] = float(np.clip(res.x[i], l_b, u_b))
+        prev_r = np.empty_like(r_s)
+        prev_r[0, :] = 0.0
+        if n_sun > 1:
+            prev_r[1:, :] = r_s[:-1, :]
+
+        lo = np.maximum(prev_r, l_bounds[np.newaxis, :])
+        hi = np.minimum(r_s, u_bounds[np.newaxis, :])
+        widths = hi - lo
+
+        active_mask = (widths > 1e-12) & (slopes > 1e-12)
+        betas = l_bounds.copy()
+        budget = max(0.0, 1.0 - float(np.sum(betas)))
+
+        if budget > 1e-12 and bool(np.any(active_mask)):
+            seg_slopes = slopes[active_mask]
+            seg_widths = widths[active_mask]
+            _, seg_cups = np.nonzero(active_mask)
+
+            seg_order = np.argsort(-seg_slopes, kind="mergesort")
+            s_w = seg_widths[seg_order]
+            s_c = seg_cups[seg_order]
+
+            cum_w = np.cumsum(s_w)
+            cut = int(np.searchsorted(cum_w, budget, side="right"))
+            if cut > 0:
+                np.add.at(betas, s_c[:cut], s_w[:cut])
+            used = float(cum_w[cut - 1]) if cut > 0 else 0.0
+            if cut < s_w.size and budget > used:
+                betas[s_c[cut]] += min(float(s_w[cut]), budget - used)
+
+        betas = np.clip(betas, l_bounds, u_bounds)
 
         # Normalize or distribute remaining share if below 1.0
         beta_sum = float(np.sum(betas))
@@ -193,22 +171,7 @@ class DistributionOptimizer:
             for _ in range(5):
                 if rem <= 1e-5:
                     break
-                headrooms = np.array(
-                    [
-                        max(
-                            0.0,
-                            (
-                                constraints.get_bounds(
-                                    cups_list[i] if cups_list and i < len(cups_list) else str(i)
-                                )[1]
-                                if constraints
-                                else 1.0
-                            )
-                            - betas[i],
-                        )
-                        for i in range(n_cups)
-                    ]
-                )
+                headrooms = np.maximum(0.0, u_bounds - betas)
                 tot_hr = float(np.sum(headrooms))
                 if tot_hr <= 1e-6:
                     break
@@ -1032,36 +995,42 @@ class DistributionOptimizer:
             )
 
         uses_list = [cups_uses.get(c, "") for c in cups_list]
+        sort_perm = sorted(
+            range(n_cups), key=lambda i: (uses_list[i].lower(), cups_list[i].lower())
+        )
+        cups_sorted = [cups_list[i] for i in sort_perm]
+        uses_sorted = [uses_list[i] for i in sort_perm]
 
-        # Vectorized actual shares
-        actual_shares = [f"{val:.{precision}f}%" for val in (rounded_betas * 100).flatten()]
+        # Vectorized actual and estimated shares ordered by (use, cups)
+        actual_mat = np.array(
+            [f"{val:.{precision}f}%" for val in (rounded_betas * 100).flatten()], dtype=object
+        ).reshape(t_steps, n_cups)
+        actual_shares = actual_mat[:, sort_perm].flatten()
 
         # Precompute 24-hour profile matrix formatted cells per CUPS: shape (24, n_cups)
         est_grid = np.array(
             [
                 [
                     profile_matrix.format_cell(cups, f"{h:02d}", precision=precision)
-                    for cups in cups_list
+                    for cups in cups_sorted
                 ]
                 for h in range(24)
             ],
             dtype=object,
         )
-        est_matrix = est_grid[hours]  # shape (t_steps, n_cups)
-        est_flat = est_matrix.flatten()
-        est_shares = [
-            actual if est == "—" else est
-            for est, actual in zip(est_flat, actual_shares, strict=False)
-        ]
+        est_flat = est_grid[hours].flatten()  # shape (t_steps * n_cups,)
+        est_shares = np.where(est_flat == "—", actual_shares, est_flat)
 
-        # Build long-format hourly time series via vectorized arrays
+        c_sorted = np.round(c_arr[:, sort_perm], 4).flatten()
+
+        # Build long-format hourly time series via vectorized arrays (already sorted by (use, cups) per hour)
         ts_df = pd.DataFrame(
             {
                 "timestamp": np.repeat(timestamps, n_cups),
                 "hour": np.repeat(hours, n_cups),
-                "cups": np.tile(cups_list, t_steps),
-                "use": np.tile(uses_list, t_steps),
-                "consumption_kwh": np.round(c_arr, 4).flatten(),
+                "cups": np.tile(cups_sorted, t_steps),
+                "use": np.tile(uses_sorted, t_steps),
+                "consumption_kwh": c_sorted,
                 "generation_kwh": np.repeat(np.round(g_arr, 4), n_cups),
                 "share_pct": actual_shares,
                 "estimated_share_pct": est_shares,
@@ -1070,12 +1039,18 @@ class DistributionOptimizer:
         )
 
         if not ts_df.empty:
-            sort_cols = [c for c in ["timestamp", "use", "cups"] if c in ts_df.columns]
-            ts_df = ts_df.sort_values(
-                by=sort_cols,
-                key=lambda col: col.astype(str).str.lower() if col.name in ("use", "cups") else col,
-                ascending=[True] * len(sort_cols),
-            ).reset_index(drop=True)
+            if pd.Index(timestamps).is_monotonic_increasing:
+                ts_df.attrs["_sorted_ts_use_cups"] = True
+            else:
+                sort_cols = [c for c in ["timestamp", "use", "cups"] if c in ts_df.columns]
+                ts_df = ts_df.sort_values(
+                    by=sort_cols,
+                    key=lambda col: (
+                        col.astype(str).str.lower() if col.name in ("use", "cups") else col
+                    ),
+                    ascending=[True] * len(sort_cols),
+                ).reset_index(drop=True)
+                ts_df.attrs["_sorted_ts_use_cups"] = True
 
         return HourlyOptimizationResult(
             profile_matrix=profile_matrix,

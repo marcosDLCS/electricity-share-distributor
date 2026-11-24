@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| `ARCH-2` | `P1` | Architecture | Vectorize solver, lazy-load CLI imports & accelerate all ingestion pipelines | `src/optimization/engine.py`, `src/cli.py`, `src/ingestion/`, `src/analytics/aggregator.py`, `src/presentation/html_report.py` |
 | `SIMP-1` | `P1` | Simplicity | Consolidate CLI surface from 11 commands (+ alias) to 7 core commands | `src/cli.py`, `src/i18n.py`, `src/presentation/views/common.py`, `tests/test_cli.py` |
 | `DES-1` | `P1` | Design | Declutter default console outputs (`summary`, `doctor`, `calculate`, `compare`) | `src/presentation/views/consumption.py`, `doctor.py`, `summary.py`, `comparison.py`, `common.py` |
 | `DOC-1` | `P1` | Documentation | Purge all `datadis-analyzer` references across docs, guides & codebase | `README.md`, `docs/GUIDE_EN.md`, `docs/GUIDE_ES.md`, `AGENTS.md`, `src/security.py` |
@@ -44,22 +43,7 @@ _No pending tasks (deferred until active `P1` performance, simplicity, design, a
 
 ## 🏗️ Architecture
 
-### `ARCH-2` `[P1]` — Vectorize Solver, Lazy-Load CLI Imports & Accelerate All Ingestion Pipelines
-- **Goal:** Eliminate all secondary performance bottlenecks across every command (`calculate`, `summary`, `compare`, `doctor`, and lightweight commands):
-  - **Optimizer (`1.06s`):** `_solve_optimal_betas()` runs up to 60 times per `calculate` (12 months + 24 fortnights + 24 diurnal hours), building a `dok_matrix` via nested Python loops; `compute_hourly_optimization` and `export_hourly_shares_csv` double-sort the 60k-row `ts_df`; `_sanitize_dataframe_strings` runs cell-by-cell Python `.map()`; `_calculate_monthly_efficiency` scans `sun_df` 12 times.
-  - **CLI Startup (`0.34s–0.69s`):** Top-level imports in `src/cli.py` eagerly load `pandas`, `numpy`, and `scipy` even for `version`, `help`, `config`, `init`, and `cleanup`.
-  - **Ingestion (`0.62s–1.10s`):** `detect_file_encoding()` calls `read_bytes()[:8192]` (loading whole files into RAM); `load_all_with_validation()` reads and sniffs every CSV twice (`csv.reader` full scan + `pd.read_csv`); `parse_file()` runs 3 full-column regex replacements; `consolidate_autumn_dst()` groups all 128k rows instead of filtering October `02:00` first; `HuaweiGenerationLoader` uses full DOM `pd.read_excel`; `DataDoctor` iterates missing timestamps in Python; `ConsumptionAggregator._prepare_dataframe` parses canonical timestamps without an explicit format.
-- **Target Components:**
-  - `src/optimization/engine.py` (`_solve_optimal_betas`, `compute_hourly_optimization`)
-  - `src/presentation/export.py` (`_sanitize_dataframe_strings`, `export_hourly_shares_csv`) & `src/presentation/html_report.py` (`_calculate_monthly_efficiency`)
-  - `src/cli.py` (lazy command imports)
-  - `src/ingestion/csv_utils.py`, `src/ingestion/consumption.py`, `src/ingestion/generation.py`, `src/ingestion/doctor.py`, `src/analytics/aggregator.py`
-- **Acceptance Criteria:**
-  1. Replace `dok_matrix` Python loops in `_solve_optimal_betas()` with either an exact vectorized separable-concave water-filling solver (verified against HiGHS to `< 1e-6` across all constraint cases) or vectorized `csc_matrix` construction, cutting `optimize_dataset()` from `~1.06s` to **< 0.15s**.
-  2. Remove the duplicate sort in `export_hourly_shares_csv()`, vectorize `_sanitize_dataframe_strings()`, and use a single `groupby` in `_calculate_monthly_efficiency()`.
-  3. Lazy-import scientific/service modules inside `src/cli.py` command handlers so lightweight commands (`config`, `init`, `clean`, `--version`, `--help`) start in **< 0.12s**.
-  4. Stream only 8 KB in `detect_file_encoding()`, pass detected `(encoding, delimiter)` from `DatadisValidator` to `parse_file()` without double full-file scans, slice October rows before `consolidate_autumn_dst()` grouping, use `openpyxl(..., read_only=True, data_only=True)` in `HuaweiGenerationLoader`, and vectorize gap grouping in `DataDoctor` and calendar extraction in `ConsumptionAggregator` (**>= 2× faster** `summary`, `compare`, and `doctor`).
-  5. All unit and integration tests pass with identical numerical outputs.
+_No pending tasks._
 
 ## 🔗 Cohesion
 

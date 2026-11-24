@@ -184,14 +184,32 @@ def _calculate_monthly_efficiency(
     if has_hourly and opt_result.hourly_result is not None:
         df = opt_result.hourly_result.time_series_df
         sun_df = df[df["generation_kwh"] > 1e-6] if "generation_kwh" in df.columns else df
+        m_stats = (
+            sun_df.groupby(sun_df["timestamp"].str.slice(5, 7), sort=False)["solar_efficiency"].agg(
+                ["mean", "max"]
+            )
+            if not sun_df.empty
+            else None
+        )
+        ym_stats = None
         for m_str in active_m_strs:
             m_int = _parse_month_int(m_str)
             m_2d = f"{m_int:02d}"
-            mask = (sun_df["timestamp"].str[5:7] == m_2d) | (sun_df["timestamp"].str[:7] == m_str)
-            m_rows = sun_df[mask]
-            if not m_rows.empty and "solar_efficiency" in m_rows.columns:
-                avg_eff = float(m_rows["solar_efficiency"].mean())
-                peak_eff = float(m_rows["solar_efficiency"].max())
+            row = None
+            if m_stats is not None:
+                if m_2d in m_stats.index:
+                    row = m_stats.loc[m_2d]
+                else:
+                    if ym_stats is None:
+                        ym_stats = sun_df.groupby(sun_df["timestamp"].str.slice(0, 7), sort=False)[
+                            "solar_efficiency"
+                        ].agg(["mean", "max"])
+                    if m_str in ym_stats.index:
+                        row = ym_stats.loc[m_str]
+
+            if row is not None:
+                avg_eff = float(row["mean"])
+                peak_eff = float(row["max"])
             else:
                 avg_eff = float(
                     sum(calculate_solar_efficiency(m_int, h) for h in range(8, 19)) / 11.0
