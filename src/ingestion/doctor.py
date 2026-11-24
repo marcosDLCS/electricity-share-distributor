@@ -10,7 +10,12 @@ import numpy as np
 import pandas as pd
 
 from src.config import DEFAULT_CONSUMPTION_DIR, DEFAULT_GENERATION_DIR, DEFAULT_WEATHER_DIR
-from src.ingestion.consumption import DatadisConsumptionLoader
+from src.ingestion.consumption import (
+    DatadisConsumptionLoader,
+    filter_consumption_by_cups,
+    load_cups_config_file,
+    resolve_effective_cups_path,
+)
 from src.ingestion.generation import HuaweiGenerationLoader
 from src.ingestion.schema import IngestionError
 from src.ingestion.weather import WeatherLoader
@@ -106,13 +111,11 @@ class DataDoctor:
         # 0. Load CUPS config (if available) to enrich supply point identification
         cups_configs: dict[str, SupplyPoint] = {}
         try:
-            from src.curation.curator import DataCurator
-
-            curator = DataCurator(
-                consumption_dir=self.consumption_dir,
+            cups_path = resolve_effective_cups_path(
+                self.consumption_dir,
                 cups_config_path=self.cups_config_path,
             )
-            cups_configs = curator.load_cups_config()
+            cups_configs = load_cups_config_file(cups_path)
         except Exception:
             cups_configs = {}
 
@@ -133,57 +136,47 @@ class DataDoctor:
 
         # 2. Check Consumption Files
         c_loader = DatadisConsumptionLoader(self.consumption_dir)
-        try:
-            c_files = c_loader.discover_files()
-        except IngestionError as err:
-            c_files = []
-            summary_messages.append(str(err))
+        c_files: list[Path] = []
         c_df_all: pd.DataFrame | None = None
 
-        if c_files:
-            try:
-                c_raw_dfs = [
-                    c_loader.consolidate_autumn_dst(c_loader.parse_file(f)) for f in c_files
-                ]
-                c_raw_df = pd.concat(c_raw_dfs, ignore_index=True)
-                c_raw_df["cups"] = c_raw_df["cups"].astype(str).str.strip()
-
-                if cups_configs:
-                    active_cups = set(cups_configs.keys())
-                    unconfigured_cups = sorted(set(c_raw_df["cups"].unique()) - active_cups)
-                    if unconfigured_cups:
-                        summary_messages.append(
-                            f"Ignored {len(unconfigured_cups)} unconfigured CUPS not in cups.json: "
-                            f"{', '.join(unconfigured_cups)}."
-                        )
-                    c_raw_df = c_raw_df[c_raw_df["cups"].isin(active_cups)].reset_index(drop=True)
-                    if c_raw_df.empty:
-                        summary_messages.append(
-                            "No consumption records found matching active CUPS in cups.json."
-                        )
-
-                if not c_raw_df.empty:
-                    for cups, raw_group in c_raw_df.groupby("cups"):
-                        cups_str = str(cups)
-                        c_cfg = cups_configs.get(cups_str)
-                        diag = self._audit_time_series(
-                            df=raw_group,
-                            identifier=cups_str,
-                            source_type="consumption",
-                            value_col="consumption_kwh",
-                            files_count=len(c_files),
-                            use=c_cfg.use if c_cfg else "",
-                            is_primary=c_cfg.primary if c_cfg else False,
-                        )
-                        consumption_results.append(diag)
-
-                    c_df_all = (
-                        c_raw_df.drop_duplicates(subset=["cups", "timestamp"], keep="last")
-                        .sort_values(by=["cups", "timestamp"])
-                        .reset_index(drop=True)
+        try:
+            c_raw_df, c_files = c_loader.load_raw_consolidated()
+            if cups_configs:
+                c_raw_df, unconfigured_cups = filter_consumption_by_cups(c_raw_df, cups_configs)
+                if unconfigured_cups:
+                    summary_messages.append(
+                        f"Ignored {len(unconfigured_cups)} unconfigured CUPS not in cups.json: "
+                        f"{', '.join(unconfigured_cups)}."
                     )
-            except Exception as err:
-                summary_messages.append(f"Failed parsing consumption files: {err}")
+                if c_raw_df.empty:
+                    summary_messages.append(
+                        "No consumption records found matching active CUPS in cups.json."
+                    )
+
+            if not c_raw_df.empty:
+                for cups, raw_group in c_raw_df.groupby("cups"):
+                    cups_str = str(cups)
+                    c_cfg = cups_configs.get(cups_str)
+                    diag = self._audit_time_series(
+                        df=raw_group,
+                        identifier=cups_str,
+                        source_type="consumption",
+                        value_col="consumption_kwh",
+                        files_count=len(c_files),
+                        use=c_cfg.use if c_cfg else "",
+                        is_primary=c_cfg.primary if c_cfg else False,
+                    )
+                    consumption_results.append(diag)
+
+                c_df_all = (
+                    c_raw_df.drop_duplicates(subset=["cups", "timestamp"], keep="last")
+                    .sort_values(by=["cups", "timestamp"])
+                    .reset_index(drop=True)
+                )
+        except IngestionError as err:
+            summary_messages.append(str(err))
+        except Exception as err:
+            summary_messages.append(f"Failed parsing consumption files: {err}")
 
         # 3. Check Generation Files (graceful if missing/empty for consumption-only workflows)
         g_df: pd.DataFrame | None = None

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
+from typing import Final
 
 import numpy as np
 import pandas as pd
@@ -27,9 +29,14 @@ from src.curation.models import (
     GenerationRecord,
 )
 from src.domain.exceptions import EsdError
-from src.domain.models import SupplyPoint, parse_share_fraction
+from src.domain.models import SupplyPoint
 from src.ingestion.aligner import TimeSeriesAligner
-from src.ingestion.consumption import DatadisConsumptionLoader
+from src.ingestion.consumption import (
+    DatadisConsumptionLoader,
+    filter_consumption_by_cups,
+    load_cups_config_file,
+    resolve_effective_cups_path,
+)
 from src.ingestion.csv_utils import clean_numeric_series, sniff_csv_delimiter
 from src.ingestion.generation import HuaweiGenerationLoader
 from src.ingestion.schema import (
@@ -40,9 +47,11 @@ from src.ingestion.schema import (
 from src.ingestion.weather import (
     OpenMeteoWeatherDownloader,
     WeatherLoader,
-    parse_coordinate_pair,
     resolve_community_coordinates,
 )
+
+MANIFEST_FILENAME: Final[str] = ".esd_manifest.json"
+CURATED_SCHEMA_VERSION: Final[int] = 1
 
 
 def read_curated_csv(
@@ -117,12 +126,11 @@ def dataframe_to_aligned_dataset(
             cups_cfg = {}
 
     if cups_cfg:
-        allowed_cups = set(cups_cfg.keys())
         all_cups_before = set(df_clean["cups_id"].astype(str).str.strip().unique())
-        df_clean = df_clean[df_clean["cups_id"].astype(str).str.strip().isin(allowed_cups)].copy()
+        df_clean, _ = filter_consumption_by_cups(df_clean, cups_cfg, cups_col="cups_id")
         if df_clean.empty:
             raise AlignmentError("No curated data points match the CUPS present in cups.json.")
-        if "community_demand" in df_clean.columns and all_cups_before != allowed_cups:
+        if "community_demand" in df_clean.columns and all_cups_before != set(cups_cfg.keys()):
             df_clean["community_demand"] = df_clean.groupby("timestamp")["consumption"].transform(
                 "sum"
             )
@@ -273,27 +281,7 @@ class DataCurator:
 
     def _resolve_cups_path(self) -> Path | None:
         """Resolve cups.json path, isolating custom test directories from global workspace config."""
-        if self.cups_config_path is not None:
-            return resolve_cups_config_path(custom_path=self.cups_config_path)
-
-        app_cfg = load_config()
-        default_cons_dirs = {
-            DEFAULT_CONSUMPTION_DIR.resolve(),
-            Path(app_cfg.consumption_dir).resolve(),
-        }
-        if self.consumption_dir.resolve() in default_cons_dirs:
-            return resolve_cups_config_path(config=app_cfg)
-
-        # Custom consumption_dir without explicit cups_config_path: look relative to custom dir
-        parent = self.consumption_dir.resolve().parent
-        for candidate in (
-            parent / "cups" / "cups.json",
-            parent / "cups.json",
-            self.consumption_dir.resolve() / "cups.json",
-        ):
-            if candidate.exists() and candidate.is_file():
-                return candidate
-        return None
+        return resolve_effective_cups_path(self.consumption_dir, self.cups_config_path)
 
     def load_cups_config(self) -> dict[str, SupplyPoint]:
         """Discover and parse CUPS configuration file containing uses, primary flags, and coordinates.
@@ -301,70 +289,10 @@ class DataCurator:
         Returns:
             Dictionary mapping CUPS string identifiers to SupplyPoint instances.
         """
-        found_path = self._resolve_cups_path()
-        if not found_path:
-            return {}
-
         try:
-            raw_text = found_path.read_text(encoding="utf-8")
-            data = json.loads(raw_text)
-        except Exception as err:
-            raise CurationError(
-                f"Failed to parse CUPS configuration file '{found_path}': {err}"
-            ) from err
-
-        if not isinstance(data, list):
-            raise CurationError(
-                f"Invalid format in CUPS config file '{found_path}': expected JSON array of objects."
-            )
-
-        configs: dict[str, SupplyPoint] = {}
-        for item in data:
-            if not isinstance(item, dict):
-                continue
-            cups_id = str(item.get("cups") or item.get("id") or "").strip()
-            if not cups_id:
-                continue
-            use = str(item.get("use") or "").strip()
-            primary = bool(item.get("primary", False))
-
-            coord_pair = parse_coordinate_pair(item)
-            lat_val = coord_pair[0] if coord_pair else None
-            lon_val = coord_pair[1] if coord_pair else None
-
-            min_val: float | None = None
-            max_val: float | None = None
-            raw_min = item.get("min_share") or item.get("min") or item.get("cuota_minima")
-            raw_max = item.get("max_share") or item.get("max") or item.get("cuota_maxima")
-            if raw_min is not None:
-                try:
-                    min_val = parse_share_fraction(raw_min)
-                except (ValueError, TypeError) as err:
-                    raise CurationError(
-                        f"Invalid min_share '{raw_min}' for CUPS '{cups_id}': {err}"
-                    ) from err
-            if raw_max is not None:
-                try:
-                    max_val = parse_share_fraction(raw_max)
-                except (ValueError, TypeError) as err:
-                    raise CurationError(
-                        f"Invalid max_share '{raw_max}' for CUPS '{cups_id}': {err}"
-                    ) from err
-
-            try:
-                configs[cups_id] = SupplyPoint(
-                    cups=cups_id,
-                    use=use,
-                    primary=primary,
-                    latitude=lat_val,
-                    longitude=lon_val,
-                    min_share=min_val,
-                    max_share=max_val,
-                )
-            except EsdError as err:
-                raise CurationError(f"Invalid CUPS configuration for '{cups_id}': {err}") from err
-
-        return configs
+            return load_cups_config_file(self._resolve_cups_path())
+        except EsdError as err:
+            raise CurationError(str(err)) from err
 
     def get_default_location(
         self,
@@ -524,10 +452,7 @@ class DataCurator:
             c_files_count = len(c_loader.discover_files())
             c_df = self._filter_df_by_period(c_loader.load_all(), year=year, month=month)
             if configs and not c_df.empty and "cups" in c_df.columns:
-                allowed_cups = set(configs.keys())
-                c_df = c_df[c_df["cups"].astype(str).str.strip().isin(allowed_cups)].reset_index(
-                    drop=True
-                )
+                c_df, _ = filter_consumption_by_cups(c_df, configs, cups_col="cups")
                 if c_df.empty:
                     raise CurationError(
                         "No consumption records found matching the CUPS defined in cups.json."
@@ -601,14 +526,12 @@ class DataCurator:
         cups_uses: dict[str, str] = {}
         try:
             cfg = (
-                cls(cups_config_path=cups_config_path).load_cups_config()
+                load_cups_config_file(resolve_effective_cups_path(Path.cwd(), cups_config_path))
                 if cups_config_path is not None
                 else {}
             )
             if cfg and not df.empty and "cups_id" in df.columns:
-                df = df[df["cups_id"].astype(str).str.strip().isin(cfg.keys())].reset_index(
-                    drop=True
-                )
+                df, _ = filter_consumption_by_cups(df, cfg, cups_col="cups_id")
             cups_uses = {cid: c.use for cid, c in cfg.items()}
         except Exception:
             pass
@@ -1012,6 +935,88 @@ class DataCurator:
             )
         return csv_file
 
+    @staticmethod
+    def _stat_directory_files(
+        base_dir: Path,
+        extensions: tuple[str, ...],
+        recursive: bool,
+    ) -> list[list[str | int]]:
+        """Collect lightweight [relpath, size, mtime_ns] entries for O(1) cache validation."""
+        if not base_dir.exists() or not base_dir.is_dir():
+            return []
+        iterator = base_dir.rglob("*") if recursive else base_dir.iterdir()
+        entries: list[list[str | int]] = []
+        for f in iterator:
+            if (
+                not f.is_file()
+                or f.suffix.lower() not in extensions
+                or f.name.startswith(".")
+                or f.name.startswith("~$")
+            ):
+                continue
+            st = f.stat()
+            rel = str(f.relative_to(base_dir)) if recursive else f.name
+            entries.append([rel, int(st.st_size), int(st.st_mtime_ns)])
+        entries.sort(key=lambda item: str(item[0]))
+        return entries
+
+    def _build_manifest(
+        self,
+        base_name: str,
+        delimiter: str,
+        has_excel: bool,
+        cups_configs: dict[str, SupplyPoint],
+    ) -> dict[str, object]:
+        """Build lightweight input/config fingerprint for O(1) curated cache validation."""
+        resolved_cups = self._resolve_cups_path()
+        cups_entry: dict[str, str] | None = None
+        if resolved_cups is not None and resolved_cups.is_file():
+            cups_entry = {
+                "path": str(resolved_cups.resolve()),
+                "sha256": hashlib.sha256(resolved_cups.read_bytes()).hexdigest(),
+            }
+        default_loc = self.get_default_location(cups_configs)
+        return {
+            "schema_version": CURATED_SCHEMA_VERSION,
+            "base_name": base_name,
+            "delimiter": delimiter,
+            "has_excel": has_excel,
+            "cups_config": cups_entry,
+            "default_location": list(default_loc) if default_loc is not None else None,
+            "consumption_files": self._stat_directory_files(
+                self.consumption_dir, (".csv",), recursive=True
+            ),
+            "generation_files": self._stat_directory_files(
+                self.generation_dir, (".xlsx", ".xls"), recursive=False
+            ),
+            "weather_files": self._stat_directory_files(
+                self.weather_dir, (".csv",), recursive=False
+            ),
+        }
+
+    @staticmethod
+    def _is_manifest_valid(
+        stored: dict[str, object],
+        expected: dict[str, object],
+        export_excel: bool,
+    ) -> bool:
+        """Return True iff stored manifest fingerprint matches current workspace inputs/settings."""
+        if export_excel and not bool(stored.get("has_excel")):
+            return False
+        for key in (
+            "schema_version",
+            "base_name",
+            "delimiter",
+            "cups_config",
+            "default_location",
+            "consumption_files",
+            "generation_files",
+            "weather_files",
+        ):
+            if stored.get(key) != expected.get(key):
+                return False
+        return True
+
     def ensure_curated(
         self,
         force: bool = False,
@@ -1021,7 +1026,7 @@ class DataCurator:
     ) -> Path:
         """Ensure aggregated generation, consumption, and master ESD CSV (and optional Excel) files exist.
 
-        Executes the full 3-stage pipeline if missing or forced:
+        Executes the full 3-stage pipeline if missing, stale, or forced:
         1. Aggregate generation -> generation.csv (+ generation.xlsx if export_excel)
         2. Aggregate consumption -> consumption.csv (+ consumption.xlsx if export_excel)
         3. Curate master ESD dataset -> esd.csv (+ esd.xlsx if export_excel)
@@ -1049,6 +1054,7 @@ class DataCurator:
         gen_xlsx = target_dir / "generation.xlsx"
         cons_csv = target_dir / "consumption.csv"
         cons_xlsx = target_dir / "consumption.xlsx"
+        manifest_path = target_dir / MANIFEST_FILENAME
 
         cups_configs = self.load_cups_config()
 
@@ -1058,14 +1064,32 @@ class DataCurator:
             and gen_xlsx.exists()
             and cons_xlsx.exists()
         )
-        if (
+        outputs_present = (
             not force
             and csv_path.exists()
             and csv_path.stat().st_size > 0
             and gen_csv.exists()
             and cons_csv.exists()
             and excel_ok
-        ):
+        )
+        if outputs_present and manifest_path.is_file():
+            try:
+                stored_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                expected_manifest = self._build_manifest(
+                    base_name=base_name,
+                    delimiter=delimiter,
+                    has_excel=export_excel,
+                    cups_configs=cups_configs,
+                )
+                if isinstance(stored_manifest, dict) and self._is_manifest_valid(
+                    stored_manifest,
+                    expected_manifest,
+                    export_excel=export_excel,
+                ):
+                    return csv_path
+            except Exception:
+                pass
+        elif outputs_present:
             try:
                 with csv_path.open("r", encoding="utf-8") as fh:
                     first_line = fh.readline().rstrip("\r\n")
@@ -1149,7 +1173,7 @@ class DataCurator:
         curated_df = dataset.to_dataframe()
         self._last_curated_dataset = dataset
         self._last_curated_df = curated_df
-        return self.export_csv(
+        out_csv = self.export_csv(
             dataset,
             curated_dir=target_dir,
             base_name=base_name,
@@ -1157,6 +1181,17 @@ class DataCurator:
             export_excel=export_excel,
             df=curated_df,
         )
+        try:
+            fresh_manifest = self._build_manifest(
+                base_name=base_name,
+                delimiter=delimiter,
+                has_excel=export_excel,
+                cups_configs=cups_configs,
+            )
+            manifest_path.write_text(json.dumps(fresh_manifest, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+        return out_csv
 
     @classmethod
     def load_aligned_dataset(

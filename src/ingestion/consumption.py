@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import csv
+import json
 from pathlib import Path
 from typing import Final
 
 import numpy as np
 import pandas as pd
 
-from src.config import REQUIRED_CONSUMPTION_COLUMNS
+from src.config import (
+    DEFAULT_CONSUMPTION_DIR,
+    REQUIRED_CONSUMPTION_COLUMNS,
+    load_config,
+    resolve_cups_config_path,
+)
+from src.domain.exceptions import EsdError
+from src.domain.models import SupplyPoint, parse_share_fraction
 from src.ingestion.csv_utils import (
     clean_numeric_series,
     detect_file_encoding,
@@ -17,6 +25,135 @@ from src.ingestion.csv_utils import (
     sniff_csv_delimiter,
 )
 from src.ingestion.schema import IngestionError, ParseError, ValidationError, ValidationResult
+
+
+def resolve_effective_cups_path(
+    consumption_dir: Path | str,
+    cups_config_path: Path | str | None = None,
+) -> Path | None:
+    """Resolve cups.json path while isolating custom consumption directories from workspace config."""
+    if cups_config_path is not None:
+        return resolve_cups_config_path(custom_path=cups_config_path)
+
+    app_cfg = load_config()
+    cons_resolved = Path(consumption_dir).resolve()
+    default_cons_dirs = {
+        DEFAULT_CONSUMPTION_DIR.resolve(),
+        Path(app_cfg.consumption_dir).resolve(),
+    }
+    if cons_resolved in default_cons_dirs:
+        return resolve_cups_config_path(config=app_cfg)
+
+    parent = cons_resolved.parent
+    for candidate in (
+        parent / "cups" / "cups.json",
+        parent / "cups.json",
+        cons_resolved / "cups.json",
+    ):
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    return None
+
+
+def load_cups_config_file(cups_path: Path | str | None) -> dict[str, SupplyPoint]:
+    """Load and validate CUPS configuration JSON into a mapping of CUPS ID -> SupplyPoint."""
+    if cups_path is None:
+        return {}
+    found_path = Path(cups_path)
+    if not found_path.exists() or not found_path.is_file():
+        return {}
+
+    from src.ingestion.weather import parse_coordinate_pair
+
+    try:
+        data = json.loads(found_path.read_text(encoding="utf-8"))
+    except Exception as err:
+        raise ValidationError(
+            f"Failed to parse CUPS configuration file '{found_path}': {err}"
+        ) from err
+
+    if not isinstance(data, list):
+        raise ValidationError(
+            f"Invalid format in CUPS config file '{found_path}': expected JSON array of objects."
+        )
+
+    configs: dict[str, SupplyPoint] = {}
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        cups_id = str(item.get("cups") or item.get("id") or "").strip()
+        if not cups_id:
+            continue
+        use = str(item.get("use") or "").strip()
+        primary = bool(item.get("primary", False))
+
+        coord_pair = parse_coordinate_pair(item)
+        lat_val = coord_pair[0] if coord_pair else None
+        lon_val = coord_pair[1] if coord_pair else None
+
+        min_val: float | None = None
+        max_val: float | None = None
+        raw_min = item.get("min_share") or item.get("min") or item.get("cuota_minima")
+        raw_max = item.get("max_share") or item.get("max") or item.get("cuota_maxima")
+        if raw_min is not None:
+            try:
+                min_val = parse_share_fraction(raw_min)
+            except (ValueError, TypeError) as err:
+                raise ValidationError(
+                    f"Invalid min_share '{raw_min}' for CUPS '{cups_id}': {err}"
+                ) from err
+        if raw_max is not None:
+            try:
+                max_val = parse_share_fraction(raw_max)
+            except (ValueError, TypeError) as err:
+                raise ValidationError(
+                    f"Invalid max_share '{raw_max}' for CUPS '{cups_id}': {err}"
+                ) from err
+
+        try:
+            configs[cups_id] = SupplyPoint(
+                cups=cups_id,
+                use=use,
+                primary=primary,
+                latitude=lat_val,
+                longitude=lon_val,
+                min_share=min_val,
+                max_share=max_val,
+            )
+        except EsdError as err:
+            raise ValidationError(f"Invalid CUPS configuration for '{cups_id}': {err}") from err
+
+    return configs
+
+
+def load_cups_uses(cups_path: Path | str | None) -> dict[str, str]:
+    """Safely extract {cups_id: use} labels from an optional cups.json path."""
+    if cups_path is None:
+        return {}
+    try:
+        cfg = load_cups_config_file(cups_path)
+        return {cid: sp.use for cid, sp in cfg.items()}
+    except Exception:
+        return {}
+
+
+def filter_consumption_by_cups(
+    df: pd.DataFrame,
+    cups_configs: dict[str, SupplyPoint],
+    cups_col: str = "cups",
+) -> tuple[pd.DataFrame, list[str]]:
+    """Filter a consumption DataFrame to CUPS configured in cups_configs, returning ignored IDs."""
+    if df.empty or cups_col not in df.columns or not cups_configs:
+        return df, []
+
+    cups_series = df[cups_col].astype(str).str.strip()
+    allowed_cups = set(cups_configs.keys())
+    unconfigured = sorted(set(cups_series.unique()) - allowed_cups)
+
+    filtered = df.loc[cups_series.isin(allowed_cups)].copy()
+    filtered[cups_col] = cups_series.loc[filtered.index]
+    return filtered.reset_index(drop=True), unconfigured
+
 
 CONSUMPTION_COLUMN_ALIASES: Final[dict[str, str]] = {
     "cups": "cups",
@@ -389,6 +526,19 @@ class DatadisConsumptionLoader:
             )
 
         return self._combine_and_filter(dfs, year=year), validation_results
+
+    def load_raw_consolidated(self, year: int | None = None) -> tuple[pd.DataFrame, list[Path]]:
+        """Parse all CSVs with within-file autumn DST consolidation while keeping cross-file duplicates."""
+        files = self.discover_files(year=year)
+        consolidated = [self.consolidate_autumn_dst(self.parse_file(f)) for f in files]
+        combined = pd.concat(consolidated, ignore_index=True)
+        if not combined.empty and "cups" in combined.columns:
+            combined["cups"] = combined["cups"].astype(str).str.strip()
+        if year is not None and not combined.empty:
+            combined = combined[combined["timestamp"].str.startswith(f"{year:04d}-")].reset_index(
+                drop=True
+            )
+        return combined, files
 
     def load_all(self, year: int | None = None, strict: bool = True) -> pd.DataFrame:
         """Load, validate, and deduplicate all CSV files in the consumption directory.

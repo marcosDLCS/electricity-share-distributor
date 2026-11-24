@@ -27,7 +27,6 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 | ID | Priority | Category | Title | Target Components |
 | :--- | :---: | :--- | :--- | :--- |
-| `COH-1` | `P2` | Cohesion | Unify consumption ingestion/filtering & $O(1)$ curated cache fingerprinting | `src/ingestion/doctor.py`, `src/curation/curator.py`, `src/services/` |
 | `SIMP-2` | `P2` | Simplicity | Standardize config-first CLI options & extract shared workspace resolver | `src/cli.py`, `tests/test_cli.py` |
 | `DES-2` | `P2` | Design | Unify all terminal views onto the `CUSTOM_THEME` semantic design system | `src/presentation/console.py`, `src/presentation/views/` |
 
@@ -43,14 +42,7 @@ _No pending tasks._
 
 ## 🔗 Cohesion
 
-### `COH-1` `[P2]` — Unify Consumption Ingestion/Filtering & $O(1)$ Curated Cache Fingerprinting
-- **Goal:** Eliminate duplicated DATADIS ingestion, `cups.json` filtering, and heavy CSV freshness checks across services. Currently `DataDoctor` re-implements `parse_file` + `consolidate_autumn_dst` + `cups.json` filtering inline, `DataCurator` repeats CUPS filtering across 3 methods, and `ensure_curated()` reads multi-MB CSVs and weather files just to validate freshness.
-- **Target Components:**
-  - `src/ingestion/doctor.py`, `src/curation/curator.py`, `src/services/summary_service.py`, `src/services/comparison_service.py`
-- **Acceptance Criteria:**
-  1. Extract a shared consumption + `cups.json` loading/filtering helper reused consistently by `DataDoctor`, `DataCurator`, `SummaryService`, and `ComparisonService`.
-  2. Store a lightweight `.curated/.esd_manifest.json` fingerprint (input file mtimes/sizes + `cups.json` hash + schema version + weather coverage) so `DataCurator.ensure_curated(force=False)` validates cache freshness in **< 1ms** without parsing CSVs, automatically invalidating whenever any input file or `cups.json` changes.
-  3. All doctor, curation, summary, comparison, and calculation tests pass.
+_No pending tasks._
 
 ## 🛡️ Security
 

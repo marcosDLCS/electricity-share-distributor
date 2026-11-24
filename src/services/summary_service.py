@@ -8,9 +8,8 @@ from typing import Final
 
 from src.analytics.aggregator import ConsumptionAggregator
 from src.analytics.models import CommunityConsumptionSummary
-from src.curation.curator import DataCurator
 from src.domain.exceptions import EsdError, ValidationError
-from src.ingestion.consumption import DatadisConsumptionLoader
+from src.ingestion.consumption import DatadisConsumptionLoader, load_cups_uses
 from src.ingestion.schema import ValidationResult
 from src.presentation.export import ReportExporter
 
@@ -53,13 +52,7 @@ class SummaryService:
                 f"Invalid view mode '{request.view}'. Expected one of: 'all', 'annual', 'monthly'."
             )
 
-        cups_uses: dict[str, str] = {}
-        if request.cups_config_path is not None and request.cups_config_path.is_file():
-            try:
-                cfg = DataCurator(cups_config_path=request.cups_config_path).load_cups_config()
-                cups_uses = {cid: sp.use for cid, sp in cfg.items()}
-            except Exception:
-                cups_uses = {}
+        cups_uses = load_cups_uses(request.cups_config_path)
 
         loader = DatadisConsumptionLoader(request.consumption_dir)
         df, validation_results = loader.load_all_with_validation(year=request.year)

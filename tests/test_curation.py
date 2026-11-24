@@ -1631,3 +1631,189 @@ def test_curation_bounds_primary_self_consumption_by_generation_and_demand(
     pri_12 = df[(df["timestamp"] == "2026-05-01 12:00:00") & (df["cups_id"] == pri_cups)].iloc[0]
     assert float(pri_11["self_consumption"]) == 4.0
     assert float(pri_12["self_consumption"]) == 5.0
+
+
+def test_shared_consumption_loading_and_filtering_helpers(tmp_path: Path) -> None:
+    """Verify load_raw_consolidated, filter_consumption_by_cups, and load_cups_uses helpers."""
+    from src.domain.models import SupplyPoint
+    from src.ingestion.consumption import (
+        DatadisConsumptionLoader,
+        filter_consumption_by_cups,
+        load_cups_uses,
+    )
+
+    cons_dir = tmp_path / "cons"
+    cons_dir.mkdir()
+
+    pri_cups = "ES0021000000000001AA"
+    sec_cups = "ES0021000000000002BB"
+    extra_cups = "ES0021000000000003CC"
+
+    # Autumn DST transition day (25h) inside one file + overlapping hour across another file
+    rows_dst = ["cups;fecha;hora;consumo_kWh"]
+    for h in range(1, 26):
+        hr_label = f"{min(h, 24):02d}:00" if h <= 3 else f"{h - 1:02d}:00"
+        rows_dst.append(f'"{pri_cups} ";"2026/10/25";"{hr_label}";"1,000"')
+    (cons_dir / "part1.csv").write_text("\n".join(rows_dst), encoding="utf-8")
+
+    (cons_dir / "part2.csv").write_text(
+        f'cups;fecha;hora;consumo_kWh\n"{pri_cups}";"2026/10/25";"01:00";"2,000"\n"{extra_cups}";"2026/10/25";"01:00";"5,000"\n',
+        encoding="utf-8",
+    )
+
+    loader = DatadisConsumptionLoader(cons_dir)
+    raw_df, files = loader.load_raw_consolidated()
+    assert len(files) == 2
+    # Intra-file 25h autumn DST sum -> 24 rows from part1 + 2 rows from part2 (cross-file dup preserved)
+    assert len(raw_df) == 26
+    assert set(raw_df["cups"].unique()) == {pri_cups, extra_cups}
+
+    cups_cfgs = {
+        pri_cups: SupplyPoint(cups=pri_cups, use="Aerotermia", primary=True),
+        sec_cups: SupplyPoint(cups=sec_cups, use="Garaje"),
+    }
+    filtered_df, unconfigured = filter_consumption_by_cups(raw_df, cups_cfgs)
+    assert unconfigured == [extra_cups]
+    assert set(filtered_df["cups"].unique()) == {pri_cups}
+
+    cups_json = tmp_path / "cups.json"
+    cups_json.write_text(
+        json.dumps([{"cups": pri_cups, "use": "Aerotermia"}, {"cups": sec_cups, "use": "Garaje"}]),
+        encoding="utf-8",
+    )
+    assert load_cups_uses(cups_json) == {pri_cups: "Aerotermia", sec_cups: "Garaje"}
+    assert load_cups_uses(tmp_path / "missing.json") == {}
+
+
+def test_ensure_curated_manifest_o1_hit_and_invalidation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify O(1) manifest cache hit (<10ms without CSV parsing) and full invalidation matrix."""
+    import time
+
+    from src.config import clear_output_directory
+    from src.curation.curator import MANIFEST_FILENAME
+
+    cons_dir = tmp_path / "consumption"
+    gen_dir = tmp_path / "generation"
+    curated_dir = tmp_path / "curated"
+    weather_dir = tmp_path / "weather"
+    for d in (cons_dir, gen_dir, curated_dir, weather_dir):
+        d.mkdir()
+
+    pri_cups = "ES0021000000000001AA"
+    sec_cups = "ES0021000000000002BB"
+    create_mock_datadis_csv(cons_dir / f"{pri_cups}.csv", pri_cups, solar_cons_val=2.0)
+    create_mock_datadis_csv(cons_dir / f"{sec_cups}.csv", sec_cups, solar_cons_val=1.5)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    ws.append(["Informe de plantas_MOCK_PLANT", "", "", "", "", ""])
+    ws.append(
+        [
+            "Período estadístico",
+            "Rendimiento FV (kWh)",
+            "Consumo (kWh)",
+            "Autoconsumo (kWh)",
+            "Energía exportada (kWh)",
+            "Importación (kWh)",
+        ]
+    )
+    for h in range(24):
+        ts = f"2026-05-01 {h:02d}:00:00"
+        gen = 5.0 if 10 <= h <= 16 else 0.0
+        ws.append([ts, gen, 2.0, min(gen, 2.0), max(0.0, gen - 2.0), max(0.0, 2.0 - gen)])
+    wb.save(gen_dir / "gen.xlsx")
+
+    cups_file = tmp_path / "cups.json"
+    cups_file.write_text(
+        json.dumps(
+            [
+                {"cups": pri_cups, "use": "Aerotermia", "primary": True},
+                {"cups": sec_cups, "use": "Garaje", "primary": False},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    curator = DataCurator(
+        consumption_dir=cons_dir,
+        generation_dir=gen_dir,
+        cups_config_path=cups_file,
+        curated_dir=curated_dir,
+        weather_dir=weather_dir,
+    )
+
+    # 1. Cold build writes esd.csv and .esd_manifest.json without .xlsx
+    out_csv = curator.ensure_curated(force=False, export_excel=False)
+    assert out_csv == curated_dir / "esd.csv"
+    manifest_file = curated_dir / MANIFEST_FILENAME
+    assert manifest_file.is_file()
+    manifest_data = json.loads(manifest_file.read_text(encoding="utf-8"))
+    assert manifest_data["has_excel"] is False
+
+    # 2. Warm hit must finish in < 10ms without calling aggregate_generation or pd.read_csv
+    def fail_heavy(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("Manifest cache miss: heavy curation/CSV path was invoked")
+
+    with monkeypatch.context() as mp:
+        mp.setattr(curator, "aggregate_generation", fail_heavy)
+        mp.setattr(pd, "read_csv", fail_heavy)
+        t0 = time.perf_counter()
+        hit_csv = curator.ensure_curated(force=False, export_excel=False)
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        assert hit_csv == out_csv
+        assert elapsed_ms < 10.0
+
+    # 3. Track curation rebuilds across invalidation triggers
+    rebuilds = 0
+    orig_agg_gen = curator.aggregate_generation
+
+    def counted_agg_gen(*args: Any, **kwargs: Any) -> Any:
+        nonlocal rebuilds
+        rebuilds += 1
+        return orig_agg_gen(*args, **kwargs)
+
+    monkeypatch.setattr(curator, "aggregate_generation", counted_agg_gen)
+
+    # Trigger A: Upgrade export_excel=False -> True invalidates cache & generates .xlsx
+    curator.ensure_curated(force=False, export_excel=True)
+    assert rebuilds == 1
+    assert (curated_dir / "esd.xlsx").exists()
+
+    # After export_excel=True, a subsequent export_excel=False call still hits the cache
+    curator.ensure_curated(force=False, export_excel=False)
+    assert rebuilds == 1
+
+    # Trigger B: Modifying consumption input CSV invalidates manifest
+    create_mock_datadis_csv(cons_dir / f"{sec_cups}.csv", sec_cups, solar_cons_val=3.25)
+    curator.ensure_curated(force=False, export_excel=False)
+    assert rebuilds == 2
+
+    # Trigger C: Modifying cups.json invalidates manifest
+    cups_file.write_text(
+        json.dumps(
+            [
+                {"cups": pri_cups, "use": "Calefaccion", "primary": True},
+                {"cups": sec_cups, "use": "Garaje", "primary": False},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    curator.ensure_curated(force=False, export_excel=False)
+    assert rebuilds == 3
+
+    # Trigger D: Adding a weather CSV invalidates manifest
+    (weather_dir / "2026_40.4168_-3.7038_weather.csv").write_text(
+        "timestamp,temperature,cloud_cover,weather_code\n2026-05-01 12:00:00,22.0,10,0\n",
+        encoding="utf-8",
+    )
+    curator.ensure_curated(force=False, export_excel=False)
+    assert rebuilds == 4
+
+    # 4. clear_output_directory cleans .esd_manifest.json while preserving .gitkeep
+    (curated_dir / ".gitkeep").write_text("", encoding="utf-8")
+    clear_output_directory(curated_dir)
+    assert not manifest_file.exists()
+    assert (curated_dir / ".gitkeep").exists()

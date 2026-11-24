@@ -304,9 +304,7 @@ def clear_output_directory(output_dir: Path | str = DEFAULT_OUTPUT_DIR) -> int:
 
     count = 0
     for item in out_path.iterdir():
-        if item.name.startswith(".") and item.name != ".gitkeep":
-            continue
-        if item.name == ".gitkeep":
+        if item.name.startswith(".") and item.name != ".esd_manifest.json":
             continue
         try:
             if item.is_file() or item.is_symlink():
