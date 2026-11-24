@@ -24,7 +24,7 @@ def render_comparison_overview(comparison: ComparisonSummary, lang: str | None =
     """Render executive overview panel comparing multiple calendar years."""
     years_str = " ➔ ".join(map(str, comparison.years))
     lines: list[str] = [
-        f"[bold white]{t('compare_years_label', lang=lang)}[/bold white] [metric]{years_str}[/metric]"
+        f"[value.strong]{t('compare_years_label', lang=lang)}[/value.strong] [metric]{years_str}[/metric]"
     ]
 
     if comparison.comparable_months:

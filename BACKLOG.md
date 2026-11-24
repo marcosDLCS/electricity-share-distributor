@@ -25,9 +25,7 @@ This document tracks prioritized, actionable improvement tasks for **Electricity
 
 ## 📊 Prioritized Task Overview
 
-| ID | Priority | Category | Title | Target Components |
-| :--- | :---: | :--- | :--- | :--- |
-| `DES-2` | `P2` | Design | Unify all terminal views onto the `CUSTOM_THEME` semantic design system | `src/presentation/console.py`, `src/presentation/views/` |
+_All prioritized tasks completed._
 
 ---
 
@@ -57,11 +55,4 @@ _No pending tasks._
 
 ## 🎨 Design
 
-### `DES-2` `[P2]` — Unify All Terminal Views onto the `CUSTOM_THEME` Semantic Design System
-- **Goal:** Standardize visual styling across all view modules. Currently `consumption.py` and `comparison.py` use semantic `CUSTOM_THEME` tokens (`[title]`, `[metric]`, `[dimmed]`, `[cups]`, `[panel.border]`, `[table.header]`), whereas `summary.py`, `trajectory.py`, `matrix.py`, `doctor.py`, and `common.py` hardcode raw Rich colors (`[bold yellow]`, `[bold bright_cyan]`, `border_style="cyan"`), mix `box.DOUBLE` with `box.ROUNDED`, and format CUPS inconsistently.
-- **Target Components:**
-  - `src/presentation/console.py`, `src/presentation/views/summary.py`, `trajectory.py`, `matrix.py`, `doctor.py`, `common.py`, `tests/test_presentation.py`
-- **Acceptance Criteria:**
-  1. Extend `CUSTOM_THEME` in `src/presentation/console.py` with any needed semantic tokens (e.g., `solar`, `heatmap.*`) and replace all raw color literals across `src/presentation/views/`.
-  2. Use consistent `box.ROUNDED` framing (including the redesigned 7-command `render_help` and `--version` display) and unified CUPS label/number formatting helpers everywhere.
-  3. All presentation tests pass in both `en` and `es`.
+_No pending tasks._

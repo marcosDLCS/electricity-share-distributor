@@ -69,9 +69,7 @@ def _handle_cli_error(err: Exception | str, unexpected: bool = False) -> NoRetur
     """Format domain or CLI errors cleanly and exit with code 1."""
     if isinstance(err, (typer.Exit, typer.Abort)):
         raise err
-    prefix = (
-        "[bold red]Unexpected error:[/bold red]" if unexpected else "[bold red]Error:[/bold red]"
-    )
+    prefix = "[danger]Unexpected error:[/danger]" if unexpected else "[danger]Error:[/danger]"
     console.print(f"\n{prefix} {err}\n")
     raise typer.Exit(code=1)
 
@@ -215,7 +213,7 @@ def doctor_command(
         from src.services.doctor_service import DoctorRequest, DoctorService
 
         ctx = _resolve_workspace_context(lang=lang)
-        with console.status(f"[bold cyan]{t('status_doctor', lang=ctx.lang)}[/bold cyan]"):
+        with console.status(f"[table.header]{t('status_doctor', lang=ctx.lang)}[/table.header]"):
             report = DoctorService.execute(
                 DoctorRequest(
                     consumption_dir=ctx.consumption_dir,
@@ -263,16 +261,16 @@ def calculate_command(
         )
 
         initial_status = (
-            f"[bold cyan]{t('status_curating', lang=ctx.lang)}[/bold cyan]"
+            f"[table.header]{t('status_curating', lang=ctx.lang)}[/table.header]"
             if curate_only
-            else f"[bold cyan][1/4][/bold cyan] [bold white]{t('status_step_1', lang=ctx.lang)}[/bold white]"
+            else f"[table.header][1/4][/table.header] [value.strong]{t('status_step_1', lang=ctx.lang)}[/value.strong]"
         )
         with console.status(initial_status) as status:
 
             def _update_step(step_idx: int, message: str) -> None:
                 if not curate_only:
                     status.update(
-                        f"[bold cyan][{step_idx}/4][/bold cyan] [bold white]{message}[/bold white]"
+                        f"[table.header][{step_idx}/4][/table.header] [value.strong]{message}[/value.strong]"
                     )
 
             calc_result = CalculationService.execute(req, progress_callback=_update_step)
@@ -324,7 +322,9 @@ def summary_command(
         from src.services.summary_service import SummaryRequest, SummaryService
 
         ctx = _resolve_workspace_context(lang=lang, check_initialized=True)
-        with console.status(f"[bold cyan]{t('status_summarizing', lang=ctx.lang)}[/bold cyan]"):
+        with console.status(
+            f"[table.header]{t('status_summarizing', lang=ctx.lang)}[/table.header]"
+        ):
             result = SummaryService.execute(
                 SummaryRequest(
                     consumption_dir=ctx.consumption_dir,
@@ -391,7 +391,7 @@ def compare_command(
         ctx = _resolve_workspace_context(lang=lang, check_initialized=True)
         target_years = parse_years_option(years)
 
-        with console.status(f"[bold cyan]{t('status_comparing', lang=ctx.lang)}[/bold cyan]"):
+        with console.status(f"[table.header]{t('status_comparing', lang=ctx.lang)}[/table.header]"):
             result = ComparisonService.execute(
                 ComparisonRequest(
                     consumption_dir=ctx.consumption_dir,
@@ -500,7 +500,7 @@ def config_command(
 
         if modified:
             save_config(cfg)
-            console.print(f"[bold green]{t('msg_config_updated', lang=cfg.language)}[/bold green]")
+            console.print(f"[success]{t('msg_config_updated', lang=cfg.language)}[/success]")
 
         render_config_view(cfg, lang=cfg.language)
 
@@ -532,7 +532,7 @@ def clean_command(
             t("prompt_cleanup_confirm", lang=ctx.lang, count=len(items), dir=dirs_display),
             default=False,
         ):
-            console.print(f"[yellow]{t('cleanup_aborted', lang=ctx.lang)}[/yellow]")
+            console.print(f"[warning]{t('cleanup_aborted', lang=ctx.lang)}[/warning]")
             return
 
         count = sum(clear_output_directory(d) for d in target_dirs)

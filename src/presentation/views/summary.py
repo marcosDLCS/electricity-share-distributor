@@ -23,7 +23,6 @@ def render_community_summary(
     opt_result: OptimizationResult | None = None,
 ) -> None:
     """Render executive dashboard with high-contrast KPI cards and community energy balance."""
-    # 1. Borderless Energy Balance KPI Strip (inside one unified outer panel)
     solar_hours_gen = (
         tot.solar_hours_generation_kwh
         if tot.solar_hours_generation_kwh > 0
@@ -34,21 +33,20 @@ def render_community_summary(
     kpi_grid.add_column(ratio=1)
     kpi_grid.add_column(ratio=1)
     kpi_grid.add_row(
-        f"[dim]🌞 {t('lbl_total_gen', lang=lang)}[/dim]\n"
-        f"[bold yellow]{format_kwh(tot.total_generation_kwh)}[/bold yellow]\n"
-        f"[dim]{t('lbl_solar_hours_gen', lang=lang)}: {format_kwh(solar_hours_gen)}[/dim]\n"
-        f"[dim]{t('lbl_total_surplus', lang=lang)}: {format_kwh(tot.total_surplus_kwh)}[/dim]",
-        f"[dim]⚡ {t('lbl_total_cons', lang=lang)}[/dim]\n"
-        f"[bold bright_cyan]{format_kwh(tot.total_consumption_kwh)}[/bold bright_cyan]\n"
-        f"[dim]{t('lbl_solar_hours_demand', lang=lang)}: {format_kwh(tot.solar_hours_consumption_kwh)}[/dim]\n"
-        f"[dim]{t('col_cov_rate', lang=lang)}: {tot.solar_coverage_rate:.1f}%[/dim]",
-        f"[dim]🏆 {t('lbl_total_sc', lang=lang)}[/dim]\n"
-        f"[bold green]{format_kwh(tot.total_self_consumed_kwh)}[/bold green]\n"
-        f"[dim]{t('col_sc_rate', lang=lang)}: {tot.self_consumption_rate:.1f}%[/dim]\n"
-        f"[dim]{t('lbl_solar_hours_cov', lang=lang)}: {tot.solar_hours_coverage_rate:.1f}%[/dim]",
+        f"[dimmed]🌞 {t('lbl_total_gen', lang=lang)}[/dimmed]\n"
+        f"[solar]{format_kwh(tot.total_generation_kwh)}[/solar]\n"
+        f"[dimmed]{t('lbl_solar_hours_gen', lang=lang)}: {format_kwh(solar_hours_gen)}[/dimmed]\n"
+        f"[dimmed]{t('lbl_total_surplus', lang=lang)}: {format_kwh(tot.total_surplus_kwh)}[/dimmed]",
+        f"[dimmed]⚡ {t('lbl_total_cons', lang=lang)}[/dimmed]\n"
+        f"[metric]{format_kwh(tot.total_consumption_kwh)}[/metric]\n"
+        f"[dimmed]{t('lbl_solar_hours_demand', lang=lang)}: {format_kwh(tot.solar_hours_consumption_kwh)}[/dimmed]\n"
+        f"[dimmed]{t('col_cov_rate', lang=lang)}: {tot.solar_coverage_rate:.1f}%[/dimmed]",
+        f"[dimmed]🏆 {t('lbl_total_sc', lang=lang)}[/dimmed]\n"
+        f"[success]{format_kwh(tot.total_self_consumed_kwh)}[/success]\n"
+        f"[dimmed]{t('col_sc_rate', lang=lang)}: {tot.self_consumption_rate:.1f}%[/dimmed]\n"
+        f"[dimmed]{t('lbl_solar_hours_cov', lang=lang)}: {tot.solar_hours_coverage_rate:.1f}%[/dimmed]",
     )
 
-    # 2. 3-Way Self-Consumption Modality Progression Table
     prog_table: Table | None = None
     if opt_result and (
         opt_result.monthly_share_self_consumed_kwh > 0
@@ -56,29 +54,32 @@ def render_community_summary(
         or opt_result.hourly_share_self_consumed_kwh > 0
     ):
         prog_table = Table(
-            title=f"[bold bright_yellow]{t('title_sc_progression', lang=lang)}[/bold bright_yellow] [dim](kWh)[/dim]",
+            title=f"[title]{t('title_sc_progression', lang=lang)}[/title] [dimmed](kWh)[/dimmed]",
             title_justify="left",
             box=box.ROUNDED,
-            header_style="bold cyan",
+            header_style="table.header",
+            border_style="panel.border",
             padding=(0, 1),
             expand=True,
             show_edge=True,
         )
-        prog_table.add_column(t("col_modality", lang=lang), style="bold", width=28, no_wrap=True)
+        prog_table.add_column(
+            t("col_modality", lang=lang), style="value.strong", width=28, no_wrap=True
+        )
         prog_table.add_column(
             t("col_self_cons", lang=lang),
             justify="right",
-            style="bold green",
+            style="success",
             width=11,
             no_wrap=True,
         )
         prog_table.add_column(
-            t("col_sc_rate", lang=lang), justify="right", style="bright_cyan", width=8, no_wrap=True
+            t("col_sc_rate", lang=lang), justify="right", style="metric", width=8, no_wrap=True
         )
         prog_table.add_column(
             t("col_gain_vs_baseline", lang=lang),
             justify="right",
-            style="bold magenta",
+            style="highlight",
             width=18,
             no_wrap=True,
         )
@@ -90,15 +91,13 @@ def render_community_summary(
         hour_kwh = opt_result.hourly_share_self_consumed_kwh or mon_kwh
         hour_rate = opt_result.hourly_share_self_consumption_rate or mon_rate
 
-        # 1. Baseline: Current (Sin Reparto)
         prog_table.add_row(
             t("lbl_sc_current", lang=lang),
             f"{cur_kwh:,.1f}",
             f"{cur_rate:.1f}%",
-            f"[dim]{t('lbl_baseline', lang=lang)}[/dim]",
+            f"[dimmed]{t('lbl_baseline', lang=lang)}[/dimmed]",
         )
 
-        # 2. Monthly Share (RD 244/2019)
         mon_gain = mon_kwh - cur_kwh
         mon_gain_pct = (mon_gain / max(cur_kwh, 1e-6)) * 100.0 if cur_kwh > 0 else 0.0
         mon_gain_str = (
@@ -108,10 +107,9 @@ def render_community_summary(
             t("lbl_sc_monthly", lang=lang),
             f"{mon_kwh:,.1f}",
             f"{mon_rate:.1f}%",
-            f"[bold green]{mon_gain_str}[/bold green]" if mon_gain_str != "—" else "—",
+            f"[success]{mon_gain_str}[/success]" if mon_gain_str != "—" else "—",
         )
 
-        # 3. Fortnight Share (if evaluated)
         if opt_result.fortnight_share_self_consumed_kwh > 0:
             fort_kwh = opt_result.fortnight_share_self_consumed_kwh
             fort_rate = opt_result.fortnight_share_self_consumption_rate
@@ -126,10 +124,9 @@ def render_community_summary(
                 t("lbl_sc_fortnight", lang=lang),
                 f"{fort_kwh:,.1f}",
                 f"{fort_rate:.1f}%",
-                f"[bold green]{fort_gain_str}[/bold green]" if fort_gain_str != "—" else "—",
+                f"[success]{fort_gain_str}[/success]" if fort_gain_str != "—" else "—",
             )
 
-        # 4. Dynamic Hourly Share (Orden TED/1247/2021)
         hour_gain = hour_kwh - cur_kwh
         hour_gain_pct = (hour_gain / max(cur_kwh, 1e-6)) * 100.0 if cur_kwh > 0 else 0.0
         hour_gain_str = (
@@ -139,12 +136,9 @@ def render_community_summary(
             f"★ {t('lbl_sc_hourly', lang=lang)}",
             f"{hour_kwh:,.1f}",
             f"{hour_rate:.1f}%",
-            f"[bold bright_green]{hour_gain_str}[/bold bright_green]"
-            if hour_gain_str != "—"
-            else "—",
+            f"[heatmap.high]{hour_gain_str}[/heatmap.high]" if hour_gain_str != "—" else "—",
         )
 
-    # 3. Scope & Timeline Metadata Grid
     meta_grid = Table.grid(expand=True, padding=(0, 2))
     meta_grid.add_column(ratio=1)
     meta_grid.add_column(ratio=1)
@@ -158,14 +152,16 @@ def render_community_summary(
         if opt_result.constraints.max_share is not None:
             parts.append(f"Max: {opt_result.constraints.max_share * 100:.1f}%")
         if parts:
-            bylaw_str = f" [dim]• Bylaws:[/dim] [bright_yellow]{' | '.join(parts)}[/bright_yellow]"
+            bylaw_str = (
+                f" [dimmed]• Bylaws:[/dimmed] [heatmap.mid]{' | '.join(parts)}[/heatmap.mid]"
+            )
 
     meta_grid.add_row(
-        f"[dim]{t('lbl_supply_points', lang=lang)}:[/dim] [bold green]{summary.cups_count} CUPS[/bold green] [dim]• {t('col_strategy', lang=lang)}:[/dim] [white]{strat_label}[/white]{bylaw_str}",
-        f"[dim]{t('lbl_date_range', lang=lang)}:[/dim] [white]{summary.start_time[:10]} ➔ {summary.end_time[:10]}[/white]",
+        f"[dimmed]{t('lbl_supply_points', lang=lang)}:[/dimmed] [success]{summary.cups_count} CUPS[/success] "
+        f"[dimmed]• {t('col_strategy', lang=lang)}:[/dimmed] [value]{strat_label}[/value]{bylaw_str}",
+        f"[dimmed]{t('lbl_date_range', lang=lang)}:[/dimmed] [value]{summary.start_time[:10]} ➔ {summary.end_time[:10]}[/value]",
     )
 
-    # 4. Consolidated Container Table
     container = Table.grid(expand=True, padding=(0, 0))
     container.add_column()
     container.add_row(kpi_grid)
@@ -179,8 +175,8 @@ def render_community_summary(
     console.print(
         Panel(
             container,
-            title=f"[bold bright_cyan]{t('title_community_summary', lang=lang)}[/bold bright_cyan]",
-            border_style="cyan",
+            title=f"[panel.title]{t('title_community_summary', lang=lang)}[/panel.title]",
+            border_style="panel.border",
             box=box.ROUNDED,
             padding=(1, 2),
         )

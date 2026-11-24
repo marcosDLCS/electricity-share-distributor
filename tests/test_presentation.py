@@ -2,32 +2,29 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from src.presentation.views.matrix import _format_heatmap_cell
 
 
 def test_format_heatmap_cell_styling() -> None:
-    """Verify that _format_heatmap_cell applies proper color intensities."""
-    # None or dash
-    assert _format_heatmap_cell(None, "—") == "[dim]—[/dim]"
+    """Verify that _format_heatmap_cell applies semantic CUSTOM_THEME heatmap tokens."""
+    assert _format_heatmap_cell(None, "—") == "[dimmed]—[/dimmed]"
 
-    # 0% to 5% -> dim white
     res_zero = _format_heatmap_cell(0.0, "0.0%")
-    assert "[dim white]0.0%[/dim white]" in res_zero
+    assert "[heatmap.zero]0.0%[/heatmap.zero]" in res_zero
 
     res_five = _format_heatmap_cell(0.05, "5.0%")
-    assert "[dim white]5.0%[/dim white]" in res_five
+    assert "[heatmap.zero]5.0%[/heatmap.zero]" in res_five
 
-    # 6% to 20% -> bright_cyan
     res_ten = _format_heatmap_cell(0.10, "10.0%")
-    assert "[bright_cyan]10.0%[/bright_cyan]" in res_ten
+    assert "[heatmap.low]10.0%[/heatmap.low]" in res_ten
 
-    # 21% to 50% -> bright_yellow
     res_thirty = _format_heatmap_cell(0.35, "35.0%")
-    assert "[bright_yellow]35.0%[/bright_yellow]" in res_thirty
+    assert "[heatmap.mid]35.0%[/heatmap.mid]" in res_thirty
 
-    # > 50% -> bold bright_green
     res_seventy = _format_heatmap_cell(0.75, "75.0%")
-    assert "[bold bright_green]75.0%[/bold bright_green]" in res_seventy
+    assert "[heatmap.high]75.0%[/heatmap.high]" in res_seventy
 
 
 def test_render_community_summary_output() -> None:
@@ -216,3 +213,152 @@ def test_decluttered_views_80col_en_es(tmp_path: object, monkeypatch: object) ->
         sum_out = buf.getvalue()
         assert "✔" in sum_out
         assert max(len(line) for line in sum_out.splitlines()) <= 80
+
+
+def test_unified_semantic_theme_and_rounded_framing_en_es(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    """Enforce zero raw color literals or box.DOUBLE across views and clean 80-col EN/ES rendering."""
+    import re
+    from io import StringIO
+
+    from rich.console import Console
+
+    from src.curation.models import (
+        CuratedCupsReading,
+        CuratedDataset,
+        CuratedHourRecord,
+        CuratedSummary,
+    )
+    from src.domain.models import SupplyPoint
+    from src.optimization.models import (
+        CommunityMonthlyMetrics,
+        CupsMonthlyMetrics,
+        OptimizationResult,
+    )
+    from src.presentation.console import CUSTOM_THEME
+    from src.presentation.views import common as common_view
+    from src.presentation.views import curate as curate_view
+    from src.presentation.views import matrix as matrix_view
+    from src.presentation.views import trajectory as trajectory_view
+
+    views_dir = Path("src/presentation/views")
+    raw_color_re = re.compile(
+        r"(\[(?:bold |dim )?(?:bright_)?(?:cyan|yellow|green|red|white|magenta|black|blue)\]|"
+        r"\[dim\]|"
+        r'(?:style|border_style|header_style)\s*=\s*"(?:bold |dim )?(?:bright_)?(?:cyan|yellow|green|red|white|magenta|black|blue|dim|bold)")'
+    )
+    for py_file in sorted(views_dir.glob("*.py")):
+        src = py_file.read_text(encoding="utf-8")
+        assert "box.DOUBLE" not in src, f"box.DOUBLE found in {py_file.name}"
+        matches = raw_color_re.findall(src)
+        assert not matches, f"Raw Rich style/color literal(s) in {py_file.name}: {matches}"
+
+    buf = StringIO()
+    con = Console(file=buf, width=80, force_terminal=False, theme=CUSTOM_THEME)
+    for mod in (common_view, curate_view, matrix_view, trajectory_view):
+        monkeypatch.setattr(mod, "console", con)  # type: ignore[attr-defined]
+
+    cups_a = "ES0021000000000001AA"
+    cups_b = "ES0021000000000002BB"
+    months_sample = [
+        CommunityMonthlyMetrics(
+            month=m_str,
+            strategy="optimal",
+            total_consumption_kwh=500.0,
+            total_generation_kwh=800.0,
+            solar_hours_generation_kwh=800.0,
+            solar_hours_consumption_kwh=450.0,
+            total_self_consumed_kwh=400.0,
+            total_surplus_kwh=400.0,
+            total_grid_demand_kwh=100.0,
+            self_consumption_rate=50.0,
+            solar_coverage_rate=80.0,
+            solar_hours_coverage_rate=88.9,
+            beta_sum=1.0,
+            cups_metrics=[
+                CupsMonthlyMetrics(
+                    cups=cups_a,
+                    month=m_str,
+                    beta=0.7,
+                    consumption_kwh=350.0,
+                    generation_allocated_kwh=560.0,
+                    self_consumed_kwh=280.0,
+                    surplus_kwh=280.0,
+                    grid_demand_kwh=70.0,
+                    self_consumption_rate=50.0,
+                    solar_coverage_rate=80.0,
+                ),
+                CupsMonthlyMetrics(
+                    cups=cups_b,
+                    month=m_str,
+                    beta=0.3,
+                    consumption_kwh=150.0,
+                    generation_allocated_kwh=240.0,
+                    self_consumed_kwh=120.0,
+                    surplus_kwh=120.0,
+                    grid_demand_kwh=30.0,
+                    self_consumption_rate=50.0,
+                    solar_coverage_rate=80.0,
+                ),
+            ],
+            has_data=True,
+        )
+        for m_str in ("01", "02", "03", "04", "05", "06")
+    ]
+    opt_res = OptimizationResult(
+        strategy="optimal",
+        monthly_results=months_sample,
+        total_summary=months_sample[0],
+        cups_list=[cups_a, cups_b],
+        cups_uses={cups_a: "Aerotermia", cups_b: "Garaje"},
+    )
+    curated_ds = CuratedDataset(
+        records=[
+            CuratedHourRecord(
+                timestamp="2026-05-01 12:00:00",
+                generation=8.0,
+                total_consumption=10.0,
+                cups=[
+                    CuratedCupsReading(
+                        id=cups_a,
+                        use="Aerotermia",
+                        consumption=7.0,
+                        self_consumption=5.0,
+                        exported_energy=3.0,
+                        imported_energy=2.0,
+                    ),
+                    CuratedCupsReading(id=cups_b, use="Garaje", consumption=3.0),
+                ],
+            )
+        ],
+        summary=CuratedSummary(
+            total_hours=1,
+            reconciled_hours_count=1,
+            recovered_kwh=2.0,
+            total_generation_kwh=8.0,
+            total_consumption_kwh=10.0,
+            cups_count=2,
+            cups_reconciled_hours={cups_a: 1, cups_b: 0},
+            cups_total_consumption={cups_a: 7.0, cups_b: 3.0},
+            start_time="2026-05-01 12:00:00",
+            end_time="2026-05-01 12:00:00",
+            primary_cups=cups_a,
+        ),
+        cups_configs={
+            cups_a: SupplyPoint(cups=cups_a, use="Aerotermia", primary=True),
+            cups_b: SupplyPoint(cups=cups_b, use="Garaje", primary=False),
+        },
+    )
+
+    for lang in ("en", "es"):
+        buf.truncate(0)
+        buf.seek(0)
+        common_view.render_help(lang=lang)
+        common_view.render_version(lang=lang)
+        trajectory_view.render_monthly_trajectory_table(opt_res, lang=lang)
+        matrix_view.render_coefficients_matrix_table(opt_res, lang=lang, precision=0)
+        curate_view.render_curate_summary(curated_ds, Path(str(tmp_path)) / "esd.csv", lang=lang)
+        rendered = buf.getvalue()
+        assert rendered.strip()
+        assert max(len(line) for line in rendered.splitlines()) <= 80

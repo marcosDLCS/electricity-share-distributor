@@ -361,6 +361,7 @@ def test_weather_service_explicit_coords_and_render(tmp_path: Path) -> None:
     """Running WeatherService with explicit coords downloads and render_weather_result renders EN/ES panels."""
     from rich.console import Console
 
+    from src.presentation.console import CUSTOM_THEME
     from src.presentation.views import common as common_view
     from src.services.weather_service import WeatherRequest, WeatherService
 
@@ -370,7 +371,7 @@ def test_weather_service_explicit_coords_and_render(tmp_path: Path) -> None:
     mock_resp.__enter__.return_value = mock_resp
     mock_resp.__exit__.return_value = None
 
-    rec_console = Console(width=80, record=True)
+    rec_console = Console(width=80, record=True, theme=CUSTOM_THEME)
     with (
         patch("urllib.request.urlopen", return_value=mock_resp),
         patch.object(common_view, "console", rec_console),
