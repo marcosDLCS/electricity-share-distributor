@@ -220,7 +220,7 @@ esd clean [--force]
 
 | File Name | Format | Source Command & Practical Purpose |
 | :--- | :--- | :--- |
-| `*_esd_interactive_report.html` | HTML (Standalone) | `calculate`: Offline accessible ES/EN community storytelling report with active CUPS table (`cups.json`), interactive multi-year Consumption, Weather & Generation line graphs (`[Inc]` aware), Winter vs. Summer spotlight, Monthly Balance legend, 4-step collective sharing story, 100 kWh simulator, tabbed Monthly & Fortnight matrices, glossary, Light/Dark/High-Contrast themes & text-size controls. |
+| `*_esd_interactive_report.html` | HTML (Standalone) | `calculate`: Offline accessible 6-chapter EN/ES community storytelling report with clean editorial header, interactive 4-column active CUPS table (`cups.json`, latest complete year ref. consumption), Consumption, Weather (Sky & Rain Days + Weather–Energy cross-insights) & Generation line graphs (`[Inc]` aware), redesigned Y-split behind-the-meter diagram, Winter vs. Summer spotlight, Monthly Balance legend, 4-step collective sharing story, everyday CO₂/household equivalences, plain-language glossary, Light/Dark/High-Contrast themes & text-size controls. |
 | `*_esd_monthly_shares.csv` | CSV (`;`) | `calculate`: Monthly allocation breakdown per CUPS: consumption, generation, share percentage ($\beta_i$ %), self-consumed kWh, solar surplus & remaining grid demand ordered by month and `use`. |
 | `*_esd_monthly_shares_lite.csv` | CSV (`;`) | `calculate`: Compact monthly $\beta_i$ % matrix with CUPS (`cups`, `use`) on the Y axis and months (`01`..`12`) on the X axis. |
 | `*_esd_fortnight_shares.csv` | CSV (`;`) | `calculate`: Fortnight (`1`: days 1–15, `2`: days 16–end) allocation breakdown per CUPS with monthly half-period balances. |

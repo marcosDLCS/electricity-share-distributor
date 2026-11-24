@@ -34,18 +34,11 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
         "es": {
             "doc_title": "Nuestra instalación solar comunitaria — Electricity Share Distributor",
             "skip_to_content": "Ir al contenido principal",
-            "hero_eyebrow": "Comunidad de propietarios · Autoconsumo colectivo (RD 244/2019)",
+            "hero_eyebrow": "Comunidad de propietarios · Autoconsumo colectivo",
             "title": "☀️ La energía solar de nuestra comunidad, explicada paso a paso",
             "subtitle": "Guía visual para los vecinos: qué contadores comunes tenemos, cuánto gastamos según el tiempo que hace, cuánta electricidad generan nuestras placas y cómo la repartimos para aprovecharla al máximo.",
-            "badge_rd": "✓ RD 244/2019",
-            "cups_label": "Contadores activos (CUPS)",
-            "bylaw_label": "Límites de estatutos",
             "mode_simulated": "Simulación horaria diurna",
             "mode_modeled": "Estimación horaria diurna",
-            "strat_optimal": "ÓPTIMO",
-            "strat_equal": "EQUITATIVO",
-            "strat_consumption_share": "CONSUMO",
-            "strat_consumption": "CONSUMO",
             "default_service": "Servicio común",
             "nav_aria": "Capítulos de la guía",
             "nav_ch1": "1. Contadores",
@@ -53,8 +46,7 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "nav_ch3": "3. Clima",
             "nav_ch4": "4. Solar",
             "nav_ch5": "5. Reparto",
-            "nav_ch6": "6. Tablas",
-            "nav_ch7": "7. Glosario",
+            "nav_ch6": "6. Glosario",
             "theme_light": "Claro",
             "theme_dark": "Oscuro",
             "theme_hc": "Alto contraste",
@@ -63,25 +55,17 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "font_dec_label": "Reducir tamaño de letra",
             "font_reset_label": "Tamaño de letra normal",
             "font_inc_label": "Aumentar tamaño de letra",
-            "hero_kpi1_title": "🏢 Servicios comunes",
-            "hero_kpi1_sub": "Contador principal con placas",
-            "hero_kpi2_title": "🌞 Producción solar anual",
-            "hero_kpi2_sub": "En horas de sol",
-            "hero_kpi3_title": "🏆 Energía aprovechada",
-            "hero_kpi3_sub_eff": "Aprovechamiento",
-            "hero_kpi3_sub_cov": "Cobertura",
-            "hero_kpi4_title": "🚀 Extra respecto a 1 contador",
-            "hero_kpi4_sub": "más de energía aprovechada",
             "ch1_badge": "Capítulo 1",
             "ch1_title": "Los contadores de nuestra comunidad (CUPS activos)",
-            "ch1_intro": "El edificio cuenta con varios contratos eléctricos independientes para sus zonas comunes (calefacción central, garaje, ascensores, piscina o alumbrado). Cada contador se identifica con un código único llamado <strong>CUPS</strong>. En esta tabla figuran únicamente los suministros activos incluidos en el reparto solar comunitario.",
+            "ch1_intro": "El edificio cuenta con varios contratos eléctricos independientes para sus zonas comunes (calefacción central, garaje, ascensores, piscina o alumbrado). Cada contador se identifica con un código único llamado <strong>CUPS</strong>. En esta tabla figuran únicamente los suministros activos incluidos en el reparto solar, junto con su consumo en el último año completo disponible.",
             "ch1_col_rank": "#",
             "ch1_col_service": "Servicio común",
             "ch1_col_cups": "Código CUPS",
             "ch1_col_cons": "Consumo ref.",
-            "ch1_col_beta": "Reparto solar medio (β)",
             "ch1_primary_tip": "Contador principal conectado directamente a las placas solares",
-            "ch1_primary_legend": "☀️ Indica el contador principal conectado directamente al inversor de las placas solares.",
+            "ch1_primary_legend": "☀️ Indica el contador principal conectado directamente detrás del inversor solar.",
+            "ch1_jump_tip": "Ver la evolución mensual de este servicio en el Capítulo 2",
+            "ch1_jump_hint": "↗ Pulsa sobre cualquier servicio común para ver su evolución mensual en el gráfico de consumo.",
             "ch1_total_label": "TOTAL COMUNIDAD",
             "ch1_note": "<strong>¿Afecta esto a la factura de mi vivienda?</strong> No. Este informe trata exclusivamente sobre los contadores de las zonas comunes; los contratos particulares de cada piso o local no cambian.",
             "ch2_badge": "Capítulo 2",
@@ -104,32 +88,70 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "stat_peak_month": "Mes de mayor consumo",
             "stat_low_month": "Mes de menor consumo",
             "stat_yoy_delta": "Diferencia interanual",
-            "fake_zero_title": "🔍 ¿Por qué el contador principal marca 0 kWh cuando hace sol?",
-            "fake_zero_desc": "Al estar las placas conectadas directamente tras el contador principal, en las horas de sol el equipo consume primero nuestra propia electricidad solar sin tomar corriente de la calle. Por eso el contador oficial llega a marcar <strong>0 kWh</strong> aunque el sistema esté funcionando. Para calcular el consumo real, la herramienta cruza los datos del inversor solar y recupera esa energía oculta.",
-            "fake_zero_recovered": "Consumo real recuperado en horas de sol:",
-            "fake_zero_svg_panels": "Placas solares",
-            "fake_zero_svg_primary": "Servicio principal",
-            "fake_zero_svg_meter": "Contador de red (0 kWh)",
+            "fake_zero_title": "🔍 El misterio del «falso cero» en el contador oficial",
+            "fake_zero_desc": "A plena luz del día, el contador oficial de la calle suele marcar <strong>0 kWh</strong> aunque las máquinas estén trabajando a pleno rendimiento. Así funciona la instalación por dentro y así recuperamos el consumo real:",
+            "fake_zero_step1_title": "1. Conexión directa tras el contador",
+            "fake_zero_step1_tpl": "Nuestras placas solares están conectadas directamente detrás del contador de <strong>{primary}</strong>, dentro de la instalación privada de la finca.",
+            "fake_zero_step2_title": "2. Qué ocurre en una hora de sol",
+            "fake_zero_step2_desc": "Si las placas producen <strong>10 kWh</strong> y el servicio consume <strong>6 kWh</strong>, se abastece primero del tejado y los <strong>4 kWh</strong> restantes salen hacia la red. Como no compra nada de la calle, el contador oficial registra <strong>0 kWh</strong>.",
+            "fake_zero_step3_title": "3. Cómo reconstruimos el gasto real",
+            "fake_zero_step3_desc": "Para evitar que ese servicio parezca inactivo, cruzamos las lecturas de la distribuidora (DATADIS) con los registros reales del inversor solar hora a hora.",
+            "fake_zero_recovered": "Consumo real recuperado detrás del contador:",
+            "fz_zone_home": "Dentro de la finca (tras el contador)",
+            "fz_zone_grid": "Red eléctrica exterior",
+            "fz_svg_panels": "Placas solares",
+            "fz_svg_panels_val": "+10 kWh solares",
+            "fz_svg_panels_sub": "Energía producida",
+            "fz_svg_flow_sc": "6 kWh",
+            "fz_svg_primary": "Servicio principal",
+            "fz_svg_primary_val": "Consume 6 kWh reales",
+            "fz_svg_flow_exp": "4 kWh sobrantes ➔",
+            "fz_svg_no_grid": "0 kWh comprados de la calle",
+            "fz_svg_meter": "Contador oficial",
+            "fz_svg_meter_zero": "Compra registrada: 0 kWh",
+            "fz_svg_meter_cap1": "Solo mide lo que entra de fuera",
+            "fz_svg_meter_cap2": "No ve los 6 kWh del tejado",
             "ch3_badge": "Capítulo 3",
             "ch3_title": "El tiempo en nuestra finca en los años analizados",
-            "ch3_intro": "El clima explica buena parte de lo que acabamos de ver: los meses más fríos disparan la calefacción, y los días despejados multiplican la producción de las placas. Aquí tienes la temperatura y los cielos despejados registrados en los mismos años analizados.",
+            "ch3_intro": "El clima explica buena parte de lo que acabamos de ver: los meses fríos disparan la calefacción y los días despejados multiplican la producción de las placas. Explora la temperatura, la claridad del cielo y el reparto mensual de días de sol o lluvia en los años analizados.",
             "weather_mode_temp": "🌡️ Temperatura (°C)",
             "weather_mode_clear": "☀️ Cielo despejado (%)",
+            "weather_mode_days": "📅 Días de cielo y lluvia",
             "weather_stat_temp": "Temperatura media",
             "weather_stat_range": "Mes frío y mes cálido",
             "weather_stat_clear": "Cielo despejado medio",
-            "weather_stat_days": "Días soleados y de lluvia",
-            "weather_sunny_days": "días despejados",
-            "weather_cloudy_days": "muy nubosos",
-            "weather_rainy_days": "con lluvia",
+            "weather_stat_extremes": "Días fríos y calurosos",
+            "weather_sunny_days": "Soleados",
+            "weather_partly_days": "Nubes y claros",
+            "weather_cloudy_days": "Muy nubosos",
+            "weather_rainy_days": "Con lluvia",
+            "weather_sky_title": "Reparto del cielo en",
+            "weather_days_unit": "días registrados",
+            "weather_cold_days_lbl": "<10 °C",
+            "weather_hot_days_lbl": "≥30 °C",
+            "weather_frost_days_lbl": "heladas ≤0 °C",
             "weather_band_note": "Banda sombreada: rango medio diario (mín–máx °C)",
+            "weather_cold_ref": "Umbral de frío (10 °C)",
             "weather_no_data": "No hay registros meteorológicos guardados para estos años.",
+            "weather_coldest": "Frío",
+            "weather_warmest": "Cálido",
+            "weather_min_ext": "Mín",
+            "weather_max_ext": "Máx",
+            "weather_no_extremes": "Sin extremos marcados",
+            "weather_insight_single_tpl": "🌤️ En <strong>{year}</strong> la temperatura media fue de <strong>{temp}</strong>, con un <strong>{clear}</strong> de cielos despejados en horas de luz y <strong>{sunny} días soleados</strong> frente a <strong>{rainy} días de lluvia</strong>.",
+            "weather_insight_yoy_tpl": "🌤️ Entre <strong>{y0}</strong> y <strong>{y1}</strong>, la temperatura media varió <strong>{dt} °C</strong> y la proporción de cielo despejado <strong>{dc} puntos</strong> (en {y1}: <strong>{temp}</strong> de media y <strong>{clear}</strong> despejado).",
+            "weather_card1_title": "🥶 Frío y demanda del edificio",
+            "weather_card1_ratio_tpl": "En los meses fríos (media por debajo de 12 °C), las zonas comunes consumen de media <strong>{cold_kwh}</strong> al mes frente a <strong>{mild_kwh}</strong> en los meses templados (15–23 °C): un gasto <strong>{ratio}× mayor</strong>. En {year} se registraron <strong>{cold_days} días fríos (&lt;10 °C)</strong>{frost_part}.",
+            "weather_card1_fallback_tpl": "Las jornadas por debajo de 10 °C empujan el consumo de calefacción o aerotermia en la finca. En <strong>{year}</strong> se midieron <strong>{cold_days} días fríos (&lt;10 °C)</strong>, <strong>{hot_days} calurosos (≥30 °C)</strong> y extremos entre <strong>{min_t}</strong> y <strong>{max_t}</strong>.",
+            "weather_card2_title": "☀️ Cielo despejado, calor y rendimiento solar",
+            "weather_card2_body_tpl": "El mes más luminoso suele ser <strong>{sun_m}</strong> (<strong>{sun_c}</strong> despejado) frente a <strong>{cld_m}</strong> (<strong>{cld_c}</strong>).",
+            "weather_card2_peak_tpl": "La mayor producción solar se alcanza en <strong>{peak_m}</strong> ({peak_c} despejado y {peak_t} de media).",
+            "weather_card2_heat_note": "Las placas rinden especialmente bien en días despejados y templados de primavera; con calor extremo (>30 °C) el silicio pierde algo de eficiencia (~0,4 % por cada °C sobre 25 °C), aunque los días más largos compensan.",
             "tip_temp_avg": "Media mensual",
             "tip_temp_range": "Mín–Máx diario medio",
             "tip_clear_sky": "Cielo despejado",
             "tip_cloud_cover": "Nubosidad",
-            "weather_coldest": "Frío",
-            "weather_warmest": "Cálido",
+            "tip_sky_days": "Días del mes",
             "ch4_badge": "Capítulo 4",
             "ch4_title": "Cuánta electricidad producen nuestras placas",
             "ch4_intro": "Los días más largos y luminosos de primavera y verano disparan la generación respecto al invierno. Si marcas la casilla de demanda diurna, verás al instante en qué meses nos falta sol y en cuáles producimos de sobra.",
@@ -139,6 +161,15 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "gen_stat_low": "Mes de menor producción",
             "gen_stat_yoy": "Diferencia interanual",
             "gen_legend_demand": "Consumo diurno comunitario (referencia)",
+            "gen_insight_single_tpl": "🌞 En <strong>{year}</strong> el tejado generó <strong>{total}</strong> en total, con su punto más alto en <strong>{peak_m}</strong> (<strong>{peak_val}</strong>).",
+            "gen_insight_ratio_tpl": "🌞 En <strong>{year}</strong> las placas generaron <strong>{total}</strong>. El mes más soleado (<strong>{peak_m}</strong>, {peak_val}) produjo <strong>{ratio}×</strong> más electricidad que el más flojo (<strong>{low_m}</strong>, {low_val}).",
+            "gen_insight_yoy_tpl": " Diferencia interanual homogénea ({y0}→{y1}): <strong>{pct}</strong>.",
+            "gen_imp_homes_lbl": "Viviendas equivalentes",
+            "gen_imp_homes_unit": "hogares medios/año",
+            "gen_imp_home_months_unit": "meses de un hogar medio",
+            "gen_imp_co2_lbl": "Emisiones evitadas",
+            "gen_imp_ev_lbl": "Movilidad limpia equiv.",
+            "gen_imp_note": "Equivalencias orientativas para España (IDAE / REE): ~3.300 kWh/año por hogar, ~0,20 kg CO₂/kWh de red evitados y ~6 km/kWh en coche eléctrico.",
             "ch5_badge": "Capítulo 5",
             "ch5_title": "Cómo repartimos el sol entre los contadores",
             "why_equal_title": "💡 ¿Por qué no repartimos siempre a partes iguales?",
@@ -175,25 +206,10 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "prev_comp_fortnight": "Reparto quincenal (24 quincenas)",
             "prev_comp_hourly": "Reparto horario dinámico (Orden TED/1247/2021)",
             "prev_note": "Al pasar de aprovechar las placas en un único contador al reparto mensual (<strong>RD 244/2019</strong>) o quincenal, toda la comunidad absorbe la energía solar según la época del año. El reparto horario dinámico (<strong>Orden TED/1247/2021</strong>) marca el siguiente paso normativo para exprimir aún más las placas sin invertir en nuevos equipos.",
+            "prev_uplift_impact_tpl": "🌱 Solo por repartir la energía entre todos los contadores en lugar de dejarla en uno solo, evitamos <strong>{co2}</strong> adicionales (equivalente al consumo de <strong>{home_months} meses de una vivienda media</strong>).",
             "ch6_badge": "Capítulo 6",
-            "ch6_title": "Tablas oficiales de reparto y simulador",
-            "ch6_intro": "Elige un mes para ver de un vistazo cómo se reparten cada 100 kWh generados, o consulta las tablas oficiales completas con los coeficientes exactos que suman el 100 %.",
-            "sim_title": "☀️ ¿Cómo se reparten 100 kWh solares en…?",
-            "sim_sub": "Pulsa un mes activo para ver cuántos kWh recibe cada servicio común de cada 100 kWh producidos.",
-            "sim_of_100": "de cada 100 kWh",
-            "tab_monthly": "📅 Reparto mensual (RD 244/2019)",
-            "tab_fortnight": "📆 Reparto quincenal (24 quincenas)",
-            "fn_h1": "Ene – jun (1–12)",
-            "fn_h2": "Jul – dic (13–24)",
-            "fn_all": "Todas (24)",
-            "fn_fallback_note": "Nota: en este conjunto se muestran los porcentajes mensuales aplicados a ambas quincenas de cada mes.",
-            "search_placeholder": "Buscar servicio o código CUPS...",
-            "col_cups": "Servicio / código CUPS",
-            "col_avg": "Media anual",
-            "lbl_total_rd244": "TOTAL (RD 244/2019)",
-            "ch7_badge": "Capítulo 7",
-            "ch7_title": "Glosario básico",
-            "ch7_intro": "Conceptos eléctricos y normativos explicados en lenguaje cotidiano.",
+            "ch6_title": "Glosario básico",
+            "ch6_intro": "Conceptos eléctricos y normativos explicados en lenguaje cotidiano.",
             "g1_term": "CUPS (Código Universal de Punto de Suministro)",
             "g1_desc": "Es el «DNI» de cada contador eléctrico. Nuestra comunidad tiene un CUPS distinto para el garaje, los ascensores, la calefacción o la piscina.",
             "g2_term": "kWh (kilovatio-hora)",
@@ -255,18 +271,11 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
         "en": {
             "doc_title": "Our Community's Solar Story — Electricity Share Distributor",
             "skip_to_content": "Skip to main content",
-            "hero_eyebrow": "Community Solar Story · RD 244/2019",
+            "hero_eyebrow": "Homeowners Association · Collective Solar",
             "title": "☀️ Our Community's Solar Story",
-            "subtitle": "An accessible, visual guide showing how our shared building services use electricity, what local weather and our rooftop panels deliver, and how fair shares maximize savings for every neighbour.",
-            "badge_rd": "✓ RD 244/2019",
-            "cups_label": "Active Supplies (CUPS)",
-            "bylaw_label": "Bylaw Limits",
+            "subtitle": "An accessible, visual guide showing how our shared building services use electricity, what local weather and our rooftop panels deliver, and how smart sharing maximizes value for every neighbour.",
             "mode_simulated": "Hourly Diurnal Simulation",
             "mode_modeled": "Modeled Diurnal Prevision",
-            "strat_optimal": "OPTIMAL",
-            "strat_equal": "EQUAL",
-            "strat_consumption_share": "CONSUMPTION",
-            "strat_consumption": "CONSUMPTION",
             "default_service": "Common Service",
             "nav_aria": "Report chapters",
             "nav_ch1": "1. Supplies",
@@ -274,8 +283,7 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "nav_ch3": "3. Weather",
             "nav_ch4": "4. Solar",
             "nav_ch5": "5. Sharing",
-            "nav_ch6": "6. Tables",
-            "nav_ch7": "7. Glossary",
+            "nav_ch6": "6. Glossary",
             "theme_light": "Light",
             "theme_dark": "Dark",
             "theme_hc": "High Contrast",
@@ -284,25 +292,17 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "font_dec_label": "Decrease text size",
             "font_reset_label": "Reset text size",
             "font_inc_label": "Increase text size",
-            "hero_kpi1_title": "🏢 Active Services",
-            "hero_kpi1_sub": "Primary inverter meter",
-            "hero_kpi2_title": "🌞 Annual Solar Generation",
-            "hero_kpi2_sub": "Solar hours",
-            "hero_kpi3_title": "🏆 Collective Self-Consumption",
-            "hero_kpi3_sub_eff": "Utilization",
-            "hero_kpi3_sub_cov": "Coverage",
-            "hero_kpi4_title": "🚀 Extra vs. 1 Meter",
-            "hero_kpi4_sub": "more solar energy captured",
             "ch1_badge": "Chapter 1",
             "ch1_title": "Meet Our Community Supplies (Active CUPS)",
-            "ch1_intro": "Our homeowners association holds separate electricity meters for shared facilities (central heating, garage, elevators, pool, hallway lighting). In Spain, each meter contract has a unique ID called a <strong>CUPS</strong>. Below are strictly the active community meters included in our collective solar agreement.",
+            "ch1_intro": "Our homeowners association holds separate electricity meters for shared facilities (central heating, garage, elevators, pool, hallway lighting). In Spain, each meter contract has a unique ID called a <strong>CUPS</strong>. Below are strictly the active community meters included in our collective solar agreement, alongside their demand in the latest complete year.",
             "ch1_col_rank": "#",
             "ch1_col_service": "Common Service",
             "ch1_col_cups": "Official CUPS Code",
             "ch1_col_cons": "Ref. Consumption",
-            "ch1_col_beta": "Avg Solar Share (β)",
             "ch1_primary_tip": "Primary meter connected directly behind the solar inverter",
             "ch1_primary_legend": "☀️ Marks the primary meter connected directly behind the rooftop solar inverter.",
+            "ch1_jump_tip": "View this service's monthly curve in Chapter 2",
+            "ch1_jump_hint": "↗ Click any common service to jump straight to its monthly curve in Chapter 2.",
             "ch1_total_label": "COMMUNITY TOTAL",
             "ch1_note": "<strong>Good to know:</strong> This report only covers shared building common-service meters. Private apartment electricity contracts and household bills are neither included nor modified.",
             "ch2_badge": "Chapter 2",
@@ -326,31 +326,69 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "stat_low_month": "Lowest Month",
             "stat_yoy_delta": "Year-over-Year Change",
             "fake_zero_title": "🔍 Solving the «Fake Zero» Utility Meter Riddle",
-            "fake_zero_desc": "When the sun shines, rooftop electricity powers our primary facility directly before reaching the street utility meter. Because the street meter only measures grid imports, it reports <strong>0 kWh</strong> even while equipment is running! Our tool reconciles inverter data to reveal the real physical demand.",
+            "fake_zero_desc": "At midday, the street utility meter often logs <strong>0 kWh</strong> even while building equipment is running at full power. Here is how our wiring works inside and how we recover true demand:",
+            "fake_zero_step1_title": "1. Wired behind the main meter",
+            "fake_zero_step1_tpl": "Our rooftop solar panels feed directly into <strong>{primary}</strong> inside our building's electrical room, before electricity ever reaches the street utility meter.",
+            "fake_zero_step2_title": "2. What happens in a sunny hour",
+            "fake_zero_step2_desc": "If rooftop panels generate <strong>10 kWh</strong> and the equipment uses <strong>6 kWh</strong>, it runs on sunshine first while the extra <strong>4 kWh</strong> export to the grid. Because zero street electricity is imported, the official meter logs <strong>0 kWh</strong>.",
+            "fake_zero_step3_title": "3. How we uncover true demand",
+            "fake_zero_step3_desc": "To avoid undercounting what this facility actually needs, our tool reconciles grid-meter imports (DATADIS) hour by hour against the inverter's real generation and flow logs.",
             "fake_zero_recovered": "Hidden behind-the-meter demand recovered:",
-            "fake_zero_svg_panels": "Rooftop Solar",
-            "fake_zero_svg_primary": "Primary Service",
-            "fake_zero_svg_meter": "Street Meter (0 kWh)",
+            "fz_zone_home": "Inside building (behind meter)",
+            "fz_zone_grid": "Public grid (street)",
+            "fz_svg_panels": "Rooftop solar",
+            "fz_svg_panels_val": "+10 kWh solar",
+            "fz_svg_panels_sub": "Clean power generated",
+            "fz_svg_flow_sc": "6 kWh",
+            "fz_svg_primary": "Primary service",
+            "fz_svg_primary_val": "Uses 6 kWh in reality",
+            "fz_svg_flow_exp": "4 kWh surplus ➔",
+            "fz_svg_no_grid": "0 kWh bought from street",
+            "fz_svg_meter": "Street utility meter",
+            "fz_svg_meter_zero": "Grid import reads: 0 kWh",
+            "fz_svg_meter_cap1": "Only sees power entering",
+            "fz_svg_meter_cap2": "Misses the 6 kWh rooftop flow",
             "ch3_badge": "Chapter 3",
             "ch3_title": "Local Weather Across the Analyzed Years",
-            "ch3_intro": "Weather connects demand and solar supply: colder winters drive central heating higher, while bright clear skies boost rooftop output. Compare monthly temperatures and clear-sky percentages across the exact years analyzed.",
+            "ch3_intro": "Weather connects demand and solar supply: colder months push central heating higher while clear bright skies boost rooftop output. Explore monthly temperatures, clear-sky percentages, and sunny vs. rainy day counts across the exact analyzed years.",
             "weather_mode_temp": "🌡️ Temperature (°C)",
             "weather_mode_clear": "☀️ Clear Sky (%)",
+            "weather_mode_days": "📅 Sky & Rain Days",
             "weather_stat_temp": "Average Temperature",
             "weather_stat_range": "Coldest & Warmest Month",
             "weather_stat_clear": "Average Clear Sky",
-            "weather_stat_days": "Sunny & Rainy Days",
-            "weather_sunny_days": "sunny days",
-            "weather_cloudy_days": "overcast days",
-            "weather_rainy_days": "rainy days",
+            "weather_stat_extremes": "Cold & Hot Days",
+            "weather_sunny_days": "Sunny",
+            "weather_partly_days": "Partly cloudy",
+            "weather_cloudy_days": "Overcast",
+            "weather_rainy_days": "Rainy",
+            "weather_sky_title": "Sky breakdown in",
+            "weather_days_unit": "observed days",
+            "weather_cold_days_lbl": "<10 °C",
+            "weather_hot_days_lbl": "≥30 °C",
+            "weather_frost_days_lbl": "frost ≤0 °C",
             "weather_band_note": "Shaded band: average daily min–max (°C)",
+            "weather_cold_ref": "Heating zone (<10 °C)",
             "weather_no_data": "No local weather archives available for these years.",
+            "weather_coldest": "Coldest",
+            "weather_warmest": "Warmest",
+            "weather_min_ext": "Min",
+            "weather_max_ext": "Max",
+            "weather_no_extremes": "Mild range overall",
+            "weather_insight_single_tpl": "🌤️ In <strong>{year}</strong> the mean temperature was <strong>{temp}</strong>, with <strong>{clear}</strong> daytime clear skies and <strong>{sunny} sunny days</strong> versus <strong>{rainy} rainy days</strong>.",
+            "weather_insight_yoy_tpl": "🌤️ From <strong>{y0}</strong> to <strong>{y1}</strong>, mean temperature shifted by <strong>{dt} °C</strong> and clear skies by <strong>{dc} pp</strong> ({y1}: <strong>{temp}</strong> avg · <strong>{clear}</strong> clear sky).",
+            "weather_card1_title": "🥶 Cold Weather & Building Demand",
+            "weather_card1_ratio_tpl": "During cold months (avg below 12 °C), shared facilities consume <strong>{cold_kwh}</strong>/month vs. <strong>{mild_kwh}</strong> in mild months (15–23 °C)—a <strong>{ratio}× surge</strong> driven by central heating. {year} logged <strong>{cold_days} cold days (&lt;10 °C)</strong>{frost_part}.",
+            "weather_card1_fallback_tpl": "Days averaging below 10 °C drive central heating demand sharply higher. In <strong>{year}</strong> we observed <strong>{cold_days} cold days (&lt;10 °C)</strong>, <strong>{hot_days} hot days (≥30 °C)</strong>, and extremes from <strong>{min_t}</strong> to <strong>{max_t}</strong>.",
+            "weather_card2_title": "☀️ Clear Skies, Heat & Panel Efficiency",
+            "weather_card2_body_tpl": "The brightest skies typically arrive in <strong>{sun_m}</strong> (<strong>{sun_c}</strong> clear) versus <strong>{cld_m}</strong> (<strong>{cld_c}</strong>).",
+            "weather_card2_peak_tpl": "Peak PV generation occurs in <strong>{peak_m}</strong> ({peak_c} clear sky, {peak_t} average).",
+            "weather_card2_heat_note": "Panels convert light most efficiently on crisp, bright spring days; extreme heat (>30 °C) trims silicon efficiency slightly (~0.4% per °C above 25 °C), though longer summer daylight more than compensates.",
             "tip_temp_avg": "Monthly Average",
             "tip_temp_range": "Avg Daily Min–Max",
             "tip_clear_sky": "Clear Sky",
             "tip_cloud_cover": "Cloud Cover",
-            "weather_coldest": "Coldest",
-            "weather_warmest": "Warmest",
+            "tip_sky_days": "Month Days",
             "ch4_badge": "Chapter 4",
             "ch4_title": "How Our Roof Produces Solar Energy",
             "ch4_intro": "Longer, brighter days from spring through summer multiply solar output compared with winter months. Toggle the daylight demand line to see when solar supply exceeds daytime demand and when it falls short.",
@@ -360,6 +398,15 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "gen_stat_low": "Lowest Month",
             "gen_stat_yoy": "Year-over-Year Shift",
             "gen_legend_demand": "Community daylight demand (reference)",
+            "gen_insight_single_tpl": "🌞 In <strong>{year}</strong> our roof produced <strong>{total}</strong>, peaking in <strong>{peak_m}</strong> (<strong>{peak_val}</strong>).",
+            "gen_insight_ratio_tpl": "🌞 In <strong>{year}</strong> our panels generated <strong>{total}</strong>. The sunniest month (<strong>{peak_m}</strong>, {peak_val}) delivered <strong>{ratio}×</strong> as much solar power as the lowest month (<strong>{low_m}</strong>, {low_val}).",
+            "gen_insight_yoy_tpl": " Apples-to-apples YoY shift ({y0}→{y1}): <strong>{pct}</strong>.",
+            "gen_imp_homes_lbl": "Equivalent Homes",
+            "gen_imp_homes_unit": "avg Spanish homes/yr",
+            "gen_imp_home_months_unit": "avg home-months",
+            "gen_imp_co2_lbl": "CO₂ Emissions Avoided",
+            "gen_imp_ev_lbl": "EV Driving Equivalent",
+            "gen_imp_note": "Indicative Spain benchmarks (IDAE / REE): ~3,300 kWh/yr typical household, ~0.20 kg CO₂/kWh grid displacement, ~6 km/kWh EV.",
             "ch5_badge": "Chapter 5",
             "ch5_title": "Sharing the Sun: How Smart Coefficients Work",
             "why_equal_title": "💡 Why NOT Split Everything Equally?",
@@ -396,25 +443,10 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "prev_comp_fortnight": "Fortnight Share (24 Half-Month Periods)",
             "prev_comp_hourly": "Dynamic Hourly Share (Orden TED/1247/2021)",
             "prev_note": "Moving from single-meter self-consumption to fixed monthly (<strong>RD 244/2019</strong>) or fortnight collective shares lets all common services absorb rooftop power across seasons. Dynamic hourly profiles (<strong>Order TED/1247/2021</strong>) represent the next regulatory horizon to capture even more sunshine without buying extra panels.",
+            "prev_uplift_impact_tpl": "🌱 Simply by sharing solar across all common meters instead of just one, the community avoids an extra <strong>{co2}</strong> (equivalent to <strong>{home_months} months of electricity for an average home</strong>).",
             "ch6_badge": "Chapter 6",
-            "ch6_title": "Explore the Official Share Tables",
-            "ch6_intro": "See visually how every 100 kWh of sunshine splits in any month, or inspect the complete official coefficient tables totaling exactly 100%.",
-            "sim_title": "☀️ How 100 kWh of Sunshine Splits in…",
-            "sim_sub": "Pick any active month to see how many kilowatt-hours each service receives out of every 100 kWh generated.",
-            "sim_of_100": "out of 100 kWh",
-            "tab_monthly": "📅 Monthly Shares (RD 244/2019)",
-            "tab_fortnight": "📆 Fortnight Shares (24 Periods)",
-            "fn_h1": "Jan – Jun (1–12)",
-            "fn_h2": "Jul – Dec (13–24)",
-            "fn_all": "All (24)",
-            "fn_fallback_note": "Note: This dataset currently mirrors monthly coefficients across both half-month periods.",
-            "search_placeholder": "Filter service or CUPS code...",
-            "col_cups": "Service / CUPS Code",
-            "col_avg": "Annual Avg",
-            "lbl_total_rd244": "TOTAL (RD 244/2019)",
-            "ch7_badge": "Chapter 7",
-            "ch7_title": "Plain-Language Glossary for Neighbours",
-            "ch7_intro": "Everyday explanations of key energy and regulatory terms used in this report.",
+            "ch6_title": "Plain-Language Glossary for Neighbours",
+            "ch6_intro": "Everyday explanations of key energy and regulatory terms used in this report.",
             "g1_term": "CUPS (Universal Supply Point Code)",
             "g1_desc": "Think of a CUPS as an electricity meter's official ID card. Our building holds separate CUPS contracts for heating, garage, elevators, and pool.",
             "g2_term": "kWh (Kilowatt-hour)",
@@ -604,10 +636,9 @@ def _render_active_cups_table(
     ctx: StoryReportContext,
     ui: dict[str, Any],
 ) -> str:
-    """Render Chapter 1 active CUPS table showing service name + full CUPS code."""
+    """Render Chapter 1 active CUPS table (4 columns) with interactive service jump buttons."""
     rows: list[str] = []
     tot_cons = sum(item.annual_consumption_kwh for item in ctx.active_cups)
-    tot_beta = sum(item.avg_solar_beta_pct for item in ctx.active_cups)
     has_primary = any(item.primary for item in ctx.active_cups)
 
     for idx, item in enumerate(ctx.active_cups, start=1):
@@ -628,12 +659,16 @@ def _render_active_cups_table(
         rows.append(
             "<tr>"
             f"<td class='num muted'>{idx}</td>"
-            f"<td><span class='color-dot' style='background:{item.color};'></span><strong>{service_name}</strong>{primary_badge}</td>"
+            f"<td><button type='button' class='cups-jump-btn' data-cups='{escape(item.cups, quote=True)}' "
+            f"onclick=\"jumpToCupsConsumption(this.getAttribute('data-cups'))\" "
+            f"data-i18n-title='ch1_jump_tip' title='{escape(ui['ch1_jump_tip'])}'>"
+            f"<span class='color-dot' style='background:{item.color};'></span>"
+            f"<strong>{service_name}</strong><span class='jump-arrow' aria-hidden='true'> ↗</span>"
+            f"</button>{primary_badge}</td>"
             f"<td><code class='cups-full'>{escape(item.cups)}</code></td>"
             f"<td class='num'><div><strong>{format_kwh(item.annual_consumption_kwh)}</strong> "
             f"<span class='muted'>({item.consumption_share_pct:.1f}%)</span></div>"
             f"<div class='mini-track'><div class='mini-fill' style='width:{bar_w:.1f}%;background:{item.color};'></div></div></td>"
-            f"<td class='num'><strong>{item.avg_solar_beta_pct:.1f}%</strong></td>"
             "</tr>"
         )
 
@@ -643,6 +678,7 @@ def _render_active_cups_table(
         if has_primary
         else ""
     )
+    jump_note = f"<p class='table-footnote' data-i18n='ch1_jump_hint'>{ui['ch1_jump_hint']}</p>"
     return (
         "<div class='table-wrap'>"
         "<table id='activeCupsTable'>"
@@ -651,16 +687,14 @@ def _render_active_cups_table(
         f"<th data-i18n='ch1_col_service'>{ui['ch1_col_service']}</th>"
         f"<th data-i18n='ch1_col_cups'>{ui['ch1_col_cups']}</th>"
         f"<th class='num'><span data-i18n='ch1_col_cons'>{ui['ch1_col_cons']}</span> ({escape(ctx.consumption_history.reference_period_label)})</th>"
-        f"<th class='num' data-i18n='ch1_col_beta'>{ui['ch1_col_beta']}</th>"
         "</tr></thead>"
         f"<tbody>{''.join(rows)}</tbody>"
         "<tfoot><tr>"
         "<td></td>"
         f"<td colspan='2'><span class='total-label' data-i18n='ch1_total_label'>{ui['ch1_total_label']}</span></td>"
         f"<td class='num total-val'>{format_kwh(tot_cons)} ({tot_share_str})</td>"
-        f"<td class='num total-val'>{tot_beta:.1f}%</td>"
         "</tr></tfoot>"
-        f"</table></div>{primary_note}"
+        f"</table></div>{primary_note}{jump_note}"
     )
 
 
@@ -729,159 +763,6 @@ def _render_seasonal_spotlight(
         f"<div class='{grid_cls}'>{''.join(cards_html)}</div>"
         f"{takeaway_html}"
         "</div>"
-    )
-
-
-def _render_matrices_section(
-    opt_result: OptimizationResult,
-    ctx: StoryReportContext,
-    ui: dict[str, Any],
-    prec: int,
-    active_lang: str,
-) -> str:
-    """Render tabbed Monthly (12m) and Fortnight (24 periods) coefficient matrices."""
-    matrix = opt_result.build_matrix()
-    abbr_map = MONTH_ABBR_ES if active_lang == "es" else MONTH_ABBR_EN
-    ordered_cups = [item.cups for item in ctx.active_cups] or list(matrix.cups_list)
-    color_lookup = {item.cups: item.color for item in ctx.active_cups}
-
-    def _heat_class(raw_val: float | None) -> str:
-        if raw_val is None:
-            return "heat-dim"
-        if raw_val > 0.50:
-            return "heat-emerald"
-        if raw_val > 0.20:
-            return "heat-amber"
-        if raw_val > 0.05:
-            return "heat-cyan"
-        return "heat-dim"
-
-    # 1. Monthly table (#matrixTable)
-    month_headers = "".join(
-        f"<th class='text-right th-month' data-month='{parse_month_int(m):02d}'>{abbr_map.get(m, m)}</th>"
-        for m in matrix.months
-    )
-    monthly_rows: list[str] = []
-    for cups in ordered_cups:
-        use_val = matrix.cups_uses.get(cups, "")
-        color = color_lookup.get(cups, "#0284c7")
-        use_disp = (
-            escape(use_val)
-            if use_val
-            else f"<span data-i18n='default_service'>{ui['default_service']}</span>"
-        )
-        label_html = (
-            "<div class='cups-cell'>"
-            f"<span class='cups-use'><span class='color-dot' style='background:{color};'></span>{use_disp}</span>"
-            f"<code class='cups-id'>{escape(cups)}</code></div>"
-        )
-        cells = [f"<td>{label_html}</td>"]
-        for m in matrix.months:
-            raw_val = matrix.matrix.get(cups, {}).get(m)
-            formatted = matrix.format_cell(cups, m, precision=prec)
-            cells.append(f"<td class='text-right {_heat_class(raw_val)}'>{formatted}</td>")
-        ann_formatted = matrix.format_annual(cups, precision=prec)
-        cells.append(f"<td class='text-right font-bold col-avg'>{ann_formatted}</td>")
-        monthly_rows.append(
-            f"<tr class='matrix-row' data-search='{escape(use_val)} {escape(cups)}'>{''.join(cells)}</tr>"
-        )
-
-    total_cells = [
-        f"<td><span class='total-label' data-i18n='lbl_total_rd244'>{ui['lbl_total_rd244']}</span></td>"
-    ]
-    for m in matrix.months:
-        total_cells.append(
-            f"<td class='text-right font-bold total-val'>{matrix.format_month_sum(m, precision=prec)}</td>"
-        )
-    total_cells.append(
-        f"<td class='text-right font-bold total-val col-avg'>{matrix.format_annual_sum(precision=prec)}</td>"
-    )
-    monthly_table = (
-        "<div class='table-wrap'>"
-        "<table id='matrixTable'>"
-        f"<thead><tr><th data-i18n='col_cups'>{ui['col_cups']}</th>{month_headers}"
-        f"<th class='text-right col-avg' data-i18n='col_avg'>{ui['col_avg']}</th></tr></thead>"
-        f"<tbody>{''.join(monthly_rows)}</tbody>"
-        f"<tfoot><tr>{''.join(total_cells)}</tr></tfoot>"
-        "</table></div>"
-    )
-
-    # 2. Fortnight table (#fortnightTable)
-    fn = ctx.fortnight_matrix
-    fn_headers: list[str] = []
-    for p_idx, period in enumerate(fn.periods):
-        m_part, half_part = period.split("-")
-        m_lbl = abbr_map.get(m_part, m_part)
-        half_tag = "1-15" if half_part == "1" else "16+"
-        h_cls = "fn-h1" if p_idx < 12 else "fn-h2"
-        fn_headers.append(
-            f"<th class='text-right {h_cls}' data-fortnight='{period}'>{escape(m_lbl)}<br><small>{half_tag}</small></th>"
-        )
-
-    fn_rows: list[str] = []
-    for cups in ordered_cups:
-        use_val = fn.cups_uses.get(cups, matrix.cups_uses.get(cups, ""))
-        color = color_lookup.get(cups, "#0284c7")
-        use_disp = (
-            escape(use_val)
-            if use_val
-            else f"<span data-i18n='default_service'>{ui['default_service']}</span>"
-        )
-        label_html = (
-            "<div class='cups-cell'>"
-            f"<span class='cups-use'><span class='color-dot' style='background:{color};'></span>{use_disp}</span>"
-            f"<code class='cups-id'>{escape(cups)}</code></div>"
-        )
-        cells = [f"<td>{label_html}</td>"]
-        for p_idx, period in enumerate(fn.periods):
-            h_cls = "fn-h1" if p_idx < 12 else "fn-h2"
-            raw_val = fn.matrix.get(cups, {}).get(period)
-            fmt = f"{raw_val * 100.0:.{prec}f}%" if raw_val is not None else "—"
-            cells.append(f"<td class='text-right {h_cls} {_heat_class(raw_val)}'>{fmt}</td>")
-        fn_rows.append(
-            f"<tr class='matrix-row' data-search='{escape(use_val)} {escape(cups)}'>{''.join(cells)}</tr>"
-        )
-
-    fn_total_cells = [
-        f"<td><span class='total-label' data-i18n='lbl_total_rd244'>{ui['lbl_total_rd244']}</span></td>"
-    ]
-    for p_idx, period in enumerate(fn.periods):
-        h_cls = "fn-h1" if p_idx < 12 else "fn-h2"
-        sum_val = fn.period_sums.get(period)
-        fmt_sum = f"{sum_val * 100.0:.{prec}f}%" if sum_val is not None else "—"
-        fn_total_cells.append(f"<td class='text-right font-bold total-val {h_cls}'>{fmt_sum}</td>")
-
-    fn_fallback_banner = (
-        ""
-        if fn.has_fortnight_data
-        else f"<p class='fn-note' data-i18n='fn_fallback_note'>{ui['fn_fallback_note']}</p>"
-    )
-
-    fortnight_table = (
-        f"{fn_fallback_banner}"
-        "<div class='fn-subtabs' role='group'>"
-        f"<button type='button' class='pill-btn active' id='btn-fn-h1' onclick=\"setFortnightHalf('h1')\" data-i18n='fn_h1'>{ui['fn_h1']}</button>"
-        f"<button type='button' class='pill-btn' id='btn-fn-h2' onclick=\"setFortnightHalf('h2')\" data-i18n='fn_h2'>{ui['fn_h2']}</button>"
-        f"<button type='button' class='pill-btn' id='btn-fn-all' onclick=\"setFortnightHalf('all')\" data-i18n='fn_all'>{ui['fn_all']}</button>"
-        "</div>"
-        "<div class='table-wrap'>"
-        "<table id='fortnightTable' class='show-h1'>"
-        f"<thead><tr><th data-i18n='col_cups'>{ui['col_cups']}</th>{''.join(fn_headers)}</tr></thead>"
-        f"<tbody>{''.join(fn_rows)}</tbody>"
-        f"<tfoot><tr>{''.join(fn_total_cells)}</tr></tfoot>"
-        "</table></div>"
-    )
-
-    return (
-        "<div class='matrix-toolbar'>"
-        "<div class='matrix-tabs' role='tablist'>"
-        f"<button type='button' role='tab' aria-selected='true' class='pill-btn active' id='tab-monthly' onclick=\"switchMatrixTab('monthly')\" data-i18n='tab_monthly'>{ui['tab_monthly']}</button>"
-        f"<button type='button' role='tab' aria-selected='false' class='pill-btn' id='tab-fortnight' onclick=\"switchMatrixTab('fortnight')\" data-i18n='tab_fortnight'>{ui['tab_fortnight']}</button>"
-        "</div>"
-        f"<input type='text' id='searchInput' class='search-box' data-i18n-placeholder='search_placeholder' placeholder='{escape(ui['search_placeholder'])}' oninput='filterTable()'>"
-        "</div>"
-        f"<div id='panel-monthly' role='tabpanel'>{monthly_table}</div>"
-        f"<div id='panel-fortnight' role='tabpanel' hidden>{fortnight_table}</div>"
     )
 
 
@@ -954,9 +835,11 @@ _CSS_STYLES: str = """
             --shadow-card: none;
         }
         [data-theme="high-contrast"] .story-section,
-        [data-theme="high-contrast"] .kpi-card,
         [data-theme="high-contrast"] .glossary-card,
-        [data-theme="high-contrast"] .spot-card {
+        [data-theme="high-contrast"] .spot-card,
+        [data-theme="high-contrast"] .insight-card,
+        [data-theme="high-contrast"] .fz-step-card,
+        [data-theme="high-contrast"] .sky-breakdown-card {
             border-width: 2px;
         }
 
@@ -1107,7 +990,6 @@ _CSS_STYLES: str = """
             color: var(--text-muted);
             max-width: 78ch;
         }
-        .badges-wrap { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.1rem; }
         .badge {
             display: inline-flex;
             align-items: center;
@@ -1119,38 +1001,8 @@ _CSS_STYLES: str = """
             border: 1px solid var(--border-subtle);
             color: var(--text-muted);
         }
-        .badge-rd { color: var(--accent-sc); border-color: rgba(5, 150, 105, 0.35); }
-        .badge-strat { color: var(--accent-demand); border-color: rgba(2, 132, 199, 0.35); }
-        .badge-bylaw { color: var(--accent-solar); border-color: rgba(217, 119, 6, 0.35); }
         .badge-ted { color: var(--accent-demand); border-color: rgba(2, 132, 199, 0.4); }
         .badge-mode { color: var(--accent-sc); border-color: rgba(5, 150, 105, 0.4); }
-
-        .hero-kpi-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 1rem;
-            margin-top: 1.6rem;
-        }
-        .kpi-card {
-            background: var(--bg-surface);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-lg);
-            padding: 1.2rem 1.35rem;
-            border-top: 4px solid var(--accent-demand);
-            box-shadow: var(--shadow-card);
-        }
-        .kpi-card.kpi-solar { border-top-color: var(--accent-solar); }
-        .kpi-card.kpi-sc { border-top-color: var(--accent-sc); }
-        .kpi-card.kpi-uplift { border-top-color: var(--accent-purple); }
-        .kpi-title {
-            font-size: 0.78rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            color: var(--text-muted);
-        }
-        .kpi-value { font-size: 1.75rem; font-weight: 800; margin: 0.25rem 0; line-height: 1.2; }
-        .kpi-meta { font-size: 0.82rem; color: var(--text-muted); }
 
         /* Story Sections */
         .story-section {
@@ -1202,15 +1054,68 @@ _CSS_STYLES: str = """
             background: var(--bg-subtle);
             border: 1px solid var(--border-subtle);
             border-radius: var(--radius-lg);
-            padding: 1.35rem;
+            padding: 1.4rem 1.5rem;
         }
-        .fake-zero-grid {
-            display: grid;
-            grid-template-columns: minmax(260px, 1.1fr) minmax(240px, 1fr);
-            gap: 1.25rem;
+        .fake-zero-head p { font-size: 0.92rem; color: var(--text-muted); max-width: 78ch; }
+        .recovered-pill-banner {
+            display: inline-flex;
+            flex-wrap: wrap;
             align-items: center;
+            gap: 0.45rem;
+            margin-top: 0.85rem;
+            padding: 0.45rem 0.9rem;
+            border-radius: var(--radius-sm);
+            background: rgba(5, 150, 105, 0.14);
+            border: 1px solid rgba(5, 150, 105, 0.35);
+            color: var(--accent-sc);
+            font-size: 0.88rem;
+            font-weight: 700;
         }
-        @media (max-width: 768px) { .fake-zero-grid { grid-template-columns: 1fr; } }
+        .fake-zero-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 0.9rem;
+            margin-top: 1.1rem;
+        }
+        .fz-step-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-top: 3px solid var(--accent-demand);
+            border-radius: var(--radius-md);
+            padding: 0.9rem 1rem;
+        }
+        .fz-step-card.step-solar { border-top-color: var(--accent-solar); }
+        .fz-step-card.step-sc { border-top-color: var(--accent-sc); }
+        .fz-step-card h4 { font-size: 0.88rem; font-weight: 800; color: var(--text-main); margin-bottom: 0.35rem; }
+        .fz-step-card p { font-size: 0.84rem; color: var(--text-muted); line-height: 1.5; }
+        .fake-zero-diagram-wrap {
+            margin-top: 1.15rem;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 0.75rem;
+        }
+        .fz-zone { stroke-width: 1.4; stroke-dasharray: 5 4; }
+        .fz-zone-home { fill: rgba(5, 150, 105, 0.04); stroke: rgba(5, 150, 105, 0.35); }
+        .fz-zone-grid { fill: rgba(2, 132, 199, 0.04); stroke: rgba(2, 132, 199, 0.35); }
+        .fz-zone-lbl { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; fill: var(--text-dim); font-family: var(--font-sans); }
+        .fz-box-panels { fill: rgba(217, 119, 6, 0.11); stroke: var(--accent-solar); stroke-width: 1.8; }
+        .fz-box-primary { fill: rgba(5, 150, 105, 0.11); stroke: var(--accent-sc); stroke-width: 1.8; }
+        .fz-box-meter { fill: rgba(2, 132, 199, 0.1); stroke: var(--accent-demand); stroke-width: 1.8; }
+        .fz-box-title { font-size: 12.5px; font-weight: 800; fill: var(--text-main); font-family: var(--font-sans); }
+        .fz-box-sub { font-size: 10.5px; fill: var(--text-muted); font-family: var(--font-sans); }
+        .fz-box-sub-sc { font-size: 11px; font-weight: 700; fill: var(--accent-sc); font-family: var(--font-sans); }
+        .fz-pill-solar-bg { fill: rgba(217, 119, 6, 0.18); stroke: var(--accent-solar); stroke-width: 1; }
+        .fz-pill-solar { font-size: 11px; font-weight: 800; fill: var(--accent-solar); font-family: var(--font-sans); }
+        .fz-flow-pill-sc { fill: var(--bg-surface); stroke: var(--accent-sc); stroke-width: 1.5; }
+        .fz-flow-txt-sc { font-size: 11px; font-weight: 800; fill: var(--accent-sc); font-family: var(--font-sans); }
+        .fz-flow-pill-exp { fill: var(--bg-surface); stroke: var(--accent-demand); stroke-width: 1.5; }
+        .fz-flow-txt-exp { font-size: 11px; font-weight: 800; fill: var(--accent-demand); font-family: var(--font-sans); }
+        .fz-pill-alert-bg { fill: rgba(220, 38, 38, 0.14); stroke: #dc2626; stroke-width: 1.2; }
+        .fz-pill-alert { font-size: 11px; font-weight: 800; fill: #dc2626; font-family: var(--font-sans); }
+        [data-theme="dark"] .fz-pill-alert, [data-theme="high-contrast"] .fz-pill-alert { fill: #fca5a5; }
+        [data-theme="dark"] .fz-pill-alert-bg, [data-theme="high-contrast"] .fz-pill-alert-bg { stroke: #f87171; }
+        .fz-note-dim { font-size: 10.5px; font-weight: 600; fill: var(--text-dim); font-family: var(--font-sans); }
 
         /* Controls & Interactive Chart Toolbars */
         .chart-card-box {
@@ -1312,6 +1217,95 @@ _CSS_STYLES: str = """
         }
         .stat-chip-label { font-size: 0.74rem; color: var(--text-dim); font-weight: 700; text-transform: uppercase; }
         .stat-chip-val { font-size: 1.05rem; font-weight: 800; margin-top: 0.1rem; }
+        .stat-chip-sub { font-size: 0.76rem; color: var(--text-muted); margin-top: 0.15rem; font-weight: 600; }
+
+        /* Weather Sky Breakdown & Weather-Energy Insights */
+        .sky-breakdown-card {
+            margin-top: 1rem;
+            padding: 0.9rem 1rem;
+            background: var(--bg-subtle);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+        }
+        .sky-breakdown-head {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.84rem;
+            font-weight: 700;
+            margin-bottom: 0.55rem;
+        }
+        .sky-stacked-bar {
+            width: 100%;
+            height: 16px;
+            border-radius: 999px;
+            overflow: hidden;
+            display: flex;
+            background: var(--border-subtle);
+        }
+        .sky-bar-seg { height: 100%; }
+        .sky-counts-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.65rem 1.15rem;
+            margin-top: 0.6rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+        .weather-insights-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-top: 1.25rem;
+        }
+        .insight-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-left: 4px solid var(--accent-demand);
+            border-radius: var(--radius-md);
+            padding: 1.05rem 1.2rem;
+        }
+        .insight-card.insight-solar { border-left-color: var(--accent-solar); }
+        .insight-card h3 { font-size: 0.96rem; font-weight: 800; margin-bottom: 0.4rem; }
+        .insight-card p { font-size: 0.88rem; color: var(--text-muted); line-height: 1.55; }
+        .insight-card p + p { margin-top: 0.4rem; }
+
+        /* Neighbour Impact Equivalences */
+        .impact-strip {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px dashed var(--border-subtle);
+        }
+        .impact-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.75rem;
+        }
+        .impact-chip {
+            background: linear-gradient(135deg, rgba(5, 150, 105, 0.08), rgba(217, 119, 6, 0.08)), var(--bg-subtle);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 0.75rem 0.9rem;
+        }
+        .impact-val { font-size: 1.18rem; font-weight: 800; color: var(--accent-sc); margin-top: 0.15rem; }
+        .impact-note { font-size: 0.76rem; color: var(--text-dim); margin-top: 0.55rem; }
+        .prev-impact-note {
+            margin-top: 0.85rem;
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius-md);
+            background: rgba(5, 150, 105, 0.1);
+            border: 1px solid rgba(5, 150, 105, 0.3);
+            font-size: 0.88rem;
+            color: var(--text-main);
+        }
+        @keyframes cardFlash {
+            0% { box-shadow: 0 0 0 4px rgba(2, 132, 199, 0.55); border-color: var(--accent-demand); }
+            100% { box-shadow: var(--shadow-card); border-color: var(--border-subtle); }
+        }
+        .chart-flash { animation: cardFlash 1.4s ease-out; }
 
         /* SVG Styling */
         .chart-container { width: 100%; position: relative; }
@@ -1398,69 +1392,7 @@ _CSS_STYLES: str = """
         .fill-fortnight { height: 100%; background: var(--accent-demand); }
         .fill-uplift { height: 100%; background: repeating-linear-gradient(45deg, #f59e0b, #f59e0b 8px, #d97706 8px, #d97706 16px); }
 
-        /* 100 kWh Simulator & Matrices */
-        .sim-box {
-            background: var(--bg-subtle);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-lg);
-            padding: 1.25rem 1.35rem;
-            margin-bottom: 1.5rem;
-        }
-        .sim-months { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.85rem 0 1rem; }
-        .sim-stacked-bar {
-            width: 100%;
-            height: 28px;
-            border-radius: var(--radius-sm);
-            overflow: hidden;
-            display: flex;
-            background: var(--border-subtle);
-            margin-bottom: 0.95rem;
-        }
-        .sim-seg {
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #ffffff;
-            font-size: 0.75rem;
-            font-weight: 700;
-            overflow: hidden;
-            white-space: nowrap;
-        }
-        .sim-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-            gap: 0.65rem;
-        }
-        .sim-item {
-            background: var(--bg-surface);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-sm);
-            padding: 0.65rem 0.8rem;
-            font-size: 0.83rem;
-        }
-
-        .matrix-toolbar {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-            align-items: center;
-            gap: 0.85rem;
-            margin-bottom: 1rem;
-        }
-        .matrix-tabs, .fn-subtabs { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 0.75rem; }
-        .search-box {
-            padding: 0.48rem 0.85rem;
-            border-radius: var(--radius-md);
-            border: 1px solid var(--border-strong);
-            background: var(--bg-surface);
-            color: var(--text-main);
-            font-size: 0.88rem;
-            min-width: 240px;
-        }
-        .fn-note { font-size: 0.84rem; color: var(--text-muted); margin-bottom: 0.65rem; }
-
-        /* Tables */
+        /* Tables & Chapter 1 Interactive Service Links */
         .table-wrap { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
         th {
@@ -1485,29 +1417,35 @@ _CSS_STYLES: str = """
         .font-bold { font-weight: 700; }
         .muted { color: var(--text-dim); }
         .color-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.45rem; vertical-align: middle; }
-        .primary-sun { margin-left: 0.35rem; font-size: 0.9em; vertical-align: baseline; }
-        .table-footnote { margin-top: 0.65rem; font-size: 0.82rem; color: var(--text-dim); }
+        .cups-jump-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.15rem;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            padding: 0.2rem 0.45rem;
+            margin-left: -0.45rem;
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: inherit;
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+        .cups-jump-btn:hover {
+            background: var(--bg-subtle);
+            border-color: var(--border-strong);
+            color: var(--accent-demand);
+        }
+        .jump-arrow { font-size: 0.82em; color: var(--accent-demand); opacity: 0.8; }
+        .primary-sun { margin-left: 0.3rem; font-size: 0.9em; vertical-align: baseline; }
+        .table-footnote { margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-dim); }
         .cups-full, .cups-id { font-family: var(--font-mono); font-size: 0.79rem; color: var(--text-muted); }
-        .cups-cell { display: flex; flex-direction: column; gap: 0.1rem; }
-        .cups-use { font-weight: 700; }
-        .badge-stack { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-        .pill { display: inline-block; font-size: 0.74rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 999px; }
-        .pill-primary { background: rgba(217, 119, 6, 0.16); color: var(--accent-solar); }
-        .pill-muted { background: var(--bg-subtle); color: var(--text-muted); }
-        .pill-bylaw { background: rgba(2, 132, 199, 0.14); color: var(--accent-demand); }
         .mini-track { width: 100%; height: 6px; background: var(--bg-subtle); border-radius: 999px; overflow: hidden; margin-top: 0.25rem; }
         .mini-fill { height: 100%; border-radius: 999px; }
-        .col-avg, .total-val { color: var(--accent-sc); font-family: var(--font-mono); }
+        .total-val { color: var(--accent-sc); font-family: var(--font-mono); }
         .total-label { font-weight: 800; color: var(--text-main); }
-
-        .heat-dim { color: var(--text-dim); }
-        .heat-cyan { color: var(--accent-demand); background: rgba(2, 132, 199, 0.08); }
-        .heat-amber { color: var(--accent-solar); background: rgba(217, 119, 6, 0.12); font-weight: 600; }
-        .heat-emerald { color: var(--accent-sc); background: rgba(5, 150, 105, 0.14); font-weight: 700; }
-
-        /* Fortnight Half Toggle */
-        #fortnightTable.show-h1 .fn-h2 { display: none; }
-        #fortnightTable.show-h2 .fn-h1 { display: none; }
 
         /* Glossary */
         .glossary-grid {
@@ -1551,16 +1489,14 @@ _CSS_STYLES: str = """
 
         @media print {
             body { background: #ffffff !important; color: #000000 !important; padding: 0; }
-            .story-nav, #reading-progress, .skip-link, .controls-group, .search-box, #tooltip, .matrix-tabs, .fn-subtabs, .sim-months { display: none !important; }
-            .story-section, .story-hero, .kpi-card { box-shadow: none !important; border: 1px solid #cbd5e1 !important; background: #ffffff !important; break-inside: avoid; }
-            #panel-monthly, #panel-fortnight { display: block !important; }
-            #fortnightTable .fn-h1, #fortnightTable .fn-h2 { display: table-cell !important; }
+            .story-nav, #reading-progress, .skip-link, .controls-group, #tooltip { display: none !important; }
+            .story-section, .story-hero { box-shadow: none !important; border: 1px solid #cbd5e1 !important; background: #ffffff !important; break-inside: avoid; }
         }
 """
 
 _SCRIPT_BODY: str = """
         let currentLang = __INIT_LANG__;
-        const cupsCount = __CUPS_COUNT__;
+        const PRIMARY_DISPLAY = __PRIMARY_JSON__;
         const I18N = __I18N_JSON__;
         const STORY_DATA = __STORY_JSON__;
         const PREVISION_CTX = __PREV_JSON__;
@@ -1578,7 +1514,6 @@ _SCRIPT_BODY: str = """
         let genOverlayDemand = false;
         let weatherMetric = 'temp';
         let weatherSelectedYears = [];
-        let simSelectedMonth = (STORY_DATA.simulator && STORY_DATA.simulator.active_months && STORY_DATA.simulator.active_months[0]) || '01';
 
         function escapeHtml(val) {
             return String(val ?? '')
@@ -1589,12 +1524,21 @@ _SCRIPT_BODY: str = """
                 .replace(/'/g, '&#39;');
         }
 
+        function fmtNum(val, dec) {
+            return Number(val).toLocaleString(currentLang === 'es' ? 'es-ES' : 'en-US', {
+                minimumFractionDigits: dec,
+                maximumFractionDigits: dec
+            });
+        }
+
+        function fmtCo2(kg) {
+            if (kg >= 1000) return fmtNum(kg / 1000, 2) + ' t CO₂';
+            return fmtNum(kg, 0) + ' kg CO₂';
+        }
+
         function fmtKwh(val) {
             if (val === null || val === undefined || isNaN(val)) return '—';
-            return Number(val).toLocaleString(currentLang === 'es' ? 'es-ES' : 'en-US', {
-                minimumFractionDigits: 1,
-                maximumFractionDigits: 1
-            }) + ' kWh';
+            return fmtNum(val, 1) + ' kWh';
         }
 
         function fmtTick(val) {
@@ -1905,12 +1849,126 @@ _SCRIPT_BODY: str = """
             bar.innerHTML = `<strong>${escapeHtml(t.lbl_years)}:</strong> ${yrBtns}<label class="checkbox-pill"><input type="checkbox" ${genOverlayDemand ? 'checked' : ''} onchange="toggleGenDemand(this.checked)"> ${escapeHtml(t.toggle_daylight_demand)}</label>`;
         }
 
+        function updateGenDynamicInsight(seriesList) {
+            const box = document.getElementById('gen-dynamic-insight');
+            if (!box) return;
+            const t = I18N[currentLang] || I18N.en;
+            const primary = seriesList.filter(s => !s.isReference);
+            const focus = primary[primary.length - 1];
+            if (!focus) { box.style.display = 'none'; return; }
+
+            let totalSum = 0;
+            let bestIdx = -1;
+            let bestVal = -1;
+            let lowIdx = -1;
+            let lowVal = Infinity;
+            (focus.values || []).forEach((v, idx) => {
+                if (v === null || v === undefined) return;
+                const num = Number(v);
+                totalSum += num;
+                if (num > bestVal) { bestVal = num; bestIdx = idx; }
+                if (num > 0 && num < lowVal) { lowVal = num; lowIdx = idx; }
+            });
+            if (bestIdx < 0) { box.style.display = 'none'; return; }
+            box.style.display = 'flex';
+            const mName = idx => (t.months_full && t.months_full[String(idx + 1).padStart(2, '0')]) || '';
+            let html = '';
+            if (lowIdx >= 0 && bestIdx !== lowIdx && lowVal > 0 && (bestVal / lowVal) >= 1.1) {
+                html = t.gen_insight_ratio_tpl
+                    .replace('{year}', escapeHtml(focus.label))
+                    .replace('{total}', escapeHtml(fmtKwh(totalSum)))
+                    .replace('{peak_m}', escapeHtml(mName(bestIdx)))
+                    .replace('{peak_val}', escapeHtml(fmtKwh(bestVal)))
+                    .replace('{ratio}', escapeHtml(fmtNum(bestVal / lowVal, 1)))
+                    .replace('{low_m}', escapeHtml(mName(lowIdx)))
+                    .replace('{low_val}', escapeHtml(fmtKwh(lowVal)));
+            } else {
+                html = t.gen_insight_single_tpl
+                    .replace('{year}', escapeHtml(focus.label))
+                    .replace('{total}', escapeHtml(fmtKwh(totalSum)))
+                    .replace('{peak_m}', escapeHtml(mName(bestIdx)))
+                    .replace('{peak_val}', escapeHtml(fmtKwh(bestVal)));
+            }
+            if (primary.length >= 2) {
+                const s0 = primary[0];
+                const s1 = primary[primary.length - 1];
+                let sum0 = 0;
+                let sum1 = 0;
+                for (let i = 0; i < 12; i++) {
+                    if (s0.statuses[i] === 'complete' && s1.statuses[i] === 'complete' && s0.values[i] !== null && s1.values[i] !== null) {
+                        sum0 += Number(s0.values[i]);
+                        sum1 += Number(s1.values[i]);
+                    }
+                }
+                if (sum0 > 0) {
+                    const pct = ((sum1 - sum0) / sum0) * 100;
+                    const pctStr = `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+                    html += t.gen_insight_yoy_tpl
+                        .replace('{y0}', escapeHtml(s0.key))
+                        .replace('{y1}', escapeHtml(s1.key))
+                        .replace('{pct}', escapeHtml(pctStr));
+                }
+            }
+            box.innerHTML = `<p>${html}</p>`;
+        }
+
+        function renderGenImpactStrip(seriesList) {
+            const box = document.getElementById('gen-impact-strip');
+            if (!box) return;
+            const t = I18N[currentLang] || I18N.en;
+            const primary = seriesList.filter(s => !s.isReference);
+            const focus = primary[primary.length - 1];
+            if (!focus) { box.innerHTML = ''; return; }
+            const totalSum = (focus.values || []).reduce((acc, v) => acc + (v !== null && v !== undefined ? Number(v) : 0), 0);
+            if (totalSum <= 0) { box.innerHTML = ''; return; }
+
+            const homesYr = totalSum / 3300.0;
+            const homesStr = homesYr >= 0.3
+                ? `${fmtNum(homesYr, 1)} ${t.gen_imp_homes_unit}`
+                : `${fmtNum(homesYr * 12.0, 1)} ${t.gen_imp_home_months_unit}`;
+            const co2Str = fmtCo2(totalSum * 0.20);
+            const evKmStr = `${Math.round(totalSum * 6).toLocaleString(currentLang === 'es' ? 'es-ES' : 'en-US')} km`;
+
+            box.innerHTML = `
+                <div class="impact-grid">
+                    <div class="impact-chip">
+                        <div class="stat-chip-label">🏠 ${escapeHtml(t.gen_imp_homes_lbl)} (${escapeHtml(focus.label)})</div>
+                        <div class="impact-val">${escapeHtml(homesStr)}</div>
+                    </div>
+                    <div class="impact-chip">
+                        <div class="stat-chip-label">🌱 ${escapeHtml(t.gen_imp_co2_lbl)} (${escapeHtml(focus.label)})</div>
+                        <div class="impact-val">${escapeHtml(co2Str)}</div>
+                    </div>
+                    <div class="impact-chip">
+                        <div class="stat-chip-label">🚗 ${escapeHtml(t.gen_imp_ev_lbl)} (${escapeHtml(focus.label)})</div>
+                        <div class="impact-val">${escapeHtml(evKmStr)}</div>
+                    </div>
+                </div>
+                <p class="impact-note">${escapeHtml(t.gen_imp_note)}</p>
+            `;
+        }
+
         function renderGenerationSection() {
             renderGenerationControls();
             const series = getActiveGenerationSeries();
             renderLineChartSvg('generation-chart-svg', series, { chartType: 'gen' });
             renderChartLegend('gen-chart-legend', series);
             renderSeriesStats('gen-chart-stats', series, true);
+            updateGenDynamicInsight(series);
+            renderGenImpactStrip(series);
+        }
+
+        function jumpToCupsConsumption(cupsId) {
+            if (!cupsId) return;
+            consSelectedCups = cupsId;
+            setConsMode('single');
+            const sec = document.getElementById('ch-consumption');
+            if (sec && sec.scrollIntoView) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const card = document.querySelector('#ch-consumption .chart-card-box');
+            if (card) {
+                card.classList.remove('chart-flash');
+                if (card.offsetWidth >= 0) card.classList.add('chart-flash');
+            }
         }
 
         function setConsMode(mode) {
@@ -1986,7 +2044,11 @@ _SCRIPT_BODY: str = """
                 const wObj = w.by_year[yr] || {
                     temp_avg: [], temp_min: [], temp_max: [], clear_sky_pct: [], cloud_cover_pct: [],
                     statuses: [], days: [], annual_avg_temp: null, annual_avg_clear_pct: null,
-                    sunny_days: 0, cloudy_days: 0, rainy_days: 0, has_weather_codes: false
+                    sunny_days: 0, partly_cloudy_days: 0, cloudy_days: 0, rainy_days: 0,
+                    observed_days: 0, abs_min_temp: null, abs_max_temp: null,
+                    cold_days: 0, frost_days: 0, hot_days: 0,
+                    monthly_sunny_days: [], monthly_partly_days: [], monthly_cloudy_days: [], monthly_rainy_days: [],
+                    has_weather_codes: false
                 };
                 return {
                     key: yr,
@@ -1998,6 +2060,10 @@ _SCRIPT_BODY: str = """
                     temp_avg: wObj.temp_avg || [],
                     clear_sky_pct: wObj.clear_sky_pct || [],
                     cloud_cover_pct: wObj.cloud_cover_pct || [],
+                    monthly_sunny_days: wObj.monthly_sunny_days || [],
+                    monthly_partly_days: wObj.monthly_partly_days || [],
+                    monthly_cloudy_days: wObj.monthly_cloudy_days || [],
+                    monthly_rainy_days: wObj.monthly_rainy_days || [],
                     statuses: wObj.statuses || [],
                     days: wObj.days || [],
                     meta: wObj
@@ -2022,7 +2088,88 @@ _SCRIPT_BODY: str = """
             bar.innerHTML = `<strong>${escapeHtml(t.lbl_years)}:</strong> ${yrBtns}`;
         }
 
+        function renderWeatherDaysSvg(seriesList) {
+            const svg = document.getElementById('weather-chart-svg');
+            if (!svg) return;
+            const t = I18N[currentLang] || I18N.en;
+            const width = 940;
+            const height = 340;
+            const padL = 74;
+            const padR = 26;
+            const padT = 28;
+            const padB = 46;
+            const chartW = width - padL - padR;
+            const chartH = height - padT - padB;
+            const slotW = chartW / 12;
+            const barW = Math.min(34, slotW * 0.52);
+
+            const focus = seriesList[seriesList.length - 1];
+            const hasAny = focus && (focus.statuses || []).some(st => st !== 'no_data');
+            if (!focus || !hasAny) {
+                svg.setAttribute('viewBox', `0 0 ${width} 140`);
+                svg.innerHTML = `<text x="${width / 2}" y="75" text-anchor="middle" class="axis-label">${escapeHtml(t.weather_no_data)}</text>`;
+                return;
+            }
+
+            svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+            const yMax = 32;
+            const parts = [];
+            [0, 8, 16, 24, 32].forEach(tv => {
+                const yp = padT + chartH - (chartH * (tv / yMax));
+                parts.push(`<line x1="${padL}" y1="${yp.toFixed(1)}" x2="${width - padR}" y2="${yp.toFixed(1)}" class="grid-line"/>`);
+                parts.push(`<text x="${padL - 10}" y="${(yp + 4).toFixed(1)}" text-anchor="end" class="axis-label">${tv} d</text>`);
+            });
+
+            const segColors = ['#f59e0b', '#38bdf8', '#94a3b8', '#2563eb'];
+            const mSun = focus.monthly_sunny_days || [];
+            const mPart = focus.monthly_partly_days || [];
+            const mCld = focus.monthly_cloudy_days || [];
+            const mRain = focus.monthly_rainy_days || [];
+            const stats = focus.statuses || [];
+
+            for (let mIdx = 0; mIdx < 12; mIdx++) {
+                const mCode = String(mIdx + 1).padStart(2, '0');
+                const mShort = (t.months && t.months[mCode]) || mCode;
+                const cx = padL + mIdx * slotW + slotW / 2;
+                const bx = cx - barW / 2;
+                const st = stats[mIdx] || 'no_data';
+                const tipPayload = escapeHtml(JSON.stringify({ mIdx: mIdx, mCode: mCode }));
+
+                parts.push(`<g class="chart-col" tabindex="0" data-weather-tip="${tipPayload}" onmouseenter="showWeatherTooltip(event, this)" onfocus="showWeatherTooltip(event, this)" onmouseleave="hideTooltip()" onblur="hideTooltip()">`);
+                parts.push(`<rect x="${(cx - slotW / 2).toFixed(1)}" y="${padT}" width="${slotW.toFixed(1)}" height="${chartH}" class="hover-bg"/>`);
+
+                if (st !== 'no_data') {
+                    const vals = [
+                        Math.max(0, Number(mSun[mIdx] || 0)),
+                        Math.max(0, Number(mPart[mIdx] || 0)),
+                        Math.max(0, Number(mCld[mIdx] || 0)),
+                        Math.max(0, Number(mRain[mIdx] || 0))
+                    ];
+                    let accH = 0;
+                    vals.forEach((cnt, sIdx) => {
+                        if (cnt <= 0) return;
+                        const sh = (cnt / yMax) * chartH;
+                        const sy = padT + chartH - accH - sh;
+                        accH += sh;
+                        parts.push(`<rect x="${bx.toFixed(1)}" y="${sy.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(1.5, sh).toFixed(1)}" rx="2" fill="${segColors[sIdx]}" fill-opacity="${st === 'incomplete' ? '0.68' : '0.94'}"/>`);
+                    });
+                    if (st === 'incomplete' && accH > 0) {
+                        const ty = padT + chartH - accH;
+                        parts.push(`<rect x="${bx.toFixed(1)}" y="${ty.toFixed(1)}" width="${barW.toFixed(1)}" height="${accH.toFixed(1)}" rx="2" fill="none" stroke="var(--accent-solar)" stroke-width="1.6" stroke-dasharray="3 2"/>`);
+                        parts.push(`<text x="${cx.toFixed(1)}" y="${Math.max(padT + 10, ty - 5).toFixed(1)}" text-anchor="middle" style="font-size:9px;font-weight:800;fill:var(--accent-solar);">${escapeHtml(t.tip_inc_badge)}</text>`);
+                    }
+                }
+                parts.push(`<text x="${cx.toFixed(1)}" y="${height - padB + 22}" text-anchor="middle" class="x-label" data-month="${mCode}">${escapeHtml(mShort)}</text>`);
+                parts.push(`</g>`);
+            }
+            svg.innerHTML = parts.join('');
+        }
+
         function renderWeatherLineSvg(seriesList) {
+            if (weatherMetric === 'days') {
+                renderWeatherDaysSvg(seriesList);
+                return;
+            }
             const svg = document.getElementById('weather-chart-svg');
             if (!svg) return;
             const t = I18N[currentLang] || I18N.en;
@@ -2074,6 +2221,12 @@ _SCRIPT_BODY: str = """
 
             const xOf = mIdx => padL + mIdx * slotW + slotW / 2;
             const yOf = val => padT + chartH - ((Number(val) - yMin) / (yMax - yMin)) * chartH;
+
+            if (weatherMetric === 'temp' && yMin < 10 && 10 < yMax) {
+                const y10 = yOf(10);
+                parts.push(`<line x1="${padL}" y1="${y10.toFixed(1)}" x2="${width - padR}" y2="${y10.toFixed(1)}" stroke="#0284c7" stroke-width="1.2" stroke-dasharray="4 4" stroke-opacity="0.55"/>`);
+                parts.push(`<text x="${width - padR - 4}" y="${(y10 - 5).toFixed(1)}" text-anchor="end" class="axis-label" style="fill:var(--accent-demand);font-size:10px;">${escapeHtml(t.weather_cold_ref)}</text>`);
+            }
 
             if (weatherMetric === 'temp' && seriesList.length === 1) {
                 const s0 = seriesList[0];
@@ -2136,6 +2289,18 @@ _SCRIPT_BODY: str = """
             if (!box) return;
             if (seriesList.length === 0) { box.innerHTML = ''; return; }
             const t = I18N[currentLang] || I18N.en;
+            if (weatherMetric === 'days') {
+                const focus = seriesList[seriesList.length - 1];
+                box.innerHTML = [
+                    `<span class="legend-item"><strong>${escapeHtml(focus.label)}</strong></span>`,
+                    `<span class="legend-item"><span class="legend-bar-swatch" style="background:#f59e0b;"></span>${escapeHtml(t.weather_sunny_days)}</span>`,
+                    `<span class="legend-item"><span class="legend-bar-swatch" style="background:#38bdf8;"></span>${escapeHtml(t.weather_partly_days)}</span>`,
+                    `<span class="legend-item"><span class="legend-bar-swatch" style="background:#94a3b8;"></span>${escapeHtml(t.weather_cloudy_days)}</span>`,
+                    `<span class="legend-item"><span class="legend-bar-swatch" style="background:#2563eb;"></span>${escapeHtml(t.weather_rainy_days)}</span>`,
+                    `<span class="legend-item">◌ ${escapeHtml(t.legend_incomplete)}</span>`
+                ].join('');
+                return;
+            }
             const items = seriesList.map(s =>
                 `<span class="legend-item"><span class="legend-swatch" style="background:${s.color};"></span>${escapeHtml(s.label)}</span>`
             );
@@ -2145,6 +2310,51 @@ _SCRIPT_BODY: str = """
             items.push(`<span class="legend-item">● ${escapeHtml(t.legend_complete)}</span>`);
             items.push(`<span class="legend-item">◌ ${escapeHtml(t.legend_incomplete)}</span>`);
             box.innerHTML = items.join('');
+        }
+
+        function renderWeatherSkyBreakdown(seriesList) {
+            const box = document.getElementById('weather-sky-breakdown');
+            if (!box) return;
+            const focus = seriesList[seriesList.length - 1];
+            const meta = focus && focus.meta;
+            if (!focus || !meta || !meta.observed_days) {
+                box.style.display = 'none';
+                box.innerHTML = '';
+                return;
+            }
+            const t = I18N[currentLang] || I18N.en;
+            const totDays = Number(meta.observed_days) || 0;
+            if (totDays <= 0) {
+                box.style.display = 'none';
+                box.innerHTML = '';
+                return;
+            }
+            box.style.display = 'block';
+            const segments = [
+                { label: t.weather_sunny_days, cnt: Number(meta.sunny_days || 0), color: '#f59e0b' },
+                { label: t.weather_partly_days, cnt: Number(meta.partly_cloudy_days || 0), color: '#38bdf8' },
+                { label: t.weather_cloudy_days, cnt: Number(meta.cloudy_days || 0), color: '#94a3b8' },
+                { label: t.weather_rainy_days, cnt: Number(meta.rainy_days || 0), color: '#2563eb' }
+            ];
+            const barHtml = segments.map(seg => {
+                const wPct = (seg.cnt / totDays) * 100;
+                return seg.cnt > 0
+                    ? `<div class="sky-bar-seg" style="width:${wPct.toFixed(1)}%;background:${seg.color};" title="${escapeHtml(seg.label)}: ${seg.cnt} (${wPct.toFixed(0)}%)"></div>`
+                    : '';
+            }).join('');
+            const countsHtml = segments.map(seg => {
+                const wPct = ((seg.cnt / totDays) * 100).toFixed(0);
+                return `<span><span class="color-dot" style="background:${seg.color};"></span>${escapeHtml(seg.label)}: <strong>${seg.cnt}</strong> (${wPct}%)</span>`;
+            }).join('');
+
+            box.innerHTML = `
+                <div class="sky-breakdown-head">
+                    <span>☀️ ${escapeHtml(t.weather_sky_title)} ${escapeHtml(focus.label)}</span>
+                    <span class="muted">${totDays} ${escapeHtml(t.weather_days_unit)}</span>
+                </div>
+                <div class="sky-stacked-bar">${barHtml}</div>
+                <div class="sky-counts-row">${countsHtml}</div>
+            `;
         }
 
         function renderWeatherStats(seriesList) {
@@ -2169,20 +2379,163 @@ _SCRIPT_BODY: str = """
 
             const avgTempStr = meta.annual_avg_temp !== null && meta.annual_avg_temp !== undefined
                 ? `${Number(meta.annual_avg_temp).toFixed(1)} °C` : '—';
+            let tempSub = '';
+            if (seriesList.length >= 2) {
+                const t0 = seriesList[0].meta && seriesList[0].meta.annual_avg_temp;
+                const t1 = meta.annual_avg_temp;
+                if (t0 !== null && t0 !== undefined && t1 !== null && t1 !== undefined) {
+                    const dt = Number(t1) - Number(t0);
+                    tempSub = `${dt >= 0 ? '+' : ''}${dt.toFixed(1)} °C (${seriesList[0].label}→${focus.label})`;
+                }
+            }
+
             const rangeStr = (coldIdx >= 0 && warmIdx >= 0)
                 ? `${mName(coldIdx)} ${coldVal.toFixed(1)}°C / ${mName(warmIdx)} ${warmVal.toFixed(1)}°C`
                 : '—';
+            const extSub = (meta.abs_min_temp !== null && meta.abs_min_temp !== undefined && meta.abs_max_temp !== null && meta.abs_max_temp !== undefined)
+                ? `${t.weather_min_ext} ${Number(meta.abs_min_temp).toFixed(1)}°C · ${t.weather_max_ext} ${Number(meta.abs_max_temp).toFixed(1)}°C`
+                : '';
+
             const clearStr = meta.annual_avg_clear_pct !== null && meta.annual_avg_clear_pct !== undefined
                 ? `${Number(meta.annual_avg_clear_pct).toFixed(1)}%` : '—';
-            const daysVal = meta.has_weather_codes
-                ? `${meta.sunny_days || 0} ${t.weather_sunny_days} · ${meta.rainy_days || 0} ${t.weather_rainy_days}`
-                : `${meta.sunny_days || 0} ${t.weather_sunny_days} · ${meta.cloudy_days || 0} ${t.weather_cloudy_days}`;
+            let clearSub = '';
+            if (seriesList.length >= 2) {
+                const c0 = seriesList[0].meta && seriesList[0].meta.annual_avg_clear_pct;
+                const c1 = meta.annual_avg_clear_pct;
+                if (c0 !== null && c0 !== undefined && c1 !== null && c1 !== undefined) {
+                    const dc = Number(c1) - Number(c0);
+                    clearSub = `${dc >= 0 ? '+' : ''}${dc.toFixed(1)} pp (${seriesList[0].label}→${focus.label})`;
+                }
+            }
+
+            const cDays = Number(meta.cold_days || 0);
+            const hDays = Number(meta.hot_days || 0);
+            const fDays = Number(meta.frost_days || 0);
+            const extDaysVal = `${cDays} ${t.weather_cold_days_lbl} · ${hDays} ${t.weather_hot_days_lbl}`;
+            const frostSub = fDays > 0 ? `${fDays} ${t.weather_frost_days_lbl}` : t.weather_no_extremes;
 
             box.innerHTML = `
-                <div class="stat-chip"><div class="stat-chip-label">${escapeHtml(t.weather_stat_temp)} (${escapeHtml(focus.label)})</div><div class="stat-chip-val">${escapeHtml(avgTempStr)}</div></div>
-                <div class="stat-chip"><div class="stat-chip-label">${escapeHtml(t.weather_stat_range)}</div><div class="stat-chip-val">${escapeHtml(rangeStr)}</div></div>
-                <div class="stat-chip"><div class="stat-chip-label">${escapeHtml(t.weather_stat_clear)} (${escapeHtml(focus.label)})</div><div class="stat-chip-val">${escapeHtml(clearStr)}</div></div>
-                <div class="stat-chip"><div class="stat-chip-label">${escapeHtml(t.weather_stat_days)} (${escapeHtml(focus.label)})</div><div class="stat-chip-val">${escapeHtml(daysVal)}</div></div>
+                <div class="stat-chip"><div class="stat-chip-label">${escapeHtml(t.weather_stat_temp)} (${escapeHtml(focus.label)})</div><div class="stat-chip-val">${escapeHtml(avgTempStr)}</div>${tempSub ? `<div class="stat-chip-sub">${escapeHtml(tempSub)}</div>` : ''}</div>
+                <div class="stat-chip"><div class="stat-chip-label">${escapeHtml(t.weather_stat_range)}</div><div class="stat-chip-val">${escapeHtml(rangeStr)}</div>${extSub ? `<div class="stat-chip-sub">${escapeHtml(extSub)}</div>` : ''}</div>
+                <div class="stat-chip"><div class="stat-chip-label">${escapeHtml(t.weather_stat_clear)} (${escapeHtml(focus.label)})</div><div class="stat-chip-val">${escapeHtml(clearStr)}</div>${clearSub ? `<div class="stat-chip-sub">${escapeHtml(clearSub)}</div>` : ''}</div>
+                <div class="stat-chip"><div class="stat-chip-label">${escapeHtml(t.weather_stat_extremes)} (${escapeHtml(focus.label)})</div><div class="stat-chip-val">${escapeHtml(extDaysVal)}</div><div class="stat-chip-sub">${escapeHtml(frostSub)}</div></div>
+            `;
+        }
+
+        function updateWeatherDynamicInsight(seriesList) {
+            const box = document.getElementById('weather-dynamic-insight');
+            if (!box) return;
+            const w = STORY_DATA.weather;
+            const focus = seriesList[seriesList.length - 1];
+            if (!w || !w.has_data || !focus) {
+                box.style.display = 'none';
+                box.innerHTML = '';
+                return;
+            }
+            box.style.display = 'flex';
+            const t = I18N[currentLang] || I18N.en;
+            const meta = focus.meta || {};
+            const tempStr = meta.annual_avg_temp !== null && meta.annual_avg_temp !== undefined
+                ? `${Number(meta.annual_avg_temp).toFixed(1)} °C` : '—';
+            const clearStr = meta.annual_avg_clear_pct !== null && meta.annual_avg_clear_pct !== undefined
+                ? `${Number(meta.annual_avg_clear_pct).toFixed(1)}%` : '—';
+
+            if (seriesList.length >= 2) {
+                const m0 = seriesList[0].meta || {};
+                const t0 = m0.annual_avg_temp;
+                const t1 = meta.annual_avg_temp;
+                const c0 = m0.annual_avg_clear_pct;
+                const c1 = meta.annual_avg_clear_pct;
+                if (t0 !== null && t0 !== undefined && t1 !== null && t1 !== undefined && c0 !== null && c0 !== undefined && c1 !== null && c1 !== undefined) {
+                    const dt = Number(t1) - Number(t0);
+                    const dc = Number(c1) - Number(c0);
+                    const html = t.weather_insight_yoy_tpl
+                        .replace('{y0}', escapeHtml(seriesList[0].label))
+                        .replace('{y1}', escapeHtml(focus.label))
+                        .replace('{y1}', escapeHtml(focus.label))
+                        .replace('{dt}', `${dt >= 0 ? '+' : ''}${dt.toFixed(1)}`)
+                        .replace('{dc}', `${dc >= 0 ? '+' : ''}${dc.toFixed(1)}`)
+                        .replace('{temp}', escapeHtml(tempStr))
+                        .replace('{clear}', escapeHtml(clearStr));
+                    box.innerHTML = `<p>${html}</p>`;
+                    return;
+                }
+            }
+            const html = t.weather_insight_single_tpl
+                .replace('{year}', escapeHtml(focus.label))
+                .replace('{temp}', escapeHtml(tempStr))
+                .replace('{clear}', escapeHtml(clearStr))
+                .replace('{sunny}', String(meta.sunny_days || 0))
+                .replace('{rainy}', String(meta.rainy_days || 0));
+            box.innerHTML = `<p>${html}</p>`;
+        }
+
+        function renderWeatherInsights(seriesList) {
+            const box = document.getElementById('weather-energy-insights');
+            if (!box) return;
+            const w = STORY_DATA.weather;
+            const focus = seriesList[seriesList.length - 1];
+            if (!w || !w.has_data || !focus) {
+                box.style.display = 'none';
+                box.innerHTML = '';
+                return;
+            }
+            box.style.display = 'grid';
+            const t = I18N[currentLang] || I18N.en;
+            const meta = focus.meta || {};
+            const ins = w.insights || {};
+            const mFull = code => (code && t.months_full && t.months_full[code]) || code || '—';
+
+            let card1Body = '';
+            const frostPart = (meta.frost_days || 0) > 0 ? ` (${meta.frost_days} ${t.weather_frost_days_lbl})` : '';
+            if (ins.cold_vs_mild_ratio !== null && ins.cold_vs_mild_ratio !== undefined && ins.cold_month_avg_kwh !== null && ins.mild_month_avg_kwh !== null) {
+                card1Body = t.weather_card1_ratio_tpl
+                    .replace('{cold_kwh}', escapeHtml(fmtKwh(ins.cold_month_avg_kwh)))
+                    .replace('{mild_kwh}', escapeHtml(fmtKwh(ins.mild_month_avg_kwh)))
+                    .replace('{ratio}', escapeHtml(fmtNum(ins.cold_vs_mild_ratio, 1)))
+                    .replace('{year}', escapeHtml(focus.label))
+                    .replace('{cold_days}', String(meta.cold_days || 0))
+                    .replace('{frost_part}', escapeHtml(frostPart));
+            } else {
+                const minT = meta.abs_min_temp !== null && meta.abs_min_temp !== undefined ? `${Number(meta.abs_min_temp).toFixed(1)} °C` : '—';
+                const maxT = meta.abs_max_temp !== null && meta.abs_max_temp !== undefined ? `${Number(meta.abs_max_temp).toFixed(1)} °C` : '—';
+                card1Body = t.weather_card1_fallback_tpl
+                    .replace('{year}', escapeHtml(focus.label))
+                    .replace('{cold_days}', String(meta.cold_days || 0))
+                    .replace('{hot_days}', String(meta.hot_days || 0))
+                    .replace('{min_t}', escapeHtml(minT))
+                    .replace('{max_t}', escapeHtml(maxT));
+            }
+
+            const card2Parts = [];
+            if (ins.sunniest_month_code && ins.cloudiest_month_code && ins.sunniest_month_clear_pct !== null && ins.cloudiest_month_clear_pct !== null) {
+                card2Parts.push(
+                    `<p>${t.weather_card2_body_tpl
+                        .replace('{sun_m}', escapeHtml(mFull(ins.sunniest_month_code)))
+                        .replace('{sun_c}', `${Number(ins.sunniest_month_clear_pct).toFixed(0)}%`)
+                        .replace('{cld_m}', escapeHtml(mFull(ins.cloudiest_month_code)))
+                        .replace('{cld_c}', `${Number(ins.cloudiest_month_clear_pct).toFixed(0)}%`)}</p>`
+                );
+            }
+            if (ins.peak_solar_month_code && ins.peak_solar_month_clear_pct !== null && ins.peak_solar_month_temp !== null) {
+                card2Parts.push(
+                    `<p>${t.weather_card2_peak_tpl
+                        .replace('{peak_m}', escapeHtml(mFull(ins.peak_solar_month_code)))
+                        .replace('{peak_c}', `${Number(ins.peak_solar_month_clear_pct).toFixed(0)}%`)
+                        .replace('{peak_t}', `${Number(ins.peak_solar_month_temp).toFixed(1)} °C`)}</p>`
+                );
+            }
+            card2Parts.push(`<p>${escapeHtml(t.weather_card2_heat_note)}</p>`);
+
+            box.innerHTML = `
+                <article class="insight-card">
+                    <h3>${escapeHtml(t.weather_card1_title)}</h3>
+                    <p>${card1Body}</p>
+                </article>
+                <article class="insight-card insight-solar">
+                    <h3>${escapeHtml(t.weather_card2_title)}</h3>
+                    ${card2Parts.join('')}
+                </article>
             `;
         }
 
@@ -2191,12 +2544,15 @@ _SCRIPT_BODY: str = """
             const series = getActiveWeatherSeries();
             renderWeatherLineSvg(series);
             renderWeatherLegend(series);
+            renderWeatherSkyBreakdown(series);
             renderWeatherStats(series);
+            updateWeatherDynamicInsight(series);
+            renderWeatherInsights(series);
         }
 
         function setWeatherMetric(metric) {
-            weatherMetric = metric === 'clear' ? 'clear' : 'temp';
-            ['temp', 'clear'].forEach(m => {
+            weatherMetric = (metric === 'clear' || metric === 'days') ? metric : 'temp';
+            ['temp', 'clear', 'days'].forEach(m => {
                 const btn = document.getElementById('btn-weather-' + m);
                 if (btn) {
                     btn.classList.toggle('active', m === weatherMetric);
@@ -2223,6 +2579,36 @@ _SCRIPT_BODY: str = """
             const mIdx = info.mIdx;
             const mFull = (t.months_full && t.months_full[info.mCode]) || info.mCode;
             const seriesList = getActiveWeatherSeries();
+
+            if (weatherMetric === 'days') {
+                const focus = seriesList[seriesList.length - 1];
+                const tip = document.getElementById('tooltip');
+                if (!focus) return;
+                const st = focus.statuses ? focus.statuses[mIdx] : 'no_data';
+                if (st === 'no_data') {
+                    tip.innerHTML = `<div style="font-weight:700;">🌤️ ${escapeHtml(mFull)} (${escapeHtml(focus.label)})</div><div class="muted">${escapeHtml(t.tip_no_data)}</div>`;
+                    placeTooltip(evt, tip);
+                    return;
+                }
+                const sCnt = Number((focus.monthly_sunny_days && focus.monthly_sunny_days[mIdx]) || 0);
+                const pCnt = Number((focus.monthly_partly_days && focus.monthly_partly_days[mIdx]) || 0);
+                const cCnt = Number((focus.monthly_cloudy_days && focus.monthly_cloudy_days[mIdx]) || 0);
+                const rCnt = Number((focus.monthly_rainy_days && focus.monthly_rainy_days[mIdx]) || 0);
+                const dPair = focus.days && focus.days[mIdx] ? focus.days[mIdx] : null;
+                const incTag = st === 'incomplete'
+                    ? ` <span style="color:#fbbf24;font-weight:700;">${escapeHtml(t.tip_inc_badge)}${dPair ? ` (${dPair[0]}/${dPair[1]} ${escapeHtml(t.tip_days)})` : ''}</span>`
+                    : '';
+                tip.innerHTML = `
+                    <div style="font-weight:700;border-bottom:1px solid rgba(255,255,255,0.16);padding-bottom:4px;margin-bottom:5px;">📅 ${escapeHtml(mFull)} · ${escapeHtml(focus.label)}${incTag}</div>
+                    <div>☀️ ${escapeHtml(t.weather_sunny_days)}: <strong>${sCnt}</strong></div>
+                    <div>⛅ ${escapeHtml(t.weather_partly_days)}: <strong>${pCnt}</strong></div>
+                    <div>☁️ ${escapeHtml(t.weather_cloudy_days)}: <strong>${cCnt}</strong></div>
+                    <div>🌧️ ${escapeHtml(t.weather_rainy_days)}: <strong>${rCnt}</strong></div>
+                `;
+                placeTooltip(evt, tip);
+                return;
+            }
+
             const rowsHtml = seriesList.map(s => {
                 const val = s.values ? s.values[mIdx] : null;
                 const st = s.statuses ? s.statuses[mIdx] : 'no_data';
@@ -2265,75 +2651,6 @@ _SCRIPT_BODY: str = """
             const tip = document.getElementById('tooltip');
             tip.innerHTML = `<div style="font-weight:700;border-bottom:1px solid rgba(255,255,255,0.16);padding-bottom:4px;margin-bottom:5px;">🌤️ ${escapeHtml(mFull)}</div>${rowsHtml}${yoyHtml}`;
             placeTooltip(evt, tip);
-        }
-
-        function renderSimulator() {
-            const sim = STORY_DATA.simulator;
-            if (!sim) return;
-            const t = I18N[currentLang] || I18N.en;
-            const monthsEl = document.getElementById('sim-months');
-            const barEl = document.getElementById('sim-bar');
-            const cardsEl = document.getElementById('sim-cards');
-            const activeSet = new Set(sim.active_months || []);
-            if (!activeSet.has(simSelectedMonth) && sim.active_months && sim.active_months.length) {
-                simSelectedMonth = sim.active_months[0];
-            }
-            if (monthsEl) {
-                const btns = [];
-                for (let m = 1; m <= 12; m++) {
-                    const code = String(m).padStart(2, '0');
-                    const enabled = activeSet.has(code);
-                    const lbl = (t.months && t.months[code]) || code;
-                    btns.push(`<button type="button" class="pill-btn ${code === simSelectedMonth ? 'active' : ''}" ${enabled ? '' : 'disabled'} data-month-code="${code}" onclick="selectSimMonth(this.getAttribute('data-month-code'))">${escapeHtml(lbl)}</button>`);
-                }
-                monthsEl.innerHTML = btns.join('');
-            }
-            const entries = (sim.monthly_shares && sim.monthly_shares[simSelectedMonth]) || [];
-            if (barEl) {
-                barEl.innerHTML = entries.map(e =>
-                    `<div class="sim-seg" style="width:${Math.max(0, e.pct)}%;background:${e.color};" title="${escapeHtml(e.use || e.cups)}: ${e.pct}%">${e.pct >= 8 ? e.pct + '%' : ''}</div>`
-                ).join('');
-            }
-            if (cardsEl) {
-                cardsEl.innerHTML = entries.map(e =>
-                    `<div class="sim-item"><span class="color-dot" style="background:${e.color};"></span><strong>${escapeHtml(e.use || e.cups)}</strong><div><strong>${e.pct.toFixed(sim.precision || 0)} kWh</strong> <span class="muted">${escapeHtml(t.sim_of_100)} (${e.pct}%)</span></div><div class="cups-id">${escapeHtml(e.cups)}</div></div>`
-                ).join('');
-            }
-        }
-
-        function selectSimMonth(code) {
-            simSelectedMonth = code;
-            renderSimulator();
-        }
-
-        function switchMatrixTab(tab) {
-            const pM = document.getElementById('panel-monthly');
-            const pF = document.getElementById('panel-fortnight');
-            const bM = document.getElementById('tab-monthly');
-            const bF = document.getElementById('tab-fortnight');
-            if (pM) pM.hidden = tab !== 'monthly';
-            if (pF) pF.hidden = tab !== 'fortnight';
-            if (bM) { bM.classList.toggle('active', tab === 'monthly'); bM.setAttribute('aria-selected', tab === 'monthly' ? 'true' : 'false'); }
-            if (bF) { bF.classList.toggle('active', tab === 'fortnight'); bF.setAttribute('aria-selected', tab === 'fortnight' ? 'true' : 'false'); }
-        }
-
-        function setFortnightHalf(mode) {
-            const tbl = document.getElementById('fortnightTable');
-            if (!tbl) return;
-            tbl.className = 'show-' + mode;
-            ['h1', 'h2', 'all'].forEach(k => {
-                const btn = document.getElementById('btn-fn-' + k);
-                if (btn) btn.classList.toggle('active', k === mode);
-            });
-        }
-
-        function filterTable() {
-            const inp = document.getElementById('searchInput');
-            const term = (inp ? inp.value : '').toLowerCase().trim();
-            document.querySelectorAll('.matrix-row').forEach(row => {
-                const search = (row.getAttribute('data-search') || '').toLowerCase();
-                row.style.display = search.includes(term) ? '' : 'none';
-            });
         }
 
         function placeTooltip(evt, tip) {
@@ -2419,7 +2736,7 @@ _SCRIPT_BODY: str = """
             if (consIns && STORY_DATA.cups && STORY_DATA.cups.length) {
                 const top = STORY_DATA.cups[0];
                 const cons = STORY_DATA.consumption;
-                const refYr = String(cons.years[cons.years.length - 1] || '');
+                const refYr = String(cons.reference_year || cons.years[cons.years.length - 1] || '');
                 const yrObj = cons.community[refYr];
                 let peakStr = '—';
                 if (yrObj && yrObj.values) {
@@ -2434,12 +2751,32 @@ _SCRIPT_BODY: str = """
                 consIns.innerHTML = `💡 ${escapeHtml(t.cons_insight_prefix)} <strong>${escapeHtml(top.use || top.cups)}</strong> (${top.consumption_share_pct.toFixed(1)}%) · ${escapeHtml(t.cons_insight_peak)} <strong>${escapeHtml(peakStr)}</strong>`;
             }
 
+            const fzStep1 = document.getElementById('fake-zero-step1-desc');
+            if (fzStep1 && t.fake_zero_step1_tpl) {
+                fzStep1.innerHTML = t.fake_zero_step1_tpl.replace('{primary}', escapeHtml(PRIMARY_DISPLAY));
+            }
+
             const spotNote = document.getElementById('spotlight-dynamic-note');
             if (spotNote && SPOTLIGHT_META && SPOTLIGHT_META.has_both) {
                 spotNote.innerHTML = t.spotlight_mover_tpl
                     .replace('{use}', escapeHtml(SPOTLIGHT_META.use))
                     .replace('{w}', SPOTLIGHT_META.winter_pct)
                     .replace('{s}', SPOTLIGHT_META.summer_pct);
+            }
+
+            const prevImp = document.getElementById('prev-uplift-impact');
+            if (prevImp) {
+                const gainKwh = Number(PREVISION_CTX && PREVISION_CTX.gain_total_kwh || 0);
+                if (gainKwh > 0 && t.prev_uplift_impact_tpl) {
+                    const co2Str = fmtCo2(gainKwh * 0.20);
+                    const homeMonthsStr = fmtNum((gainKwh / 3300.0) * 12.0, 1);
+                    prevImp.style.display = 'block';
+                    prevImp.innerHTML = t.prev_uplift_impact_tpl
+                        .replace('{co2}', escapeHtml(co2Str))
+                        .replace('{home_months}', escapeHtml(homeMonthsStr));
+                } else {
+                    prevImp.style.display = 'none';
+                }
             }
         }
 
@@ -2462,10 +2799,6 @@ _SCRIPT_BODY: str = """
                     else el.innerHTML = I18N[lang][key];
                 }
             });
-            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-                const key = el.getAttribute('data-i18n-placeholder');
-                if (I18N[lang][key] !== undefined) el.placeholder = I18N[lang][key];
-            });
             document.querySelectorAll('[data-i18n-title]').forEach(el => {
                 const key = el.getAttribute('data-i18n-title');
                 if (I18N[lang][key] !== undefined) el.title = I18N[lang][key];
@@ -2482,43 +2815,17 @@ _SCRIPT_BODY: str = """
                 const m = el.getAttribute('data-month-full');
                 if (I18N[lang].months_full && I18N[lang].months_full[m]) el.textContent = I18N[lang].months_full[m];
             });
-            document.querySelectorAll('[data-fortnight]').forEach(el => {
-                const p = el.getAttribute('data-fortnight');
-                const parts = (p || '').split('-');
-                if (parts.length === 2 && I18N[lang].months && I18N[lang].months[parts[0]]) {
-                    const tag = parts[1] === '1' ? '1-15' : '16+';
-                    el.innerHTML = `${escapeHtml(I18N[lang].months[parts[0]])}<br><small>${tag}</small>`;
-                }
-            });
 
-            const cupsBadge = document.getElementById('badge-cups');
-            if (cupsBadge) cupsBadge.textContent = `👥 ${cupsCount} ${I18N[lang].cups_label}`;
             const hourlyModeBadge = document.getElementById('badge-hourly-mode');
             if (hourlyModeBadge) {
                 const isSim = hourlyModeBadge.getAttribute('data-simulated') === 'true';
                 hourlyModeBadge.textContent = isSim ? I18N[lang].mode_simulated : I18N[lang].mode_modeled;
-            }
-            const stratBadge = document.getElementById('badge-strat');
-            if (stratBadge) {
-                const stratKey = stratBadge.getAttribute('data-strat');
-                const translatedStrat = I18N[lang][`strat_${stratKey}`];
-                if (translatedStrat) stratBadge.textContent = translatedStrat;
-            }
-            const bylawBadge = document.getElementById('badge-bylaw');
-            if (bylawBadge && bylawBadge.getAttribute('data-bylaw-active') === 'true') {
-                const minVal = bylawBadge.getAttribute('data-min');
-                const maxVal = bylawBadge.getAttribute('data-max');
-                const parts = [];
-                if (minVal) parts.push(`Min: ${minVal}%`);
-                if (maxVal) parts.push(`Max: ${maxVal}%`);
-                bylawBadge.textContent = `⚖️ ${I18N[lang].bylaw_label}: ${parts.join(' | ')}`;
             }
 
             updateDynamicNarrative();
             renderConsumptionSection();
             renderWeatherSection();
             renderGenerationSection();
-            renderSimulator();
         }
 
         function setTheme(theme) {
@@ -2613,7 +2920,6 @@ _SCRIPT_BODY: str = """
             renderConsumptionSection();
             renderWeatherSection();
             renderGenerationSection();
-            renderSimulator();
             initScrollChrome();
         })();
 """
@@ -2641,27 +2947,9 @@ def generate_story_html_report(
         ingestion_summary=ingestion_summary,
         aligned_dataset=aligned_dataset,
     )
-    tot = opt_result.total_summary
     h_prev = calculate_hourly_prevision(opt_result)
 
-    has_bylaws = opt_result.constraints is not None and opt_result.constraints.is_active
-    bylaw_badge = ""
-    if has_bylaws and opt_result.constraints is not None:
-        c = opt_result.constraints
-        parts: list[str] = []
-        min_str = f"{c.min_share * 100:.1f}" if c.min_share is not None else ""
-        max_str = f"{c.max_share * 100:.1f}" if c.max_share is not None else ""
-        if min_str:
-            parts.append(f"Min: {min_str}%")
-        if max_str:
-            parts.append(f"Max: {max_str}%")
-        bylaw_badge = (
-            f'<span class="badge badge-bylaw" id="badge-bylaw" data-bylaw-active="true" '
-            f'data-min="{min_str}" data-max="{max_str}">⚖️ {ui["bylaw_label"]}: {" | ".join(parts)}</span>'
-        )
-
     hourly_mode_badge = ui["mode_simulated"] if h_prev["is_simulated"] else ui["mode_modeled"]
-    strat_badge = ui.get(f"strat_{opt_result.strategy.lower()}", opt_result.strategy.upper())
 
     monthly_rate = float(h_prev["monthly_sc_rate"])
     fortnight_rate = float(h_prev["fortnight_sc_rate"])
@@ -2672,32 +2960,44 @@ def generate_story_html_report(
     bar4_fort_w = max(0.0, min(fortnight_rate, hourly_rate) - bar4_base_w)
     bar4_hour_w = max(0.0, hourly_rate - bar4_base_w - bar4_fort_w)
 
-    cups_count = len(ctx.active_cups) or ingestion_summary.cups_count
     primary_item = next((c for c in ctx.active_cups if c.primary), None)
-    primary_display = escape(
+    primary_display_raw = (
         (primary_item.use or primary_item.cups)
         if primary_item
         else str(h_prev.get("primary_name") or "")
     )
-    solar_hours_gen = (
-        tot.solar_hours_generation_kwh
-        if tot.solar_hours_generation_kwh > 0
-        else tot.total_generation_kwh
-    )
+    primary_display = escape(primary_display_raw)
     gain_total_kwh = float(h_prev["gain_total_kwh"])
     gain_total_pct = float(h_prev["gain_total_pct"])
 
     active_cups_table = _render_active_cups_table(ctx, ui)
     seasonal_spotlight_html = _render_seasonal_spotlight(ctx, ui)
     svg_monthly_chart = _render_monthly_balance_svg(opt_result, is_es)
-    matrices_html = _render_matrices_section(opt_result, ctx, ui, prec, active_lang)
 
+    fake_zero_step1_html = ui["fake_zero_step1_tpl"].format(primary=primary_display)
     recovered_banner = ""
     if ctx.consumption_history.recovered_kwh > 0:
         recovered_banner = (
-            f"<p style='margin-top:0.55rem;'><strong><span data-i18n='fake_zero_recovered'>{ui['fake_zero_recovered']}</span> "
-            f"{format_kwh(ctx.consumption_history.recovered_kwh)}</strong> "
-            f"({ctx.consumption_history.reconciled_hours_count:,} h)</p>"
+            f"<div class='recovered-pill-banner'><span data-i18n='fake_zero_recovered'>{ui['fake_zero_recovered']}</span> "
+            f"<span>{format_kwh(ctx.consumption_history.recovered_kwh)} ({ctx.consumption_history.reconciled_hours_count:,} h)</span></div>"
+        )
+
+    if gain_total_kwh > 0:
+        extra_co2_kg = gain_total_kwh * 0.20
+        co2_str = (
+            f"{extra_co2_kg / 1000.0:.2f} t CO₂"
+            if extra_co2_kg >= 1000.0
+            else f"{extra_co2_kg:,.0f} kg CO₂"
+        )
+        home_months_str = f"{(gain_total_kwh / 3300.0) * 12.0:.1f}"
+        prev_uplift_impact_html = (
+            "<div class='prev-impact-note' id='prev-uplift-impact'>"
+            f"{ui['prev_uplift_impact_tpl'].format(co2=co2_str, home_months=home_months_str)}"
+            "</div>"
+        )
+    else:
+        prev_uplift_impact_html = (
+            "<div class='prev-impact-note' id='prev-uplift-impact' style='display:none;'></div>"
         )
 
     story_payload = story_context_to_json_payload(ctx, opt_result, prec)
@@ -2712,15 +3012,12 @@ def generate_story_html_report(
 
     script_block = (
         _SCRIPT_BODY.replace("__INIT_LANG__", json.dumps(active_lang))
-        .replace("__CUPS_COUNT__", str(cups_count))
+        .replace("__PRIMARY_JSON__", _safe_json_for_script(primary_display_raw))
         .replace("__I18N_JSON__", _safe_json_for_script(i18n_catalog))
         .replace("__STORY_JSON__", _safe_json_for_script(story_payload))
         .replace("__PREV_JSON__", _safe_json_for_script(h_prev))
         .replace("__SPOT_JSON__", _safe_json_for_script(spotlight_meta))
     )
-
-    start_date = escape(ingestion_summary.start_time[:10])
-    end_date = escape(ingestion_summary.end_time[:10])
 
     return f"""<!DOCTYPE html>
 <html lang="{active_lang}" data-theme="light" data-font-scale="md">
@@ -2742,8 +3039,7 @@ def generate_story_html_report(
                 <a class="nav-pill" href="#ch-weather" data-i18n="nav_ch3">{ui["nav_ch3"]}</a>
                 <a class="nav-pill" href="#ch-generation" data-i18n="nav_ch4">{ui["nav_ch4"]}</a>
                 <a class="nav-pill" href="#ch-sharing" data-i18n="nav_ch5">{ui["nav_ch5"]}</a>
-                <a class="nav-pill" href="#ch-tables" data-i18n="nav_ch6">{ui["nav_ch6"]}</a>
-                <a class="nav-pill" href="#ch-glossary" data-i18n="nav_ch7">{ui["nav_ch7"]}</a>
+                <a class="nav-pill" href="#ch-glossary" data-i18n="nav_ch6">{ui["nav_ch6"]}</a>
             </div>
             <div class="controls-group">
                 <div class="seg-group" role="group" aria-label="Language">
@@ -2771,35 +3067,6 @@ def generate_story_html_report(
             <span class="hero-eyebrow" data-i18n="hero_eyebrow">{ui["hero_eyebrow"]}</span>
             <h1 data-i18n="title">{ui["title"]}</h1>
             <p class="hero-sub" data-i18n="subtitle">{ui["subtitle"]}</p>
-            <div class="badges-wrap">
-                <span class="badge badge-rd" id="badge-rd" data-i18n="badge_rd">{ui["badge_rd"]}</span>
-                <span class="badge badge-strat" id="badge-strat" data-strat="{escape(opt_result.strategy.lower())}">{escape(strat_badge)}</span>
-                <span class="badge" id="badge-cups">👥 {cups_count} {ui["cups_label"]}</span>
-                <span class="badge" id="badge-period">📅 {start_date} ➔ {end_date}</span>
-                {bylaw_badge}
-            </div>
-            <div class="hero-kpi-grid">
-                <div class="kpi-card">
-                    <div class="kpi-title" data-i18n="hero_kpi1_title">{ui["hero_kpi1_title"]}</div>
-                    <div class="kpi-value text-cyan">{cups_count}</div>
-                    <div class="kpi-meta"><span data-i18n="hero_kpi1_sub">{ui["hero_kpi1_sub"]}</span>: <strong>{primary_display}</strong></div>
-                </div>
-                <div class="kpi-card kpi-solar">
-                    <div class="kpi-title" data-i18n="hero_kpi2_title">{ui["hero_kpi2_title"]}</div>
-                    <div class="kpi-value text-amber">{format_kwh(tot.total_generation_kwh)}</div>
-                    <div class="kpi-meta"><span data-i18n="hero_kpi2_sub">{ui["hero_kpi2_sub"]}</span>: <strong>{format_kwh(solar_hours_gen)}</strong></div>
-                </div>
-                <div class="kpi-card kpi-sc">
-                    <div class="kpi-title" data-i18n="hero_kpi3_title">{ui["hero_kpi3_title"]}</div>
-                    <div class="kpi-value text-emerald">{format_kwh(tot.total_self_consumed_kwh)}</div>
-                    <div class="kpi-meta"><span data-i18n="hero_kpi3_sub_eff">{ui["hero_kpi3_sub_eff"]}</span>: <strong>{tot.self_consumption_rate:.1f}%</strong> · <span data-i18n="hero_kpi3_sub_cov">{ui["hero_kpi3_sub_cov"]}</span>: <strong>{tot.solar_coverage_rate:.1f}%</strong></div>
-                </div>
-                <div class="kpi-card kpi-uplift">
-                    <div class="kpi-title" data-i18n="hero_kpi4_title">{ui["hero_kpi4_title"]}</div>
-                    <div class="kpi-value text-purple">+{gain_total_kwh:,.1f} kWh</div>
-                    <div class="kpi-meta"><strong>+{gain_total_pct:.1f}%</strong> <span data-i18n="hero_kpi4_sub">{ui["hero_kpi4_sub"]}</span></div>
-                </div>
-            </div>
         </header>
 
         <!-- Chapter 1: Active Supplies -->
@@ -2843,25 +3110,66 @@ def generate_story_html_report(
             </div>
 
             <div class="fake-zero-box">
-                <div class="fake-zero-grid">
-                    <div>
-                        <h3 style="font-size:1.02rem;margin-bottom:0.4rem;" data-i18n="fake_zero_title">{ui["fake_zero_title"]}</h3>
-                        <p style="font-size:0.9rem;color:var(--text-muted);" data-i18n="fake_zero_desc">{ui["fake_zero_desc"]}</p>
-                        {recovered_banner}
+                <div class="fake-zero-head">
+                    <h3 style="font-size:1.05rem;margin-bottom:0.4rem;" data-i18n="fake_zero_title">{ui["fake_zero_title"]}</h3>
+                    <p data-i18n="fake_zero_desc">{ui["fake_zero_desc"]}</p>
+                    {recovered_banner}
+                </div>
+                <div class="fake-zero-steps">
+                    <div class="fz-step-card step-solar">
+                        <h4 data-i18n="fake_zero_step1_title">{ui["fake_zero_step1_title"]}</h4>
+                        <p id="fake-zero-step1-desc">{fake_zero_step1_html}</p>
                     </div>
-                    <svg viewBox="0 0 460 110" class="chart-svg" role="img" aria-label="Behind the meter diagram" xmlns="http://www.w3.org/2000/svg">
-                        <rect x="6" y="22" width="122" height="62" rx="10" fill="rgba(217,119,6,0.14)" stroke="#d97706" stroke-width="1.6"/>
-                        <text x="67" y="47" text-anchor="middle" font-size="18">☀️</text>
-                        <text x="67" y="69" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor" data-i18n="fake_zero_svg_panels">{ui["fake_zero_svg_panels"]}</text>
-                        <path d="M 132 53 L 164 53" stroke="#d97706" stroke-width="2.5" stroke-linecap="round"/>
-                        <polygon points="164,48 174,53 164,58" fill="#d97706"/>
-                        <rect x="176" y="22" width="126" height="62" rx="10" fill="rgba(5,150,105,0.14)" stroke="#059669" stroke-width="1.6"/>
-                        <text x="239" y="47" text-anchor="middle" font-size="18">🏢</text>
-                        <text x="239" y="69" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor" data-i18n="fake_zero_svg_primary">{ui["fake_zero_svg_primary"]}</text>
-                        <path d="M 306 53 L 336 53" stroke="#0284c7" stroke-width="2.2" stroke-dasharray="4 3"/>
-                        <rect x="340" y="22" width="114" height="62" rx="10" fill="rgba(2,132,199,0.12)" stroke="#0284c7" stroke-width="1.6"/>
-                        <text x="397" y="47" text-anchor="middle" font-size="18">📟</text>
-                        <text x="397" y="69" text-anchor="middle" font-size="10.5" font-weight="700" fill="currentColor" data-i18n="fake_zero_svg_meter">{ui["fake_zero_svg_meter"]}</text>
+                    <div class="fz-step-card">
+                        <h4 data-i18n="fake_zero_step2_title">{ui["fake_zero_step2_title"]}</h4>
+                        <p data-i18n="fake_zero_step2_desc">{ui["fake_zero_step2_desc"]}</p>
+                    </div>
+                    <div class="fz-step-card step-sc">
+                        <h4 data-i18n="fake_zero_step3_title">{ui["fake_zero_step3_title"]}</h4>
+                        <p data-i18n="fake_zero_step3_desc">{ui["fake_zero_step3_desc"]}</p>
+                    </div>
+                </div>
+                <div class="fake-zero-diagram-wrap">
+                    <svg id="fake-zero-diagram" viewBox="0 0 820 265" class="chart-svg" role="img" aria-labelledby="fake-zero-diagram-title" xmlns="http://www.w3.org/2000/svg">
+                        <title id="fake-zero-diagram-title">{escape(ui["fake_zero_title"])}</title>
+                        <rect x="10" y="10" width="530" height="245" rx="14" class="fz-zone fz-zone-home"/>
+                        <text x="28" y="34" class="fz-zone-lbl" data-i18n="fz_zone_home">{escape(ui["fz_zone_home"])}</text>
+                        <rect x="554" y="10" width="256" height="245" rx="14" class="fz-zone fz-zone-grid"/>
+                        <text x="572" y="34" class="fz-zone-lbl" data-i18n="fz_zone_grid">{escape(ui["fz_zone_grid"])}</text>
+
+                        <rect x="26" y="86" width="186" height="122" rx="12" class="fz-box-panels"/>
+                        <text x="119" y="114" text-anchor="middle" font-size="22">☀️</text>
+                        <text x="119" y="139" text-anchor="middle" class="fz-box-title" data-i18n="fz_svg_panels">{escape(ui["fz_svg_panels"])}</text>
+                        <rect x="55" y="152" width="128" height="26" rx="13" class="fz-pill-solar-bg"/>
+                        <text x="119" y="169" text-anchor="middle" class="fz-pill-solar" data-i18n="fz_svg_panels_val">{escape(ui["fz_svg_panels_val"])}</text>
+                        <text x="119" y="196" text-anchor="middle" class="fz-box-sub" data-i18n="fz_svg_panels_sub">{escape(ui["fz_svg_panels_sub"])}</text>
+
+                        <path d="M 212 147 L 248 147" stroke="#d97706" stroke-width="3" stroke-linecap="round"/>
+                        <circle cx="248" cy="147" r="6" fill="#d97706"/>
+
+                        <path d="M 248 147 C 272 147, 276 94, 312 94" fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round"/>
+                        <polygon points="310,88 320,94 310,100" fill="#059669"/>
+                        <rect x="236" y="54" width="68" height="22" rx="11" class="fz-flow-pill-sc"/>
+                        <text x="270" y="69" text-anchor="middle" class="fz-flow-txt-sc" data-i18n="fz_svg_flow_sc">{escape(ui["fz_svg_flow_sc"])}</text>
+
+                        <rect x="322" y="48" width="204" height="96" rx="12" class="fz-box-primary"/>
+                        <text x="424" y="75" text-anchor="middle" font-size="20">🏢</text>
+                        <text x="424" y="99" text-anchor="middle" class="fz-box-title" data-i18n="fz_svg_primary">{escape(ui["fz_svg_primary"])}</text>
+                        <text x="424" y="122" text-anchor="middle" class="fz-box-sub-sc" data-i18n="fz_svg_primary_val">{escape(ui["fz_svg_primary_val"])}</text>
+
+                        <path d="M 248 147 C 274 147, 286 188, 336 188 L 564 188" fill="none" stroke="#0284c7" stroke-width="2.6" stroke-dasharray="6 4"/>
+                        <polygon points="562,182 572,188 562,194" fill="#0284c7"/>
+                        <rect x="336" y="156" width="176" height="22" rx="11" class="fz-flow-pill-exp"/>
+                        <text x="424" y="171" text-anchor="middle" class="fz-flow-txt-exp" data-i18n="fz_svg_flow_exp">{escape(ui["fz_svg_flow_exp"])}</text>
+                        <text x="424" y="212" text-anchor="middle" class="fz-note-dim" data-i18n="fz_svg_no_grid">{escape(ui["fz_svg_no_grid"])}</text>
+
+                        <rect x="574" y="64" width="218" height="172" rx="12" class="fz-box-meter"/>
+                        <text x="683" y="94" text-anchor="middle" font-size="22">📟</text>
+                        <text x="683" y="119" text-anchor="middle" class="fz-box-title" data-i18n="fz_svg_meter">{escape(ui["fz_svg_meter"])}</text>
+                        <rect x="588" y="133" width="190" height="30" rx="8" class="fz-pill-alert-bg"/>
+                        <text x="683" y="152" text-anchor="middle" class="fz-pill-alert" data-i18n="fz_svg_meter_zero">{escape(ui["fz_svg_meter_zero"])}</text>
+                        <text x="683" y="185" text-anchor="middle" class="fz-box-sub" data-i18n="fz_svg_meter_cap1">{escape(ui["fz_svg_meter_cap1"])}</text>
+                        <text x="683" y="203" text-anchor="middle" class="fz-box-sub" data-i18n="fz_svg_meter_cap2">{escape(ui["fz_svg_meter_cap2"])}</text>
                     </svg>
                 </div>
             </div>
@@ -2874,11 +3182,13 @@ def generate_story_html_report(
                 <h2 id="ch3-weather-heading" class="chapter-title" data-i18n="ch3_title">{ui["ch3_title"]}</h2>
                 <p class="chapter-intro" data-i18n="ch3_intro">{ui["ch3_intro"]}</p>
             </div>
+            <div class="callout" id="weather-dynamic-insight" aria-live="polite" style="display:none;"></div>
             <div class="chart-card-box">
                 <div class="chart-controls-row">
                     <div class="seg-group" role="tablist" aria-label="Weather metric">
                         <button type="button" role="tab" aria-selected="true" class="btn-seg active" id="btn-weather-temp" onclick="setWeatherMetric('temp')" data-i18n="weather_mode_temp">{ui["weather_mode_temp"]}</button>
                         <button type="button" role="tab" aria-selected="false" class="btn-seg" id="btn-weather-clear" onclick="setWeatherMetric('clear')" data-i18n="weather_mode_clear">{ui["weather_mode_clear"]}</button>
+                        <button type="button" role="tab" aria-selected="false" class="btn-seg" id="btn-weather-days" onclick="setWeatherMetric('days')" data-i18n="weather_mode_days">{ui["weather_mode_days"]}</button>
                     </div>
                 </div>
                 <div id="weather-subcontrols" class="subcontrols-bar"></div>
@@ -2886,8 +3196,10 @@ def generate_story_html_report(
                     <svg id="weather-chart-svg" class="chart-svg chart-line-svg" role="img" aria-labelledby="ch3-weather-heading" xmlns="http://www.w3.org/2000/svg"></svg>
                 </div>
                 <div id="weather-chart-legend" class="chart-legend"></div>
+                <div id="weather-sky-breakdown" class="sky-breakdown-card" style="display:none;"></div>
                 <div id="weather-chart-stats" class="chart-stats-strip"></div>
             </div>
+            <div id="weather-energy-insights" class="weather-insights-grid" style="display:none;"></div>
         </section>
 
         <!-- Chapter 4: Solar Generation -->
@@ -2897,6 +3209,7 @@ def generate_story_html_report(
                 <h2 id="ch4-gen-heading" class="chapter-title" data-i18n="ch4_title">{ui["ch4_title"]}</h2>
                 <p class="chapter-intro" data-i18n="ch4_intro">{ui["ch4_intro"]}</p>
             </div>
+            <div class="callout callout-solar" id="gen-dynamic-insight" aria-live="polite" style="display:none;"></div>
             <div class="chart-card-box">
                 <div id="gen-subcontrols" class="subcontrols-bar"></div>
                 <div class="chart-container">
@@ -2904,6 +3217,7 @@ def generate_story_html_report(
                 </div>
                 <div id="gen-chart-legend" class="chart-legend"></div>
                 <div id="gen-chart-stats" class="chart-stats-strip"></div>
+                <div id="gen-impact-strip" class="impact-strip"></div>
             </div>
         </section>
 
@@ -2994,34 +3308,16 @@ def generate_story_html_report(
                     <span>💡</span>
                     <p data-i18n="prev_note">{ui["prev_note"]}</p>
                 </div>
+                {prev_uplift_impact_html}
             </div>
         </section>
 
-        <!-- Chapter 6: Official Share Tables & 100 kWh Simulator -->
-        <section id="ch-tables" class="story-section" aria-labelledby="ch6-heading">
+        <!-- Chapter 6: Glossary -->
+        <section id="ch-glossary" class="story-section" aria-labelledby="ch6-heading">
             <div class="chapter-head">
                 <span class="chapter-badge" data-i18n="ch6_badge">{ui["ch6_badge"]}</span>
                 <h2 id="ch6-heading" class="chapter-title" data-i18n="ch6_title">{ui["ch6_title"]}</h2>
                 <p class="chapter-intro" data-i18n="ch6_intro">{ui["ch6_intro"]}</p>
-            </div>
-
-            <div class="sim-box">
-                <h3 style="font-size:1.05rem;font-weight:700;" data-i18n="sim_title">{ui["sim_title"]}</h3>
-                <p style="font-size:0.86rem;color:var(--text-muted);" data-i18n="sim_sub">{ui["sim_sub"]}</p>
-                <div id="sim-months" class="sim-months"></div>
-                <div id="sim-bar" class="sim-stacked-bar"></div>
-                <div id="sim-cards" class="sim-cards"></div>
-            </div>
-
-            {matrices_html}
-        </section>
-
-        <!-- Chapter 7: Glossary -->
-        <section id="ch-glossary" class="story-section" aria-labelledby="ch7-heading">
-            <div class="chapter-head">
-                <span class="chapter-badge" data-i18n="ch7_badge">{ui["ch7_badge"]}</span>
-                <h2 id="ch7-heading" class="chapter-title" data-i18n="ch7_title">{ui["ch7_title"]}</h2>
-                <p class="chapter-intro" data-i18n="ch7_intro">{ui["ch7_intro"]}</p>
             </div>
             <div class="glossary-grid">
                 <article class="glossary-card"><h3 data-i18n="g1_term">{ui["g1_term"]}</h3><p data-i18n="g1_desc">{ui["g1_desc"]}</p></article>

@@ -140,6 +140,7 @@ class ConsumptionHistoryData:
     reference_period_label: str
     reconciled_hours_count: int
     recovered_kwh: float
+    reference_year_is_complete: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,6 +207,33 @@ class WeatherYearData:
     cloudy_days: int
     rainy_days: int
     has_weather_codes: bool
+    partly_cloudy_days: int = 0
+    observed_days: int = 0
+    abs_min_temp: float | None = None
+    abs_max_temp: float | None = None
+    cold_days: int = 0
+    frost_days: int = 0
+    hot_days: int = 0
+    monthly_sunny_days: list[int | None] = field(default_factory=lambda: [None] * 12)
+    monthly_partly_days: list[int | None] = field(default_factory=lambda: [None] * 12)
+    monthly_cloudy_days: list[int | None] = field(default_factory=lambda: [None] * 12)
+    monthly_rainy_days: list[int | None] = field(default_factory=lambda: [None] * 12)
+
+
+@dataclass(frozen=True, slots=True)
+class WeatherEnergyInsights:
+    """Cross-insights linking local weather patterns to community consumption and PV generation."""
+
+    cold_month_avg_kwh: float | None
+    mild_month_avg_kwh: float | None
+    cold_vs_mild_ratio: float | None
+    sunniest_month_code: str
+    sunniest_month_clear_pct: float | None
+    cloudiest_month_code: str
+    cloudiest_month_clear_pct: float | None
+    peak_solar_month_code: str
+    peak_solar_month_clear_pct: float | None
+    peak_solar_month_temp: float | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,6 +243,7 @@ class WeatherHistoryData:
     years: list[int]
     by_year: dict[int, WeatherYearData]
     has_data: bool
+    insights: WeatherEnergyInsights | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -784,10 +813,15 @@ def _build_consumption_history(
                 )
             }
 
-    ref_year = max(
-        years,
-        key=lambda y: (community_series[y].complete_months_count, y),
-    )
+    full_years = [y for y in years if community_series[y].complete_months_count == 12]
+    ref_year_is_complete = bool(full_years)
+    if full_years:
+        ref_year = max(full_years)
+    else:
+        ref_year = max(
+            years,
+            key=lambda y: (community_series[y].complete_months_count, y),
+        )
 
     return ConsumptionHistoryData(
         years=years,
@@ -797,6 +831,7 @@ def _build_consumption_history(
         reference_period_label=str(ref_year),
         reconciled_hours_count=rec_hours,
         recovered_kwh=rec_kwh,
+        reference_year_is_complete=ref_year_is_complete,
     )
 
 
@@ -1176,6 +1211,21 @@ def _build_weather_history(
 
         yr_t = yr_df["temperature"].dropna()
         ann_temp = round(float(yr_t.mean()), 1) if not yr_t.empty else None
+        abs_min_temp = round(float(yr_t.min()), 1) if not yr_t.empty else None
+        abs_max_temp = round(float(yr_t.max()), 1) if not yr_t.empty else None
+
+        valid_t_rows = yr_df.dropna(subset=["temperature"])
+        if not valid_t_rows.empty:
+            daily_yr_t = valid_t_rows.groupby(["_month", "_day"])["temperature"].agg(
+                ["mean", "min", "max"]
+            )
+            cold_days = int((daily_yr_t["mean"] < 10.0).sum())
+            frost_days = int((daily_yr_t["min"] <= 0.0).sum())
+            hot_days = int((daily_yr_t["max"] >= 30.0).sum())
+        else:
+            cold_days = 0
+            frost_days = 0
+            hot_days = 0
 
         yr_day_cloud = yr_df[(yr_df["_hour"] >= 8) & (yr_df["_hour"] <= 19)]["cloud_cover"].dropna()
         yr_cloud_all = yr_day_cloud if not yr_day_cloud.empty else yr_df["cloud_cover"].dropna()
@@ -1197,25 +1247,48 @@ def _build_weather_history(
             set(zip(yr_df["_month"].tolist(), yr_df["_day"].tolist(), strict=False))
         )
 
-        sunny_days = 0
-        cloudy_days = 0
-        rainy_days = 0
+        month_day_counts: dict[int, list[int]] = {m: [0, 0, 0, 0] for m in range(1, 13)}
         for d_key in all_day_keys:
+            m_num = int(d_key[0])
             w_code = day_codes.get(d_key)
             is_rainy = (
                 has_codes and w_code is not None and pd.notna(w_code) and float(w_code) >= 51.0
             )
             if is_rainy:
-                rainy_days += 1
+                month_day_counts[m_num][3] += 1
                 continue
             c_mean = day_clouds.get(d_key)
             if c_mean is not None and pd.notna(c_mean):
-                if float(c_mean) < 30.0:
-                    sunny_days += 1
-                elif float(c_mean) >= 70.0:
-                    cloudy_days += 1
+                c_val_f = float(c_mean)
+                if c_val_f < 30.0:
+                    month_day_counts[m_num][0] += 1
+                elif c_val_f >= 70.0:
+                    month_day_counts[m_num][2] += 1
+                else:
+                    month_day_counts[m_num][1] += 1
             elif has_codes and w_code is not None and pd.notna(w_code) and float(w_code) <= 1.0:
-                sunny_days += 1
+                month_day_counts[m_num][0] += 1
+            else:
+                month_day_counts[m_num][1] += 1
+
+        sunny_days = sum(month_day_counts[m][0] for m in range(1, 13))
+        partly_cloudy_days = sum(month_day_counts[m][1] for m in range(1, 13))
+        cloudy_days = sum(month_day_counts[m][2] for m in range(1, 13))
+        rainy_days = sum(month_day_counts[m][3] for m in range(1, 13))
+        observed_days = len(all_day_keys)
+
+        monthly_sunny: list[int | None] = [
+            month_day_counts[m][0] if statuses[m - 1] != "no_data" else None for m in range(1, 13)
+        ]
+        monthly_partly: list[int | None] = [
+            month_day_counts[m][1] if statuses[m - 1] != "no_data" else None for m in range(1, 13)
+        ]
+        monthly_cloudy: list[int | None] = [
+            month_day_counts[m][2] if statuses[m - 1] != "no_data" else None for m in range(1, 13)
+        ]
+        monthly_rainy: list[int | None] = [
+            month_day_counts[m][3] if statuses[m - 1] != "no_data" else None for m in range(1, 13)
+        ]
 
         by_year[yr] = WeatherYearData(
             year=yr,
@@ -1233,9 +1306,117 @@ def _build_weather_history(
             cloudy_days=cloudy_days,
             rainy_days=rainy_days,
             has_weather_codes=has_codes,
+            partly_cloudy_days=partly_cloudy_days,
+            observed_days=observed_days,
+            abs_min_temp=abs_min_temp,
+            abs_max_temp=abs_max_temp,
+            cold_days=cold_days,
+            frost_days=frost_days,
+            hot_days=hot_days,
+            monthly_sunny_days=monthly_sunny,
+            monthly_partly_days=monthly_partly,
+            monthly_cloudy_days=monthly_cloudy,
+            monthly_rainy_days=monthly_rainy,
         )
 
     return WeatherHistoryData(years=years, by_year=by_year, has_data=bool(by_year))
+
+
+def _build_weather_energy_insights(
+    weather_by_year: dict[int, WeatherYearData],
+    consumption_history: ConsumptionHistoryData,
+    generation_history: GenerationHistoryData,
+) -> WeatherEnergyInsights | None:
+    """Compute cross-insights linking local weather with community consumption and PV generation."""
+    if not weather_by_year:
+        return None
+
+    cold_vals: list[float] = []
+    mild_vals: list[float] = []
+    month_clear_lists: dict[int, list[float]] = {m: [] for m in range(1, 13)}
+    month_temp_lists: dict[int, list[float]] = {m: [] for m in range(1, 13)}
+    month_gen_lists: dict[int, list[float]] = {m: [] for m in range(1, 13)}
+
+    for yr, wy in weather_by_year.items():
+        comm_yr = consumption_history.community.get(yr)
+        for m_idx in range(12):
+            m_num = m_idx + 1
+            t_avg = wy.temp_avg[m_idx]
+            clr = wy.clear_sky_pct[m_idx]
+            if clr is not None and wy.statuses[m_idx] != "no_data":
+                month_clear_lists[m_num].append(float(clr))
+            if t_avg is not None and wy.statuses[m_idx] != "no_data":
+                month_temp_lists[m_num].append(float(t_avg))
+
+            if (
+                t_avg is not None
+                and wy.statuses[m_idx] != "no_data"
+                and comm_yr is not None
+                and comm_yr.statuses[m_idx] == "complete"
+                and comm_yr.values[m_idx] is not None
+            ):
+                kwh = float(comm_yr.values[m_idx])
+                if t_avg < 12.0:
+                    cold_vals.append(kwh)
+                elif 15.0 <= t_avg <= 23.0:
+                    mild_vals.append(kwh)
+
+    for gy in generation_history.by_year.values():
+        for m_idx in range(12):
+            g_val = gy.values[m_idx]
+            if g_val is not None and gy.statuses[m_idx] != "no_data":
+                month_gen_lists[m_idx + 1].append(float(g_val))
+
+    cold_avg = round(sum(cold_vals) / len(cold_vals), 1) if cold_vals else None
+    mild_avg = round(sum(mild_vals) / len(mild_vals), 1) if mild_vals else None
+    cold_ratio = (
+        round(cold_avg / mild_avg, 2)
+        if cold_avg is not None and mild_avg is not None and mild_avg > 0
+        else None
+    )
+
+    clear_avgs: dict[int, float] = {
+        m: round(sum(vals) / len(vals), 1) for m, vals in month_clear_lists.items() if vals
+    }
+    if clear_avgs:
+        sunniest_m = max(clear_avgs, key=lambda m: (clear_avgs[m], -m))
+        cloudiest_m = min(clear_avgs, key=lambda m: (clear_avgs[m], m))
+        sunniest_code = f"{sunniest_m:02d}"
+        sunniest_clear: float | None = clear_avgs[sunniest_m]
+        cloudiest_code = f"{cloudiest_m:02d}"
+        cloudiest_clear: float | None = clear_avgs[cloudiest_m]
+    else:
+        sunniest_code = ""
+        sunniest_clear = None
+        cloudiest_code = ""
+        cloudiest_clear = None
+
+    gen_avgs: dict[int, float] = {
+        m: sum(vals) / len(vals) for m, vals in month_gen_lists.items() if vals
+    }
+    if gen_avgs:
+        peak_m = max(gen_avgs, key=lambda m: (gen_avgs[m], -m))
+        peak_code = f"{peak_m:02d}"
+        peak_clear: float | None = clear_avgs.get(peak_m)
+        t_list = month_temp_lists.get(peak_m, [])
+        peak_temp: float | None = round(sum(t_list) / len(t_list), 1) if t_list else None
+    else:
+        peak_code = ""
+        peak_clear = None
+        peak_temp = None
+
+    return WeatherEnergyInsights(
+        cold_month_avg_kwh=cold_avg,
+        mild_month_avg_kwh=mild_avg,
+        cold_vs_mild_ratio=cold_ratio,
+        sunniest_month_code=sunniest_code,
+        sunniest_month_clear_pct=sunniest_clear,
+        cloudiest_month_code=cloudiest_code,
+        cloudiest_month_clear_pct=cloudiest_clear,
+        peak_solar_month_code=peak_code,
+        peak_solar_month_clear_pct=peak_clear,
+        peak_solar_month_temp=peak_temp,
+    )
 
 
 def build_story_context(
@@ -1342,6 +1523,7 @@ def build_story_context(
         reference_period_label=consumption_history.reference_period_label,
         reconciled_hours_count=consumption_history.reconciled_hours_count,
         recovered_kwh=consumption_history.recovered_kwh,
+        reference_year_is_complete=consumption_history.reference_year_is_complete,
     )
 
     generation_history = _build_generation_history(
@@ -1360,10 +1542,21 @@ def build_story_context(
     fortnight_matrix = build_fortnight_matrix(opt_result)
 
     analyzed_years = sorted(set(consumption_history.years) | set(generation_history.years))
-    weather_history = _build_weather_history(
+    weather_raw = _build_weather_history(
         analyzed_years=analyzed_years,
         weather_df=weather_df,
         aligned_dataset=aligned_dataset,
+    )
+    weather_insights = _build_weather_energy_insights(
+        weather_by_year=weather_raw.by_year,
+        consumption_history=consumption_history,
+        generation_history=generation_history,
+    )
+    weather_history = WeatherHistoryData(
+        years=weather_raw.years,
+        by_year=weather_raw.by_year,
+        has_data=weather_raw.has_data,
+        insights=weather_insights,
     )
 
     return StoryReportContext(
@@ -1413,9 +1606,36 @@ def story_context_to_json_payload(
             "annual_avg_clear_pct": w.annual_avg_clear_pct,
             "annual_avg_cloud_pct": w.annual_avg_cloud_pct,
             "sunny_days": w.sunny_days,
+            "partly_cloudy_days": w.partly_cloudy_days,
             "cloudy_days": w.cloudy_days,
             "rainy_days": w.rainy_days,
+            "observed_days": w.observed_days,
+            "abs_min_temp": w.abs_min_temp,
+            "abs_max_temp": w.abs_max_temp,
+            "cold_days": w.cold_days,
+            "frost_days": w.frost_days,
+            "hot_days": w.hot_days,
+            "monthly_sunny_days": w.monthly_sunny_days,
+            "monthly_partly_days": w.monthly_partly_days,
+            "monthly_cloudy_days": w.monthly_cloudy_days,
+            "monthly_rainy_days": w.monthly_rainy_days,
             "has_weather_codes": w.has_weather_codes,
+        }
+
+    def _serialize_weather_insights(ins: WeatherEnergyInsights | None) -> dict[str, object] | None:
+        if ins is None:
+            return None
+        return {
+            "cold_month_avg_kwh": ins.cold_month_avg_kwh,
+            "mild_month_avg_kwh": ins.mild_month_avg_kwh,
+            "cold_vs_mild_ratio": ins.cold_vs_mild_ratio,
+            "sunniest_month_code": ins.sunniest_month_code,
+            "sunniest_month_clear_pct": ins.sunniest_month_clear_pct,
+            "cloudiest_month_code": ins.cloudiest_month_code,
+            "cloudiest_month_clear_pct": ins.cloudiest_month_clear_pct,
+            "peak_solar_month_code": ins.peak_solar_month_code,
+            "peak_solar_month_clear_pct": ins.peak_solar_month_clear_pct,
+            "peak_solar_month_temp": ins.peak_solar_month_temp,
         }
 
     cups_meta = [
@@ -1464,6 +1684,8 @@ def story_context_to_json_payload(
         "dashes": list(STROKE_DASHES),
         "consumption": {
             "years": cons.years,
+            "reference_year": int(cons.reference_period_label),
+            "reference_year_is_complete": cons.reference_year_is_complete,
             "cups_order": cons.cups_order,
             "community": {str(y): _serialize_series(s) for y, s in cons.community.items()},
             "by_cups": {
@@ -1480,6 +1702,7 @@ def story_context_to_json_payload(
             "has_data": weather.has_data,
             "years": weather.years,
             "by_year": {str(y): _serialize_weather_year(w) for y, w in weather.by_year.items()},
+            "insights": _serialize_weather_insights(weather.insights),
         },
         "simulator": {
             "precision": precision,

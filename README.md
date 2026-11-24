@@ -3,7 +3,7 @@
 > Unified Python CLI for residential community energy analytics (*comunidades de propietarios*) and optimal photovoltaic self-consumption distribution coefficients ($\beta_i$) in Spain under **Real Decreto 244/2019** & **Orden TED/1247/2021**.
 
 [![Python](https://img.shields.io/badge/Python-3.14+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2026.11.031-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-2026.11.032-blue.svg)](pyproject.toml)
 [![CLI Framework](https://img.shields.io/badge/CLI-Typer-009688?style=flat)](https://typer.tiangolo.com/)
 [![Terminal UI](https://img.shields.io/badge/UI-Rich-E9573F?style=flat)](https://rich.readthedocs.io/)
 [![Optimization](https://img.shields.io/badge/Solver-Water--Filling%20%2B%20HiGHS-00599C?style=flat)](https://scipy.org/)
@@ -218,7 +218,7 @@ esd calculate --curate-only   # Build CSV + styled Excel datasets in .curated/ a
 
 | Deliverable | Format | Contents |
 | :--- | :--- | :--- |
-| `*_esd_interactive_report.html` | HTML (Standalone) | Offline accessible ES/EN community story: active CUPS table, interactive multi-year Consumption, Weather & Generation graphs, seasonal spotlight, 4-step sharing, 100 kWh simulator, Monthly/Fortnight tables & Light/Dark/High-Contrast themes |
+| `*_esd_interactive_report.html` | HTML (Standalone) | Offline accessible 6-chapter ES/EN community story: clickable 4-col active CUPS table (latest complete year), Y-split fake-zero diagram, multi-year Consumption, Weather (with Sky Breakdown & Insights) & Generation graphs, seasonal spotlight, 4-step sharing + CO₂/home equivalences, glossary & Light/Dark/High-Contrast themes |
 | `*_esd_monthly_shares.csv` | CSV (`;`) | Full monthly allocation and energy balance per CUPS |
 | `*_esd_monthly_shares_lite.csv` | CSV (`;`) | Compact monthly share matrix (CUPS vs. months `01`..`12`) |
 | `*_esd_fortnight_shares.csv` | CSV (`;`) | Full fortnight allocation (`1`: days 1–15, `2`: days 16–end) and energy balance per CUPS |

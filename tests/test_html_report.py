@@ -103,7 +103,9 @@ def _create_mock_optimization_result() -> tuple[OptimizationResult, IngestionSum
 
 
 def test_generate_interactive_html_report_structure() -> None:
-    """Verify that generated HTML storytelling report contains all 7 chapters, accessibility chrome, and bilingual UI."""
+    """Verify that generated HTML storytelling report contains 6 accessible chapters, clean hero, and bilingual UI."""
+    import re
+
     opt_result, summary = _create_mock_optimization_result()
     opt_result.primary_cups = "ES0021000000000001AA"
     html_en = generate_interactive_html_report(opt_result, summary, lang="en")
@@ -118,7 +120,18 @@ def test_generate_interactive_html_report_structure() -> None:
     assert '<script src="//' not in html_en
     assert 'href="http' not in html_en
 
-    # Sticky chapter stepper, reading progress bar, and accessibility controls
+    # Clean hero header: short eyebrow (without RD 244/2019), title, subtitle; no KPI summary cards or badges
+    hero_match = re.search(r"<header class=\"story-hero\">(.*?)</header>", html_en, flags=re.S)
+    assert hero_match is not None
+    hero_html = hero_match.group(1)
+    assert "Homeowners Association" in hero_html
+    assert "RD 244/2019" not in hero_html
+    assert "Our Community's Solar Story" in html_en
+    assert "hero-kpi-grid" not in html_en
+    assert "badges-wrap" not in html_en
+    assert 'id="badge-rd"' not in html_en
+
+    # Sticky 6-chapter stepper, reading progress bar, and accessibility controls (Chapter 6 tables removed)
     assert "reading-progress" in html_en
     assert "skip-link" in html_en
     assert "story-nav" in html_en
@@ -127,8 +140,11 @@ def test_generate_interactive_html_report_structure() -> None:
     assert 'id="ch-weather"' in html_en
     assert 'id="ch-generation"' in html_en
     assert 'id="ch-sharing"' in html_en
-    assert 'id="ch-tables"' in html_en
     assert 'id="ch-glossary"' in html_en
+    assert 'id="ch-tables"' not in html_en
+    assert "matrixTable" not in html_en
+    assert "fortnightTable" not in html_en
+    assert 'id="sim-box"' not in html_en
     assert "btn-theme-light" in html_en
     assert "btn-theme-dark" in html_en
     assert "btn-theme-hc" in html_en
@@ -136,28 +152,42 @@ def test_generate_interactive_html_report_structure() -> None:
     assert "btn-font-reset" in html_en
     assert "btn-font-inc" in html_en
 
-    # Chapter 1: Active CUPS table (no Role & Bylaws column, subtle primary sun icon & legend)
+    # Chapter 1: Active CUPS 4-column table (no Avg Solar Share, interactive service jump buttons)
     assert "activeCupsTable" in html_en
-    assert "Role &amp; Bylaws" not in html_en
-    assert "Role & Bylaws" not in html_en
+    assert "Avg Solar Share" not in html_en
+    assert "ch1_col_beta" not in html_en
+    assert "cups-jump-btn" in html_en
+    assert "jumpToCupsConsumption" in html_en
     assert "primary-sun" in html_en
     assert "ch1_primary_legend" in html_en
+    assert "ch1_jump_hint" in html_en
     assert "ES0021000000000001AA" in html_en
     assert "ES0021000000000002BB" in html_en
     assert "Aerotermia" in html_en
     assert "Garaje" in html_en
 
-    # Chapter 2, 3 & 4: Interactive consumption, weather, and generation line charts + fake zero diagram
+    # Chapter 2, 3 & 4: Interactive charts, redesigned Y-split Fake Zero diagram, weather insights & solar impact
     assert "consumption-chart-svg" in html_en
     assert "btn-cons-community" in html_en
     assert "btn-cons-single" in html_en
     assert "btn-cons-compare" in html_en
     assert "fake-zero-box" in html_en
+    assert "fake-zero-steps" in html_en
+    assert 'id="fake-zero-diagram"' in html_en
+    assert "+10 kWh solar" in html_en
+    assert "Uses 6 kWh in reality" in html_en
+    assert "Grid import reads: 0 kWh" in html_en
     assert "weather-chart-svg" in html_en
+    assert "weather-dynamic-insight" in html_en
     assert "btn-weather-temp" in html_en
     assert "btn-weather-clear" in html_en
+    assert "btn-weather-days" in html_en
+    assert "weather-sky-breakdown" in html_en
+    assert "weather-energy-insights" in html_en
     assert "generation-chart-svg" in html_en
     assert "gen-subcontrols" in html_en
+    assert "gen-dynamic-insight" in html_en
+    assert "gen-impact-strip" in html_en
 
     # Chapter 5: Didactic sharing story, spotlight, monthly chart with legend, and 4-way progression
     assert "chart-monthly-svg" in html_en
@@ -177,14 +207,13 @@ def test_generate_interactive_html_report_structure() -> None:
     assert "Fixed Monthly Share (RD 244/2019)" in html_en
     assert "Fortnight Share (24 Half-Month Periods)" in html_en
     assert "Dynamic Hourly Share (Orden TED/1247/2021)" in html_en
+    assert "prev-uplift-impact" in html_en
 
-    # Chapter 6 & 7: 100 kWh simulator, tabbed Monthly & Fortnight matrices, and glossary
-    assert "sim-box" in html_en
-    assert "matrixTable" in html_en
-    assert "fortnightTable" in html_en
-    assert "tab-monthly" in html_en
-    assert "tab-fortnight" in html_en
+    # Chapter 6: Plain-language Glossary (renumbered from Chapter 7)
     assert "glossary-grid" in html_en
+    assert "6. Glossary" in html_en
+    assert "Chapter 6" in html_en
+    assert "Chapter 7" not in html_en
     assert "Hare-Niemeyer" not in html_en
 
     # Bilingual language selector and JS engine
@@ -195,16 +224,15 @@ def test_generate_interactive_html_report_structure() -> None:
     assert "showWeatherTooltip" in html_en
     assert "STORY_DATA" in html_en
 
-    # Matrix table summary footer
+    # Chapter 1 table summary footer
     assert "<tfoot>" in html_en
     assert "</tfoot>" in html_en
-    assert "TOTAL (RD 244/2019)" in html_en
-    assert "100%" in html_en
+    assert "COMMUNITY TOTAL" in html_en
+    assert "100.0%" in html_en
     assert "total-label" in html_en
     assert "total-val" in html_en
 
-    # English titles
-    assert "Our Community's Solar Story" in html_en
+    # English chapter titles
     assert "Meet Our Community Supplies (Active CUPS)" in html_en
     assert "How Our Community Consumes Energy" in html_en
     assert "Local Weather Across the Analyzed Years" in html_en
@@ -212,15 +240,23 @@ def test_generate_interactive_html_report_structure() -> None:
 
     # Bilingual natural Spanish generation
     html_es = generate_interactive_html_report(opt_result, summary, lang="es")
+    hero_es = re.search(r"<header class=\"story-hero\">(.*?)</header>", html_es, flags=re.S)
+    assert hero_es is not None
+    assert "Comunidad de propietarios · Autoconsumo colectivo" in hero_es.group(1)
+    assert "RD 244/2019" not in hero_es.group(1)
     assert "La energía solar de nuestra comunidad, explicada paso a paso" in html_es
     assert "Los contadores de nuestra comunidad (CUPS activos)" in html_es
+    assert "Reparto solar medio" not in html_es
     assert "Cuándo y cuánto consumen nuestras zonas comunes" in html_es
+    assert "+10 kWh solares" in html_es
+    assert "Consume 6 kWh reales" in html_es
+    assert "Compra registrada: 0 kWh" in html_es
     assert "El tiempo en nuestra finca en los años analizados" in html_es
+    assert "Días de cielo y lluvia" in html_es
     assert "Cuánta electricidad producen nuestras placas" in html_es
     assert "Producción solar (ámbar)" in html_es
     assert "Demanda comunitaria (azul)" in html_es
     assert "Autoconsumo colectivo (verde)" in html_es
-    assert "Rol y Estatutos" not in html_es
     assert "Sin reparto (1 solo CUPS)" in html_es
     assert "Reparto mensual (RD 244/2019)" in html_es
     assert "Reparto quincenal (24 quincenas)" in html_es
@@ -229,6 +265,10 @@ def test_generate_interactive_html_report_structure() -> None:
     assert "Sin reparto colectivo (1 solo CUPS)" in html_es
     assert "Reparto mensual fijo (RD 244/2019)" in html_es
     assert "Reparto horario dinámico (Orden TED/1247/2021)" in html_es
+    assert "6. Glosario" in html_es
+    assert "Capítulo 6" in html_es
+    assert "Capítulo 7" not in html_es
+    assert 'id="ch-tables"' not in html_es
     assert "Hare-Niemeyer" not in html_es
 
 
@@ -419,25 +459,56 @@ def test_prevision_no_disk_read_or_keyword_heuristic_when_primary_none(
     assert prev["primary_name"] == "Garaje"
 
 
-def test_matrix_table_total_footer_row() -> None:
-    """Verify that matrix table contains a styled <tfoot> row with TOTAL (RD 244/2019) and 100.00%."""
+def test_active_cups_table_four_columns_and_reference_year() -> None:
+    """Chapter 1 renders 4 columns using the last complete 12-month year as Ref. Consumption."""
+    import calendar
+    import re
+
+    import pandas as pd
+
+    from src.domain.models import SupplyPoint
+    from src.presentation.story_data import build_story_context
+
     opt_result, summary = _create_mock_optimization_result()
-    html = generate_interactive_html_report(opt_result, summary, lang="en", precision=2)
+    c1, c2 = opt_result.cups_list
+    cups_configs = {
+        c1: SupplyPoint(cups=c1, use="Aerotermia", primary=True),
+        c2: SupplyPoint(cups=c2, use="Garaje"),
+    }
 
-    assert "<tfoot>" in html
-    assert "</tfoot>" in html
-    assert (
-        "<span class='total-label' data-i18n='lbl_total_rd244'>TOTAL (RD 244/2019)</span>" in html
-    )
-    assert "100.00%" in html
+    rows = []
+    # Complete 2024 and 2025, partial 2026 (only 1 month)
+    for yr in (2024, 2025):
+        for m in range(1, 13):
+            for ts in _build_hourly_timestamps(yr, m, calendar.monthrange(yr, m)[1]):
+                rows.append({"timestamp": ts, "cups_id": c1, "consumption": 3.0})
+                rows.append({"timestamp": ts, "cups_id": c2, "consumption": 1.0})
+    for ts in _build_hourly_timestamps(2026, 1, 31):
+        rows.append({"timestamp": ts, "cups_id": c1, "consumption": 4.0})
+        rows.append({"timestamp": ts, "cups_id": c2, "consumption": 1.0})
 
-    html_es = generate_interactive_html_report(opt_result, summary, lang="es", precision=2)
-    assert "<tfoot>" in html_es
-    assert (
-        "<span class='total-label' data-i18n='lbl_total_rd244'>TOTAL (RD 244/2019)</span>"
-        in html_es
+    ctx = build_story_context(
+        opt_result=opt_result,
+        ingestion_summary=summary,
+        cups_configs=cups_configs,
+        consumption_df=pd.DataFrame(rows),
     )
-    assert "100.00%" in html_es
+    assert ctx.consumption_history.reference_period_label == "2025"
+    assert ctx.consumption_history.reference_year_is_complete is True
+
+    html = generate_interactive_html_report(opt_result, summary, lang="en", story_context=ctx)
+    tbl_match = re.search(r"<table id='activeCupsTable'>(.*?)</table>", html, flags=re.S)
+    assert tbl_match is not None
+    tbl_html = tbl_match.group(1)
+    assert len(re.findall(r"<th[\s>]", tbl_html)) == 4
+    assert "(2025)" in tbl_html
+    assert "Avg Solar Share" not in tbl_html
+    assert "COMMUNITY TOTAL" in tbl_html
+    assert "100.0%" in tbl_html
+
+    html_es = generate_interactive_html_report(opt_result, summary, lang="es", story_context=ctx)
+    assert "TOTAL COMUNIDAD" in html_es
+    assert "Reparto solar medio" not in html_es
 
 
 def _build_hourly_timestamps(year: int, month: int, n_days: int) -> list[str]:
@@ -713,18 +784,20 @@ def test_story_seasonal_spotlight_contrasting_and_single_month() -> None:
     )
 
 
-def test_story_fortnight_matrix_rendering_and_fallback() -> None:
-    """Fortnight matrix renders 24 period columns with 100% totals and hides fallback note when populated."""
+def test_story_fortnight_matrix_data_and_chapter6_omitted() -> None:
+    """Fortnight matrix builder computes 24-period coefficients while Chapter 6 tables are omitted from HTML."""
+    from src.presentation.story_data import build_fortnight_matrix
+
     opt_result, summary = _create_mock_optimization_result()
 
-    # 1. Without fortnight_results -> fallback banner shown
-    html_fallback = generate_interactive_html_report(opt_result, summary, lang="en", precision=2)
-    assert "class='fn-note'" in html_fallback
-    assert "id='fortnightTable'" in html_fallback
-    assert "data-fortnight='05-1'" in html_fallback
-    assert "data-fortnight='05-2'" in html_fallback
+    # 1. Without fortnight_results -> builds 24 periods mirroring monthly schedules
+    fn_fallback = build_fortnight_matrix(opt_result)
+    assert fn_fallback.has_fortnight_data is False
+    assert len(fn_fallback.periods) == 24
+    assert fn_fallback.period_sums["05-1"] == 1.0
+    assert fn_fallback.period_sums["05-2"] == 1.0
 
-    # 2. With real fortnight_results -> fallback banner hidden, 100.00% totals shown
+    # 2. With real fortnight_results -> preserves explicit half-month allocations & hides ch-tables in HTML
     c1, c2 = opt_result.cups_list
     f1 = CommunityMonthlyMetrics(
         month="05-1",
@@ -748,9 +821,15 @@ def test_story_fortnight_matrix_rendering_and_fallback() -> None:
         has_data=True,
     )
     opt_result.fortnight_results = [f1]
-    html_real = generate_interactive_html_report(opt_result, summary, lang="en", precision=2)
-    assert "class='fn-note'" not in html_real
-    assert "100.00%" in html_real
+    fn_real = build_fortnight_matrix(opt_result)
+    assert fn_real.has_fortnight_data is True
+    assert fn_real.matrix[c1]["05-1"] == 0.65
+    assert fn_real.period_sums["05-1"] == 1.0
+
+    html_out = generate_interactive_html_report(opt_result, summary, lang="en", precision=2)
+    assert 'id="ch-tables"' not in html_out
+    assert "matrixTable" not in html_out
+    assert "fortnightTable" not in html_out
 
 
 def test_story_html_escaping_prevents_script_breakout() -> None:
@@ -879,10 +958,12 @@ def test_calculation_service_multi_year_story_integration(tmp_path: Path) -> Non
     story_data = json.loads(story_match.group(1))
     assert story_data["weather"]["has_data"] is True
     assert story_data["weather"]["years"] == [2024, 2025]
+    assert "insights" in story_data["weather"]
+    assert "hero-kpi-grid" not in content
 
 
 def test_story_data_weather_multi_year_and_analyzed_years_filter() -> None:
-    """Weather history scopes strictly to analyzed years, computes temp/clear-sky stats, and marks [Inc]."""
+    """Weather history scopes strictly to analyzed years, computes enriched metrics, insights, and [Inc]."""
     import pandas as pd
 
     from src.presentation.story_data import build_story_context
@@ -891,22 +972,36 @@ def test_story_data_weather_multi_year_and_analyzed_years_filter() -> None:
     c1, c2 = opt_result.cups_list
 
     cons_rows = []
+    # Cold Jan (2024 & 2025) high demand, partial Feb 2025, mild May 2025 low demand
     for yr in (2024, 2025):
-        for ts in _build_hourly_timestamps(yr, 1, 31) + _build_hourly_timestamps(yr, 2, 10):
+        for ts in _build_hourly_timestamps(yr, 1, 31):
+            cons_rows.append({"timestamp": ts, "cups_id": c1, "consumption": 6.0})
+            cons_rows.append({"timestamp": ts, "cups_id": c2, "consumption": 2.0})
+        for ts in _build_hourly_timestamps(yr, 2, 10):
             cons_rows.append({"timestamp": ts, "cups_id": c1, "consumption": 3.0})
             cons_rows.append({"timestamp": ts, "cups_id": c2, "consumption": 1.0})
+    for ts in _build_hourly_timestamps(2025, 4, 30):
+        cons_rows.append({"timestamp": ts, "cups_id": c1, "consumption": 2.0})
+        cons_rows.append({"timestamp": ts, "cups_id": c2, "consumption": 2.0})
+    for ts in _build_hourly_timestamps(2025, 5, 31):
+        cons_rows.append({"timestamp": ts, "cups_id": c1, "consumption": 2.0})
+        cons_rows.append({"timestamp": ts, "cups_id": c2, "consumption": 2.0})
     cons_df = pd.DataFrame(cons_rows)
 
-    # Include 2023 (outside analyzed years), 2024 complete Jan, 2025 complete Jan + incomplete Feb
+    # Include 2023 (outside analyzed years), 2024 frost Jan, 2025 rainy Jan + partly Feb + mild Apr + warm May
     w_rows = []
     for ts in _build_hourly_timestamps(2023, 1, 31):
         w_rows.append({"timestamp": ts, "temperature": 5.0, "cloud_cover": 50, "weather_code": 2})
     for ts in _build_hourly_timestamps(2024, 1, 31):
-        w_rows.append({"timestamp": ts, "temperature": 10.0, "cloud_cover": 20, "weather_code": 0})
+        w_rows.append({"timestamp": ts, "temperature": -1.0, "cloud_cover": 20, "weather_code": 0})
     for ts in _build_hourly_timestamps(2025, 1, 31):
-        w_rows.append({"timestamp": ts, "temperature": 12.0, "cloud_cover": 80, "weather_code": 61})
+        w_rows.append({"timestamp": ts, "temperature": 8.0, "cloud_cover": 80, "weather_code": 61})
     for ts in _build_hourly_timestamps(2025, 2, 10):
-        w_rows.append({"timestamp": ts, "temperature": 14.0, "cloud_cover": 10, "weather_code": 1})
+        w_rows.append({"timestamp": ts, "temperature": 11.0, "cloud_cover": 50, "weather_code": 2})
+    for ts in _build_hourly_timestamps(2025, 4, 30):
+        w_rows.append({"timestamp": ts, "temperature": 18.0, "cloud_cover": 35, "weather_code": 2})
+    for ts in _build_hourly_timestamps(2025, 5, 31):
+        w_rows.append({"timestamp": ts, "temperature": 31.0, "cloud_cover": 10, "weather_code": 0})
     weather_df = pd.DataFrame(w_rows)
 
     ctx = build_story_context(
@@ -920,13 +1015,34 @@ def test_story_data_weather_multi_year_and_analyzed_years_filter() -> None:
     assert wh.has_data is True
     assert wh.years == [2024, 2025]
     assert 2023 not in wh.by_year
-    assert wh.by_year[2024].temp_avg[0] == 10.0
+    assert wh.by_year[2024].temp_avg[0] == -1.0
     assert wh.by_year[2024].clear_sky_pct[0] == 80.0
     assert wh.by_year[2024].sunny_days == 31
+    assert wh.by_year[2024].observed_days == 31
+    assert wh.by_year[2024].frost_days == 31
+    assert wh.by_year[2024].cold_days == 31
     assert wh.by_year[2024].statuses[0] == "complete"
     assert wh.by_year[2025].statuses[1] == "incomplete"
     assert wh.by_year[2025].rainy_days == 31
-    assert wh.by_year[2025].sunny_days == 10
+    assert wh.by_year[2025].partly_cloudy_days == 40
+    assert wh.by_year[2025].sunny_days == 31
+    assert wh.by_year[2025].hot_days == 31
+    assert wh.by_year[2025].observed_days == 102
+    assert wh.by_year[2025].monthly_rainy_days[0] == 31
+    assert wh.by_year[2025].monthly_partly_days[1] == 10
+    assert wh.by_year[2025].monthly_partly_days[3] == 30
+    assert wh.by_year[2025].monthly_sunny_days[4] == 31
+    assert wh.by_year[2025].abs_min_temp == 8.0
+    assert wh.by_year[2025].abs_max_temp == 31.0
+
+    # Weather-energy insights: cold Jan vs mild Apr (18°C)
+    assert wh.insights is not None
+    assert wh.insights.sunniest_month_code == "05"
+    assert wh.insights.cloudiest_month_code == "01"
+    assert wh.insights.peak_solar_month_code == "05"
+    assert wh.insights.cold_month_avg_kwh == 5952.0
+    assert wh.insights.mild_month_avg_kwh == 2880.0
+    assert wh.insights.cold_vs_mild_ratio == 2.07
 
 
 def test_story_data_weather_fallback_to_aligned_and_empty() -> None:
@@ -1013,9 +1129,11 @@ def test_story_embedded_json_and_js_integrity() -> None:
     assert story_match is not None
     story_data = json.loads(story_match.group(1))
     assert story_data["consumption"]["years"] == [2024, 2025]
+    assert story_data["consumption"]["reference_year"] == 2025
+    assert "reference_year_is_complete" in story_data["consumption"]
     assert set(story_data["consumption"]["community"].keys()) == {"2024", "2025"}
     assert "weather" in story_data
-    assert set(story_data["weather"].keys()) == {"has_data", "years", "by_year"}
+    assert set(story_data["weather"].keys()) == {"has_data", "years", "by_year", "insights"}
     assert len(story_data["cups"]) == 2
 
     i18n_match = re.search(r"const I18N = (.+?);\n", html_doc)
