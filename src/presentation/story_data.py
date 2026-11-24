@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import calendar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
 import numpy as np
@@ -188,6 +188,36 @@ class FortnightMatrixData:
 
 
 @dataclass(frozen=True, slots=True)
+class WeatherYearData:
+    """Monthly temperature, clear-sky, and day classification summary for one year."""
+
+    year: int
+    temp_avg: list[float | None]
+    temp_min: list[float | None]
+    temp_max: list[float | None]
+    clear_sky_pct: list[float | None]
+    cloud_cover_pct: list[float | None]
+    statuses: list[str]
+    days: list[tuple[int, int]]
+    annual_avg_temp: float | None
+    annual_avg_clear_pct: float | None
+    annual_avg_cloud_pct: float | None
+    sunny_days: int
+    cloudy_days: int
+    rainy_days: int
+    has_weather_codes: bool
+
+
+@dataclass(frozen=True, slots=True)
+class WeatherHistoryData:
+    """Multi-year weather history strictly scoped to the analyzed years."""
+
+    years: list[int]
+    by_year: dict[int, WeatherYearData]
+    has_data: bool
+
+
+@dataclass(frozen=True, slots=True)
 class StoryReportContext:
     """Aggregated data context powering the neighbour-friendly storytelling report."""
 
@@ -198,6 +228,9 @@ class StoryReportContext:
     fortnight_matrix: FortnightMatrixData
     has_multi_year_consumption: bool
     has_multi_year_generation: bool
+    weather_history: WeatherHistoryData = field(
+        default_factory=lambda: WeatherHistoryData(years=[], by_year={}, has_data=False)
+    )
 
 
 def calculate_hourly_prevision(
@@ -993,6 +1026,218 @@ def _build_seasonal_spotlight(
     )
 
 
+def _build_weather_history(
+    analyzed_years: list[int],
+    weather_df: pd.DataFrame | None,
+    aligned_dataset: AlignedDataset | None,
+) -> WeatherHistoryData:
+    """Build monthly weather summary strictly for the analyzed years without disk I/O."""
+    df_src: pd.DataFrame | None = None
+    if (
+        weather_df is not None
+        and not weather_df.empty
+        and "timestamp" in weather_df.columns
+        and ("temperature" in weather_df.columns or "cloud_cover" in weather_df.columns)
+    ):
+        df_src = pd.DataFrame(
+            {
+                "timestamp": weather_df["timestamp"],
+                "temperature": (
+                    pd.to_numeric(weather_df["temperature"], errors="coerce")
+                    if "temperature" in weather_df.columns
+                    else pd.Series(float("nan"), index=weather_df.index)
+                ),
+                "cloud_cover": (
+                    pd.to_numeric(weather_df["cloud_cover"], errors="coerce")
+                    if "cloud_cover" in weather_df.columns
+                    else pd.Series(float("nan"), index=weather_df.index)
+                ),
+                "weather_code": (
+                    pd.to_numeric(weather_df["weather_code"], errors="coerce")
+                    if "weather_code" in weather_df.columns
+                    else pd.Series(float("nan"), index=weather_df.index)
+                ),
+            }
+        )
+    elif (
+        aligned_dataset is not None
+        and not aligned_dataset.data.empty
+        and (
+            "temperature" in aligned_dataset.data.columns
+            or "cloud_cover" in aligned_dataset.data.columns
+        )
+    ):
+        aln = aligned_dataset.data
+        df_src = pd.DataFrame(
+            {
+                "timestamp": aln.index,
+                "temperature": (
+                    pd.to_numeric(aln["temperature"], errors="coerce").to_numpy()
+                    if "temperature" in aln.columns
+                    else np.full(len(aln), float("nan"))
+                ),
+                "cloud_cover": (
+                    pd.to_numeric(aln["cloud_cover"], errors="coerce").to_numpy()
+                    if "cloud_cover" in aln.columns
+                    else np.full(len(aln), float("nan"))
+                ),
+                "weather_code": np.full(len(aln), float("nan")),
+            }
+        )
+
+    if df_src is None or df_src.empty:
+        return WeatherHistoryData(years=[], by_year={}, has_data=False)
+
+    ts_col = df_src["timestamp"]
+    if pd.api.types.is_datetime64_any_dtype(ts_col):
+        dt_series = ts_col
+    else:
+        dt_series = pd.to_datetime(
+            ts_col.astype(str).str.strip(), format="%Y-%m-%d %H:%M:%S", errors="coerce"
+        )
+        if dt_series.isna().any():
+            missing = dt_series.isna()
+            dt_series = dt_series.where(~missing, pd.to_datetime(ts_col[missing], errors="coerce"))
+
+    valid_mask = dt_series.notna() & (df_src["temperature"].notna() | df_src["cloud_cover"].notna())
+    if not bool(valid_mask.any()):
+        return WeatherHistoryData(years=[], by_year={}, has_data=False)
+
+    work = df_src.loc[valid_mask].copy()
+    dt_valid = dt_series.loc[valid_mask]
+    work["_year"] = dt_valid.dt.year.astype(int)
+    work["_month"] = dt_valid.dt.month.astype(int)
+    work["_day"] = dt_valid.dt.day.astype(int)
+    work["_hour"] = dt_valid.dt.hour.astype(int)
+    work["_ts_key"] = dt_valid.dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    if analyzed_years:
+        work = work[work["_year"].isin(analyzed_years)].copy()
+    if work.empty:
+        return WeatherHistoryData(years=[], by_year={}, has_data=False)
+
+    work = work.drop_duplicates(subset=["_ts_key"], keep="last").reset_index(drop=True)
+    years = sorted(int(y) for y in work["_year"].unique())
+    by_year: dict[int, WeatherYearData] = {}
+
+    for yr in years:
+        yr_df = work[work["_year"] == yr]
+        temp_avg: list[float | None] = []
+        temp_min: list[float | None] = []
+        temp_max: list[float | None] = []
+        clear_sky_pct: list[float | None] = []
+        cloud_cover_pct: list[float | None] = []
+        statuses: list[str] = []
+        days: list[tuple[int, int]] = []
+
+        for m in range(1, 13):
+            m_df = yr_df[yr_df["_month"] == m]
+            if m_df.empty:
+                exp_days = calendar.monthrange(yr, m)[1]
+                temp_avg.append(None)
+                temp_min.append(None)
+                temp_max.append(None)
+                clear_sky_pct.append(None)
+                cloud_cover_pct.append(None)
+                statuses.append("no_data")
+                days.append((0, exp_days))
+                continue
+
+            unique_days = int(m_df["_day"].nunique())
+            min_day = int(m_df["_day"].min())
+            max_day = int(m_df["_day"].max())
+            unique_hours = int(m_df["_ts_key"].nunique())
+            status, day_pair = _classify_month_status(
+                yr, m, unique_days, min_day, max_day, unique_hours
+            )
+            statuses.append(status)
+            days.append(day_pair)
+
+            valid_t = m_df.dropna(subset=["temperature"])
+            if not valid_t.empty:
+                temp_avg.append(round(float(valid_t["temperature"].mean()), 1))
+                daily_t = valid_t.groupby("_day")["temperature"].agg(["min", "max"])
+                temp_min.append(round(float(daily_t["min"].mean()), 1))
+                temp_max.append(round(float(daily_t["max"].mean()), 1))
+            else:
+                temp_avg.append(None)
+                temp_min.append(None)
+                temp_max.append(None)
+
+            day_cloud = m_df[(m_df["_hour"] >= 8) & (m_df["_hour"] <= 19)]["cloud_cover"].dropna()
+            cloud_series = day_cloud if not day_cloud.empty else m_df["cloud_cover"].dropna()
+            if not cloud_series.empty:
+                c_val = round(max(0.0, min(100.0, float(cloud_series.mean()))), 1)
+                cloud_cover_pct.append(c_val)
+                clear_sky_pct.append(round(100.0 - c_val, 1))
+            else:
+                cloud_cover_pct.append(None)
+                clear_sky_pct.append(None)
+
+        yr_t = yr_df["temperature"].dropna()
+        ann_temp = round(float(yr_t.mean()), 1) if not yr_t.empty else None
+
+        yr_day_cloud = yr_df[(yr_df["_hour"] >= 8) & (yr_df["_hour"] <= 19)]["cloud_cover"].dropna()
+        yr_cloud_all = yr_day_cloud if not yr_day_cloud.empty else yr_df["cloud_cover"].dropna()
+        if not yr_cloud_all.empty:
+            ann_cloud: float | None = round(max(0.0, min(100.0, float(yr_cloud_all.mean()))), 1)
+            ann_clear: float | None = round(100.0 - ann_cloud, 1)
+        else:
+            ann_cloud = None
+            ann_clear = None
+
+        has_codes = bool(yr_df["weather_code"].notna().any())
+        day_codes = (
+            yr_df.groupby(["_month", "_day"])["weather_code"].max().to_dict() if has_codes else {}
+        )
+        daylight_rows = yr_df[(yr_df["_hour"] >= 8) & (yr_df["_hour"] <= 19)]
+        day_cloud_src = daylight_rows if not daylight_rows.empty else yr_df
+        day_clouds = day_cloud_src.groupby(["_month", "_day"])["cloud_cover"].mean().to_dict()
+        all_day_keys = sorted(
+            set(zip(yr_df["_month"].tolist(), yr_df["_day"].tolist(), strict=False))
+        )
+
+        sunny_days = 0
+        cloudy_days = 0
+        rainy_days = 0
+        for d_key in all_day_keys:
+            w_code = day_codes.get(d_key)
+            is_rainy = (
+                has_codes and w_code is not None and pd.notna(w_code) and float(w_code) >= 51.0
+            )
+            if is_rainy:
+                rainy_days += 1
+                continue
+            c_mean = day_clouds.get(d_key)
+            if c_mean is not None and pd.notna(c_mean):
+                if float(c_mean) < 30.0:
+                    sunny_days += 1
+                elif float(c_mean) >= 70.0:
+                    cloudy_days += 1
+            elif has_codes and w_code is not None and pd.notna(w_code) and float(w_code) <= 1.0:
+                sunny_days += 1
+
+        by_year[yr] = WeatherYearData(
+            year=yr,
+            temp_avg=temp_avg,
+            temp_min=temp_min,
+            temp_max=temp_max,
+            clear_sky_pct=clear_sky_pct,
+            cloud_cover_pct=cloud_cover_pct,
+            statuses=statuses,
+            days=days,
+            annual_avg_temp=ann_temp,
+            annual_avg_clear_pct=ann_clear,
+            annual_avg_cloud_pct=ann_cloud,
+            sunny_days=sunny_days,
+            cloudy_days=cloudy_days,
+            rainy_days=rainy_days,
+            has_weather_codes=has_codes,
+        )
+
+    return WeatherHistoryData(years=years, by_year=by_year, has_data=bool(by_year))
+
+
 def build_story_context(
     opt_result: OptimizationResult,
     ingestion_summary: IngestionSummary,
@@ -1000,6 +1245,7 @@ def build_story_context(
     consumption_df: pd.DataFrame | None = None,
     generation_df: pd.DataFrame | None = None,
     aligned_dataset: AlignedDataset | None = None,
+    weather_df: pd.DataFrame | None = None,
 ) -> StoryReportContext:
     """Assemble the complete typed storytelling context without performing any disk I/O."""
     matrix = opt_result.build_matrix()
@@ -1113,6 +1359,13 @@ def build_story_context(
 
     fortnight_matrix = build_fortnight_matrix(opt_result)
 
+    analyzed_years = sorted(set(consumption_history.years) | set(generation_history.years))
+    weather_history = _build_weather_history(
+        analyzed_years=analyzed_years,
+        weather_df=weather_df,
+        aligned_dataset=aligned_dataset,
+    )
+
     return StoryReportContext(
         active_cups=active_cups,
         consumption_history=consumption_history,
@@ -1121,6 +1374,7 @@ def build_story_context(
         fortnight_matrix=fortnight_matrix,
         has_multi_year_consumption=len(consumption_history.years) > 1,
         has_multi_year_generation=len(generation_history.years) > 1,
+        weather_history=weather_history,
     )
 
 
@@ -1133,6 +1387,7 @@ def story_context_to_json_payload(
     matrix = opt_result.build_matrix()
     cons = ctx.consumption_history
     gen = ctx.generation_history
+    weather = ctx.weather_history
 
     def _serialize_series(series: MonthlySeriesYear) -> dict[str, object]:
         return {
@@ -1142,6 +1397,25 @@ def story_context_to_json_payload(
             "days": [list(pair) for pair in series.days],
             "annual_total_kwh": series.annual_total_kwh,
             "complete_months_count": series.complete_months_count,
+        }
+
+    def _serialize_weather_year(w: WeatherYearData) -> dict[str, object]:
+        return {
+            "year": w.year,
+            "temp_avg": w.temp_avg,
+            "temp_min": w.temp_min,
+            "temp_max": w.temp_max,
+            "clear_sky_pct": w.clear_sky_pct,
+            "cloud_cover_pct": w.cloud_cover_pct,
+            "statuses": w.statuses,
+            "days": [list(pair) for pair in w.days],
+            "annual_avg_temp": w.annual_avg_temp,
+            "annual_avg_clear_pct": w.annual_avg_clear_pct,
+            "annual_avg_cloud_pct": w.annual_avg_cloud_pct,
+            "sunny_days": w.sunny_days,
+            "cloudy_days": w.cloudy_days,
+            "rainy_days": w.rainy_days,
+            "has_weather_codes": w.has_weather_codes,
         }
 
     cups_meta = [
@@ -1201,6 +1475,11 @@ def story_context_to_json_payload(
             "years": gen.years,
             "by_year": {str(y): _serialize_series(s) for y, s in gen.by_year.items()},
             "solar_hours_demand_by_month": gen.solar_hours_demand_by_month,
+        },
+        "weather": {
+            "has_data": weather.has_data,
+            "years": weather.years,
+            "by_year": {str(y): _serialize_weather_year(w) for y, w in weather.by_year.items()},
         },
         "simulator": {
             "precision": precision,

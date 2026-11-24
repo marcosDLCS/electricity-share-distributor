@@ -32,161 +32,184 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
     """Build complete bilingual (ES/EN) dictionary with strict key parity."""
     return {
         "es": {
-            "doc_title": "Historia Solar de Nuestra Comunidad — Electricity Share Distributor",
-            "skip_to_content": "Saltar al contenido principal",
-            "hero_eyebrow": "Historia Energética Vecinal · RD 244/2019",
-            "title": "☀️ La Historia Solar de Nuestra Comunidad",
-            "subtitle": "Una guía visual y clara para entender cómo consumen nuestras zonas comunes, cuánta electricidad genera el tejado solar y cómo la repartimos de forma justa.",
+            "doc_title": "Nuestra instalación solar comunitaria — Electricity Share Distributor",
+            "skip_to_content": "Ir al contenido principal",
+            "hero_eyebrow": "Comunidad de propietarios · Autoconsumo colectivo (RD 244/2019)",
+            "title": "☀️ La energía solar de nuestra comunidad, explicada paso a paso",
+            "subtitle": "Guía visual para los vecinos: qué contadores comunes tenemos, cuánto gastamos según el tiempo que hace, cuánta electricidad generan nuestras placas y cómo la repartimos para aprovecharla al máximo.",
             "badge_rd": "✓ RD 244/2019",
-            "cups_label": "Suministros Activos (CUPS)",
-            "bylaw_label": "Límites Estatutarios",
-            "mode_simulated": "Simulación Horaria Diurna",
-            "mode_modeled": "Previsión Diurna Modelada",
+            "cups_label": "Contadores activos (CUPS)",
+            "bylaw_label": "Límites de estatutos",
+            "mode_simulated": "Simulación horaria diurna",
+            "mode_modeled": "Estimación horaria diurna",
             "strat_optimal": "ÓPTIMO",
             "strat_equal": "EQUITATIVO",
             "strat_consumption_share": "CONSUMO",
             "strat_consumption": "CONSUMO",
-            "default_service": "Servicio Común",
-            "nav_aria": "Capítulos del informe",
-            "nav_ch1": "1. Suministros",
+            "default_service": "Servicio común",
+            "nav_aria": "Capítulos de la guía",
+            "nav_ch1": "1. Contadores",
             "nav_ch2": "2. Consumo",
-            "nav_ch3": "3. Solar",
-            "nav_ch4": "4. Reparto",
-            "nav_ch5": "5. Tablas",
-            "nav_ch6": "6. Glosario",
+            "nav_ch3": "3. Clima",
+            "nav_ch4": "4. Solar",
+            "nav_ch5": "5. Reparto",
+            "nav_ch6": "6. Tablas",
+            "nav_ch7": "7. Glosario",
             "theme_light": "Claro",
             "theme_dark": "Oscuro",
-            "theme_hc": "Alto Contraste",
+            "theme_hc": "Alto contraste",
             "btn_theme": "🌗 Tema",
             "btn_print": "🖨️ PDF / Imprimir",
-            "font_dec_label": "Reducir tamaño de texto",
-            "font_reset_label": "Tamaño de texto normal",
-            "font_inc_label": "Aumentar tamaño de texto",
-            "hero_kpi1_title": "🏢 Servicios Activos",
-            "hero_kpi1_sub": "Principal conectado al inversor",
-            "hero_kpi2_title": "🌞 Cosecha Solar Anual",
-            "hero_kpi2_sub": "Horas de sol",
-            "hero_kpi3_title": "🏆 Autoconsumo Colectivo",
+            "font_dec_label": "Reducir tamaño de letra",
+            "font_reset_label": "Tamaño de letra normal",
+            "font_inc_label": "Aumentar tamaño de letra",
+            "hero_kpi1_title": "🏢 Servicios comunes",
+            "hero_kpi1_sub": "Contador principal con placas",
+            "hero_kpi2_title": "🌞 Producción solar anual",
+            "hero_kpi2_sub": "En horas de sol",
+            "hero_kpi3_title": "🏆 Energía aprovechada",
             "hero_kpi3_sub_eff": "Aprovechamiento",
             "hero_kpi3_sub_cov": "Cobertura",
-            "hero_kpi4_title": "🚀 Extra vs. 1 Solo Contador",
-            "hero_kpi4_sub": "más energía aprovechada",
+            "hero_kpi4_title": "🚀 Extra respecto a 1 contador",
+            "hero_kpi4_sub": "más de energía aprovechada",
             "ch1_badge": "Capítulo 1",
-            "ch1_title": "Conoce Nuestros Suministros (CUPS Activos)",
-            "ch1_intro": "Cada edificio comparte varios contadores eléctricos para servicios comunes (calefacción central, garaje, ascensores, piscina o alumbrado). En España, cada contrato tiene un código único llamado <strong>CUPS</strong>. Esta tabla muestra exclusivamente los suministros activos configurados para el reparto solar colectivo.",
+            "ch1_title": "Los contadores de nuestra comunidad (CUPS activos)",
+            "ch1_intro": "El edificio cuenta con varios contratos eléctricos independientes para sus zonas comunes (calefacción central, garaje, ascensores, piscina o alumbrado). Cada contador se identifica con un código único llamado <strong>CUPS</strong>. En esta tabla figuran únicamente los suministros activos incluidos en el reparto solar comunitario.",
             "ch1_col_rank": "#",
-            "ch1_col_service": "Servicio Común",
-            "ch1_col_cups": "Código CUPS Oficial",
-            "ch1_col_role": "Rol y Estatutos",
-            "ch1_col_cons": "Consumo Ref.",
-            "ch1_col_beta": "Reparto Solar Medio (β)",
-            "ch1_role_primary": "☀️ Principal (Inversor)",
-            "ch1_role_member": "Participante",
+            "ch1_col_service": "Servicio común",
+            "ch1_col_cups": "Código CUPS",
+            "ch1_col_cons": "Consumo ref.",
+            "ch1_col_beta": "Reparto solar medio (β)",
+            "ch1_primary_tip": "Contador principal conectado directamente a las placas solares",
+            "ch1_primary_legend": "☀️ Indica el contador principal conectado directamente al inversor de las placas solares.",
             "ch1_total_label": "TOTAL COMUNIDAD",
-            "ch1_note": "<strong>Nota para vecinos:</strong> Este estudio analiza exclusivamente los contadores de zonas comunes de la comunidad. Los contratos y facturas privadas de cada vivienda no se ven modificados ni incluidos.",
+            "ch1_note": "<strong>¿Afecta esto a la factura de mi vivienda?</strong> No. Este informe trata exclusivamente sobre los contadores de las zonas comunes; los contratos particulares de cada piso o local no cambian.",
             "ch2_badge": "Capítulo 2",
-            "ch2_title": "Cómo Consume Electricidad Nuestra Comunidad",
-            "ch2_intro": "No todos los servicios gastan igual durante el año: la calefacción o aerotermia sube en invierno, mientras que bombas de piscina o ventilación destacan en verano. Explora nuestra evolución mes a mes o compara años y servicios.",
-            "cons_mode_community": "Total Comunidad",
-            "cons_mode_single": "Un Servicio (CUPS)",
-            "cons_mode_compare": "Comparar Servicios",
+            "ch2_title": "Cuándo y cuánto consumen nuestras zonas comunes",
+            "ch2_intro": "El consumo del edificio cambia con las estaciones: en invierno sube la calefacción o aerotermia, mientras que en verano trabajan más la depuradora de la piscina o la ventilación. Puedes ver el total de la comunidad año a año o comparar servicios entre sí.",
+            "cons_mode_community": "Total comunidad",
+            "cons_mode_single": "Un servicio",
+            "cons_mode_compare": "Comparar servicios",
             "lbl_years": "Años",
             "lbl_year": "Año",
             "lbl_service": "Servicio",
             "lbl_services": "Servicios",
             "btn_all_years": "Todos",
-            "btn_top4": "Top 4",
+            "btn_top4": "Los 4 mayores",
             "btn_all_cups": "Todos",
             "legend_complete": "Línea continua: mes completo",
             "legend_incomplete": "Discontinua / hueco [Inc]: mes incompleto",
             "legend_yoy": "Comparación interanual disponible",
-            "stat_selected_total": "Total Seleccionado",
-            "stat_peak_month": "Mes Pico",
-            "stat_low_month": "Mes Mínimo",
-            "stat_yoy_delta": "Variación Interanual",
-            "fake_zero_title": "🔍 El Misterio del «Cero Falso» en el Contador Principal",
-            "fake_zero_desc": "Cuando el sol brilla, la electricidad de los paneles entra directamente al servicio principal antes de pasar por el contador de la calle. Por eso el contador oficial marca <strong>0 kWh</strong> aunque el equipo esté funcionando a pleno rendimiento. El sistema corrige estos ceros falsos cruzando el inversor solar para calcular el consumo físico real.",
-            "fake_zero_recovered": "Energía oculta recuperada del contador principal:",
-            "fake_zero_svg_panels": "Paneles Solares",
-            "fake_zero_svg_primary": "Servicio Principal",
-            "fake_zero_svg_meter": "Contador Calle (0 kWh)",
+            "stat_selected_total": "Total del periodo",
+            "stat_peak_month": "Mes de mayor consumo",
+            "stat_low_month": "Mes de menor consumo",
+            "stat_yoy_delta": "Diferencia interanual",
+            "fake_zero_title": "🔍 ¿Por qué el contador principal marca 0 kWh cuando hace sol?",
+            "fake_zero_desc": "Al estar las placas conectadas directamente tras el contador principal, en las horas de sol el equipo consume primero nuestra propia electricidad solar sin tomar corriente de la calle. Por eso el contador oficial llega a marcar <strong>0 kWh</strong> aunque el sistema esté funcionando. Para calcular el consumo real, la herramienta cruza los datos del inversor solar y recupera esa energía oculta.",
+            "fake_zero_recovered": "Consumo real recuperado en horas de sol:",
+            "fake_zero_svg_panels": "Placas solares",
+            "fake_zero_svg_primary": "Servicio principal",
+            "fake_zero_svg_meter": "Contador de red (0 kWh)",
             "ch3_badge": "Capítulo 3",
-            "ch3_title": "Cuánta Electricidad Produce Nuestro Tejado",
-            "ch3_intro": "El sol marca el ritmo de nuestra planta fotovoltaica: los días largos de primavera y verano multiplican la producción frente al invierno. Activa la línea de demanda diurna para ver cuándo sobra sol y cuándo nos falta.",
-            "toggle_daylight_demand": "Superponer Demanda en Horas de Sol",
-            "gen_stat_total": "Producción Seleccionada",
-            "gen_stat_peak": "Mes Más Soleado",
-            "gen_stat_low": "Menor Producción",
-            "gen_stat_yoy": "Diferencia Interanual",
-            "gen_legend_demand": "Demanda diurna comunitaria (referencia)",
+            "ch3_title": "El tiempo en nuestra finca en los años analizados",
+            "ch3_intro": "El clima explica buena parte de lo que acabamos de ver: los meses más fríos disparan la calefacción, y los días despejados multiplican la producción de las placas. Aquí tienes la temperatura y los cielos despejados registrados en los mismos años analizados.",
+            "weather_mode_temp": "🌡️ Temperatura (°C)",
+            "weather_mode_clear": "☀️ Cielo despejado (%)",
+            "weather_stat_temp": "Temperatura media",
+            "weather_stat_range": "Mes frío y mes cálido",
+            "weather_stat_clear": "Cielo despejado medio",
+            "weather_stat_days": "Días soleados y de lluvia",
+            "weather_sunny_days": "días despejados",
+            "weather_cloudy_days": "muy nubosos",
+            "weather_rainy_days": "con lluvia",
+            "weather_band_note": "Banda sombreada: rango medio diario (mín–máx °C)",
+            "weather_no_data": "No hay registros meteorológicos guardados para estos años.",
+            "tip_temp_avg": "Media mensual",
+            "tip_temp_range": "Mín–Máx diario medio",
+            "tip_clear_sky": "Cielo despejado",
+            "tip_cloud_cover": "Nubosidad",
+            "weather_coldest": "Frío",
+            "weather_warmest": "Cálido",
             "ch4_badge": "Capítulo 4",
-            "ch4_title": "Compartir el Sol: Cómo Funcionan los Coeficientes",
-            "why_equal_title": "💡 ¿Por qué NO repartir a partes iguales?",
-            "why_equal_desc": "Si repartiéramos la energía solar exactamente igual todo el año (por ejemplo 15% a la piscina en enero), desperdiciaríamos kilovatios en contadores apagados mientras la calefacción compra electricidad cara de la red. Por eso la ley permite adaptar porcentajes (β) cada mes.",
-            "spotlight_title": "❄️ Invierno vs. ☀️ Verano: El Cambio de Temporada",
+            "ch4_title": "Cuánta electricidad producen nuestras placas",
+            "ch4_intro": "Los días más largos y luminosos de primavera y verano disparan la generación respecto al invierno. Si marcas la casilla de demanda diurna, verás al instante en qué meses nos falta sol y en cuáles producimos de sobra.",
+            "toggle_daylight_demand": "Superponer consumo en horas de sol",
+            "gen_stat_total": "Producción del periodo",
+            "gen_stat_peak": "Mes más soleado",
+            "gen_stat_low": "Mes de menor producción",
+            "gen_stat_yoy": "Diferencia interanual",
+            "gen_legend_demand": "Consumo diurno comunitario (referencia)",
+            "ch5_badge": "Capítulo 5",
+            "ch5_title": "Cómo repartimos el sol entre los contadores",
+            "why_equal_title": "💡 ¿Por qué no repartimos siempre a partes iguales?",
+            "why_equal_desc": "Si asignáramos siempre el mismo porcentaje fijo todo el año (por ejemplo, un 15 % a la piscina en enero), desperdiciaríamos energía solar en un contador parado mientras la calefacción tendría que comprar electricidad cara de la red. Ajustar los coeficientes (β) cada mes lleva la energía justo donde hace falta.",
+            "spotlight_title": "❄️ Invierno frente a ☀️ verano: cómo cambia el reparto",
             "spotlight_winter": "Invierno",
             "spotlight_summer": "Verano",
-            "spotlight_single_note": "Se muestra el mes activo disponible; añade datos de invierno y verano para ver la comparativa estacional completa.",
+            "spotlight_single_note": "Solo hay un mes activo disponible; al añadir meses de invierno y verano verás aquí la comparación estacional.",
             "spotlight_gen": "Sol",
             "spotlight_dem": "Consumo",
-            "spotlight_sc": "Autoconsumo",
-            "chart_traj_title": "📊 Balance Mensual: Producción vs. Demanda vs. Autoconsumo",
-            "chart_traj_sub": "Producción solar (ámbar), demanda total (azul) y energía solar aprovechada por la comunidad (verde).",
-            "prev_box_title": "⚡ El Salto Colectivo: 4 Formas de Repartir",
-            "prev_box_sub": "Progresión didáctica desde no compartir (1 solo contador) hasta los repartos mensual (RD 244/2019), quincenal y horario futuro (Orden TED/1247/2021).",
+            "spotlight_sc": "Aprovechado",
+            "chart_traj_title": "📊 Balance mensual: producción frente a demanda y autoconsumo",
+            "chart_traj_sub": "Compara mes a mes cuánta energía generan las placas, cuánta consume el edificio y cuánta aprovechamos directamente.",
+            "legend_bal_gen": "Producción solar (ámbar)",
+            "legend_bal_dem": "Demanda comunitaria (azul)",
+            "legend_bal_sc": "Autoconsumo colectivo (verde)",
+            "prev_box_title": "⚡ El salto colectivo: 4 formas de repartir el sol",
+            "prev_box_sub": "Evolución desde dejar todo en un solo contador hasta el reparto mensual (RD 244/2019), quincenal (24 quincenas) y horario dinámico (Orden TED/1247/2021).",
             "hourly_badge_ted": "📜 Orden TED/1247/2021",
-            "prev_card1_title": "Sin Reparto (1 solo CUPS)",
+            "prev_card1_title": "Sin reparto (1 solo CUPS)",
             "prev_card1_sub": "Aprovechamiento",
             "prev_card1_tag": "Punto de partida",
-            "prev_card2_title": "Reparto Mensual (RD 244/2019)",
-            "prev_card2_vs": "vs 1 CUPS",
-            "prev_card_fortnight_title": "Reparto Quincenal (24 Quincenas)",
-            "prev_card_fortnight_vs": "vs 1 CUPS",
-            "prev_card3_title": "Reparto Horario (Orden TED)",
-            "prev_card3_vs": "vs mensual",
+            "prev_card2_title": "Reparto mensual (RD 244/2019)",
+            "prev_card2_vs": "frente a 1 CUPS",
+            "prev_card_fortnight_title": "Reparto quincenal (24 quincenas)",
+            "prev_card_fortnight_vs": "frente a 1 CUPS",
+            "prev_card3_title": "Reparto horario (Orden TED)",
+            "prev_card3_vs": "frente a mensual",
             "prev_card3_horizon": "Horizonte futuro",
-            "prev_card4_title": "Ganancia Colectiva Total",
-            "prev_card4_sub": "sobre 1 CUPS",
-            "prev_comp_single": "Sin Reparto Colectivo (1 solo CUPS)",
-            "prev_comp_monthly": "Reparto Mensual Fijo (RD 244/2019)",
-            "prev_comp_fortnight": "Reparto Quincenal (24 Quincenas)",
-            "prev_comp_hourly": "Reparto Horario Dinámico (Orden TED/1247/2021)",
-            "prev_note": "Pasar de aprovechar el sol en 1 solo contador al reparto mensual (<strong>RD 244/2019</strong>) o quincenal permite que todos los servicios comunes absorban la producción solar según la estación. El reparto horario dinámico (<strong>Orden TED/1247/2021</strong>) representa el siguiente paso regulatorio para maximizar el ahorro sin instalar más placas.",
-            "ch5_badge": "Capítulo 5",
-            "ch5_title": "Explora las Tablas Oficiales de Reparto",
-            "ch5_intro": "Comprueba de forma visual cómo se divide cada 100 kWh solares según el mes o consulta las tablas oficiales completas con los coeficientes exactos que suman 100%.",
-            "sim_title": "☀️ ¿Cómo se reparten 100 kWh de sol en…?",
-            "sim_sub": "Selecciona un mes activo para ver qué porción de cada 100 kWh solares va a cada servicio.",
-            "sim_of_100": "de cada 100 kWh",
-            "tab_monthly": "📅 Reparto Mensual (RD 244/2019)",
-            "tab_fortnight": "📆 Reparto Quincenal (24 Quincenas)",
-            "fn_h1": "Ene – Jun (1–12)",
-            "fn_h2": "Jul – Dic (13–24)",
-            "fn_all": "Todas (24)",
-            "fn_fallback_note": "Nota: El conjunto usa actualmente coeficientes mensuales replicados en ambas quincenas de cada mes.",
-            "search_placeholder": "Buscar servicio o código CUPS...",
-            "col_cups": "Servicio / Código CUPS",
-            "col_avg": "Media Anual",
-            "lbl_total_rd244": "TOTAL (RD 244/2019)",
+            "prev_card4_title": "Ganancia colectiva total",
+            "prev_card4_sub": "sobre 1 solo CUPS",
+            "prev_comp_single": "Sin reparto colectivo (1 solo CUPS)",
+            "prev_comp_monthly": "Reparto mensual fijo (RD 244/2019)",
+            "prev_comp_fortnight": "Reparto quincenal (24 quincenas)",
+            "prev_comp_hourly": "Reparto horario dinámico (Orden TED/1247/2021)",
+            "prev_note": "Al pasar de aprovechar las placas en un único contador al reparto mensual (<strong>RD 244/2019</strong>) o quincenal, toda la comunidad absorbe la energía solar según la época del año. El reparto horario dinámico (<strong>Orden TED/1247/2021</strong>) marca el siguiente paso normativo para exprimir aún más las placas sin invertir en nuevos equipos.",
             "ch6_badge": "Capítulo 6",
-            "ch6_title": "Diccionario Rápido para Vecinos",
-            "ch6_intro": "Términos eléctricos y regulatorios explicados sin tecnicismos.",
+            "ch6_title": "Tablas oficiales de reparto y simulador",
+            "ch6_intro": "Elige un mes para ver de un vistazo cómo se reparten cada 100 kWh generados, o consulta las tablas oficiales completas con los coeficientes exactos que suman el 100 %.",
+            "sim_title": "☀️ ¿Cómo se reparten 100 kWh solares en…?",
+            "sim_sub": "Pulsa un mes activo para ver cuántos kWh recibe cada servicio común de cada 100 kWh producidos.",
+            "sim_of_100": "de cada 100 kWh",
+            "tab_monthly": "📅 Reparto mensual (RD 244/2019)",
+            "tab_fortnight": "📆 Reparto quincenal (24 quincenas)",
+            "fn_h1": "Ene – jun (1–12)",
+            "fn_h2": "Jul – dic (13–24)",
+            "fn_all": "Todas (24)",
+            "fn_fallback_note": "Nota: en este conjunto se muestran los porcentajes mensuales aplicados a ambas quincenas de cada mes.",
+            "search_placeholder": "Buscar servicio o código CUPS...",
+            "col_cups": "Servicio / código CUPS",
+            "col_avg": "Media anual",
+            "lbl_total_rd244": "TOTAL (RD 244/2019)",
+            "ch7_badge": "Capítulo 7",
+            "ch7_title": "Glosario básico",
+            "ch7_intro": "Conceptos eléctricos y normativos explicados en lenguaje cotidiano.",
             "g1_term": "CUPS (Código Universal de Punto de Suministro)",
-            "g1_desc": "Es el «DNI» de cada contador eléctrico. Una comunidad tiene un CUPS distinto para el garaje, los ascensores, la calefacción o la piscina.",
-            "g2_term": "kWh (Kilovatio-hora)",
-            "g2_desc": "La unidad de energía eléctrica. Equivale aproximadamente a mantener un radiador pequeño encendido durante una hora o 10 lavadoras eco.",
-            "g3_term": "Autoconsumo Colectivo",
-            "g3_desc": "Electricidad producida en el tejado y consumida en el mismo instante por los servicios comunes del edificio, evitando comprarla de la red.",
-            "g4_term": "Excedente Vertido a Red",
-            "g4_desc": "Energía solar que sobra cuando las placas producen más de lo que consumen todos los servicios comunes juntos en esa hora.",
-            "g5_term": "Coeficiente de Reparto (β)",
-            "g5_desc": "El porcentaje fijo de producción solar asignado a cada CUPS en la distribuidora eléctrica. La suma entre todos debe ser siempre exactamente el 100%.",
-            "g6_term": "Mes Incompleto [Inc]",
-            "g6_desc": "Indica un mes con menos del 90% de los días u horas registradas (por ejemplo, el mes en curso o una puesta en marcha). Se marca para no engañar en comparativas.",
-            "tip_gen": "Producción Solar",
+            "g1_desc": "Es el «DNI» de cada contador eléctrico. Nuestra comunidad tiene un CUPS distinto para el garaje, los ascensores, la calefacción o la piscina.",
+            "g2_term": "kWh (kilovatio-hora)",
+            "g2_desc": "La unidad básica de energía eléctrica. Equivale, por ejemplo, a un lavado en modo eco o a tener encendido un radiador pequeño (1.000 W) durante una hora.",
+            "g3_term": "Autoconsumo colectivo",
+            "g3_desc": "Electricidad que generan las placas de la cubierta y consumen en esa misma hora los servicios comunes del edificio, evitando comprarla de la red.",
+            "g4_term": "Excedente vertido a red",
+            "g4_desc": "Energía solar que sobra cuando las placas producen más electricidad de la que consumen juntos todos los servicios comunes en esa hora.",
+            "g5_term": "Coeficiente de reparto (β)",
+            "g5_desc": "El porcentaje fijo de la producción solar asignado a cada contador ante la distribuidora. La suma de todos los coeficientes debe ser siempre exactamente del 100 %.",
+            "g6_term": "Mes incompleto [Inc]",
+            "g6_desc": "Señala un mes con menos del 90 % de sus días u horas registrados (por ejemplo, el mes en curso o una puesta en marcha) para evitar comparaciones engañosas.",
+            "tip_gen": "Producción solar",
             "tip_dem": "Demanda",
-            "tip_solar_dem": "Demanda Horas Sol",
-            "tip_solar_cov": "Cobertura Horas Sol",
+            "tip_solar_dem": "Demanda en horas de sol",
+            "tip_solar_cov": "Cobertura en horas de sol",
             "tip_sc": "Autoconsumo",
             "tip_surplus": "Excedente",
             "tip_coverage": "Cobertura",
@@ -195,10 +218,10 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "tip_days": "días",
             "tip_no_data": "Sin datos",
             "tip_yoy": "Interanual",
-            "chart_empty": "Sin datos horarios suficientes para este filtro.",
-            "cons_insight_prefix": "Servicio con mayor peso:",
-            "cons_insight_peak": "Mayor consumo histórico:",
-            "spotlight_mover_tpl": "Cambio estacional destacado: <strong>{use}</strong> pasa del <strong>{w}%</strong> en invierno al <strong>{s}%</strong> en verano.",
+            "chart_empty": "No hay suficientes datos horarios para esta selección.",
+            "cons_insight_prefix": "Mayor consumidor comunitario:",
+            "cons_insight_peak": "Mes con mayor gasto:",
+            "spotlight_mover_tpl": "Mayor cambio estacional: <strong>{use}</strong> pasa del <strong>{w}%</strong> en invierno al <strong>{s}%</strong> en verano.",
             "footer_text": f"Generado por <strong>Electricity Share Distributor (esd) v{version}</strong> • Real Decreto 244/2019",
             "months": {
                 "01": "Ene",
@@ -234,7 +257,7 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "skip_to_content": "Skip to main content",
             "hero_eyebrow": "Community Solar Story · RD 244/2019",
             "title": "☀️ Our Community's Solar Story",
-            "subtitle": "An accessible, visual guide showing how our shared building services use electricity, what our rooftop panels produce, and how fair shares maximize savings for every neighbour.",
+            "subtitle": "An accessible, visual guide showing how our shared building services use electricity, what local weather and our rooftop panels deliver, and how fair shares maximize savings for every neighbour.",
             "badge_rd": "✓ RD 244/2019",
             "cups_label": "Active Supplies (CUPS)",
             "bylaw_label": "Bylaw Limits",
@@ -248,10 +271,11 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "nav_aria": "Report chapters",
             "nav_ch1": "1. Supplies",
             "nav_ch2": "2. Consumption",
-            "nav_ch3": "3. Solar",
-            "nav_ch4": "4. Sharing",
-            "nav_ch5": "5. Tables",
-            "nav_ch6": "6. Glossary",
+            "nav_ch3": "3. Weather",
+            "nav_ch4": "4. Solar",
+            "nav_ch5": "5. Sharing",
+            "nav_ch6": "6. Tables",
+            "nav_ch7": "7. Glossary",
             "theme_light": "Light",
             "theme_dark": "Dark",
             "theme_hc": "High Contrast",
@@ -262,7 +286,7 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "font_inc_label": "Increase text size",
             "hero_kpi1_title": "🏢 Active Services",
             "hero_kpi1_sub": "Primary inverter meter",
-            "hero_kpi2_title": "🌞 Annual Solar Harvest",
+            "hero_kpi2_title": "🌞 Annual Solar Generation",
             "hero_kpi2_sub": "Solar hours",
             "hero_kpi3_title": "🏆 Collective Self-Consumption",
             "hero_kpi3_sub_eff": "Utilization",
@@ -271,15 +295,14 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "hero_kpi4_sub": "more solar energy captured",
             "ch1_badge": "Chapter 1",
             "ch1_title": "Meet Our Community Supplies (Active CUPS)",
-            "ch1_intro": "Our homeowners association runs separate electricity meters for shared facilities (central heating, garage, elevators, pool, hallway lighting). In Spain, each meter contract has a unique ID called a <strong>CUPS</strong>. Below are strictly the active community meters included in our collective solar agreement.",
+            "ch1_intro": "Our homeowners association holds separate electricity meters for shared facilities (central heating, garage, elevators, pool, hallway lighting). In Spain, each meter contract has a unique ID called a <strong>CUPS</strong>. Below are strictly the active community meters included in our collective solar agreement.",
             "ch1_col_rank": "#",
             "ch1_col_service": "Common Service",
             "ch1_col_cups": "Official CUPS Code",
-            "ch1_col_role": "Role & Bylaws",
             "ch1_col_cons": "Ref. Consumption",
             "ch1_col_beta": "Avg Solar Share (β)",
-            "ch1_role_primary": "☀️ Primary (Inverter)",
-            "ch1_role_member": "Participating",
+            "ch1_primary_tip": "Primary meter connected directly behind the solar inverter",
+            "ch1_primary_legend": "☀️ Marks the primary meter connected directly behind the rooftop solar inverter.",
             "ch1_total_label": "COMMUNITY TOTAL",
             "ch1_note": "<strong>Good to know:</strong> This report only covers shared building common-service meters. Private apartment electricity contracts and household bills are neither included nor modified.",
             "ch2_badge": "Chapter 2",
@@ -309,16 +332,36 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "fake_zero_svg_primary": "Primary Service",
             "fake_zero_svg_meter": "Street Meter (0 kWh)",
             "ch3_badge": "Chapter 3",
-            "ch3_title": "How Our Roof Produces Solar Energy",
-            "ch3_intro": "Longer, brighter days from spring through summer multiply solar output compared with winter months. Toggle the daylight demand line to see when solar supply exceeds daytime demand and when it falls short.",
+            "ch3_title": "Local Weather Across the Analyzed Years",
+            "ch3_intro": "Weather connects demand and solar supply: colder winters drive central heating higher, while bright clear skies boost rooftop output. Compare monthly temperatures and clear-sky percentages across the exact years analyzed.",
+            "weather_mode_temp": "🌡️ Temperature (°C)",
+            "weather_mode_clear": "☀️ Clear Sky (%)",
+            "weather_stat_temp": "Average Temperature",
+            "weather_stat_range": "Coldest & Warmest Month",
+            "weather_stat_clear": "Average Clear Sky",
+            "weather_stat_days": "Sunny & Rainy Days",
+            "weather_sunny_days": "sunny days",
+            "weather_cloudy_days": "overcast days",
+            "weather_rainy_days": "rainy days",
+            "weather_band_note": "Shaded band: average daily min–max (°C)",
+            "weather_no_data": "No local weather archives available for these years.",
+            "tip_temp_avg": "Monthly Average",
+            "tip_temp_range": "Avg Daily Min–Max",
+            "tip_clear_sky": "Clear Sky",
+            "tip_cloud_cover": "Cloud Cover",
+            "weather_coldest": "Coldest",
+            "weather_warmest": "Warmest",
+            "ch4_badge": "Chapter 4",
+            "ch4_title": "How Our Roof Produces Solar Energy",
+            "ch4_intro": "Longer, brighter days from spring through summer multiply solar output compared with winter months. Toggle the daylight demand line to see when solar supply exceeds daytime demand and when it falls short.",
             "toggle_daylight_demand": "Overlay Daylight Demand",
-            "gen_stat_total": "Selected Harvest",
+            "gen_stat_total": "Selected Generation",
             "gen_stat_peak": "Sunniest Month",
             "gen_stat_low": "Lowest Month",
             "gen_stat_yoy": "Year-over-Year Shift",
             "gen_legend_demand": "Community daylight demand (reference)",
-            "ch4_badge": "Chapter 4",
-            "ch4_title": "Sharing the Sun: How Smart Coefficients Work",
+            "ch5_badge": "Chapter 5",
+            "ch5_title": "Sharing the Sun: How Smart Coefficients Work",
             "why_equal_title": "💡 Why NOT Split Everything Equally?",
             "why_equal_desc": "Giving every meter the exact same fixed slice all year (for instance 15% to a closed swimming pool in January) wastes clean rooftop power while central heating buys costly grid electricity. Adjusting shares (β) each month directs sunlight where it works hardest.",
             "spotlight_title": "❄️ Winter vs. ☀️ Summer: Seasonal Spotlight",
@@ -330,6 +373,9 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "spotlight_sc": "Self-Consumed",
             "chart_traj_title": "📊 Monthly Balance: Solar vs. Demand vs. Self-Consumption",
             "chart_traj_sub": "Solar Generation (amber), Community Demand (sky blue), and Collective Self-Consumption (green).",
+            "legend_bal_gen": "Solar Generation (amber)",
+            "legend_bal_dem": "Community Demand (blue)",
+            "legend_bal_sc": "Collective Self-Consumption (green)",
             "prev_box_title": "⚡ The Collective Journey: 4 Ways to Share",
             "prev_box_sub": "Step-by-step comparison from a single meter to Fixed Monthly (RD 244/2019), Fortnight (24 periods), and future Dynamic Hourly sharing (Order TED/1247/2021).",
             "hourly_badge_ted": "📜 Spanish Order TED/1247/2021",
@@ -350,9 +396,9 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "prev_comp_fortnight": "Fortnight Share (24 Half-Month Periods)",
             "prev_comp_hourly": "Dynamic Hourly Share (Orden TED/1247/2021)",
             "prev_note": "Moving from single-meter self-consumption to fixed monthly (<strong>RD 244/2019</strong>) or fortnight collective shares lets all common services absorb rooftop power across seasons. Dynamic hourly profiles (<strong>Order TED/1247/2021</strong>) represent the next regulatory horizon to capture even more sunshine without buying extra panels.",
-            "ch5_badge": "Chapter 5",
-            "ch5_title": "Explore the Official Share Tables",
-            "ch5_intro": "See visually how every 100 kWh of sunshine splits in any month, or inspect the complete official coefficient tables totaling exactly 100%.",
+            "ch6_badge": "Chapter 6",
+            "ch6_title": "Explore the Official Share Tables",
+            "ch6_intro": "See visually how every 100 kWh of sunshine splits in any month, or inspect the complete official coefficient tables totaling exactly 100%.",
             "sim_title": "☀️ How 100 kWh of Sunshine Splits in…",
             "sim_sub": "Pick any active month to see how many kilowatt-hours each service receives out of every 100 kWh generated.",
             "sim_of_100": "out of 100 kWh",
@@ -366,13 +412,13 @@ def build_story_i18n(version: str = "dev") -> dict[str, dict[str, Any]]:
             "col_cups": "Service / CUPS Code",
             "col_avg": "Annual Avg",
             "lbl_total_rd244": "TOTAL (RD 244/2019)",
-            "ch6_badge": "Chapter 6",
-            "ch6_title": "Plain-Language Glossary for Neighbours",
-            "ch6_intro": "Everyday explanations of key energy and regulatory terms used in this report.",
+            "ch7_badge": "Chapter 7",
+            "ch7_title": "Plain-Language Glossary for Neighbours",
+            "ch7_intro": "Everyday explanations of key energy and regulatory terms used in this report.",
             "g1_term": "CUPS (Universal Supply Point Code)",
             "g1_desc": "Think of a CUPS as an electricity meter's official ID card. Our building holds separate CUPS contracts for heating, garage, elevators, and pool.",
             "g2_term": "kWh (Kilowatt-hour)",
-            "g2_desc": "The standard unit of electricity. Roughly equal to running a small space heater for 1 hour or 10 eco washing machine cycles.",
+            "g2_desc": "The standard unit of electricity. Roughly equal to one eco washing machine cycle or running a 1,000 W small heater for one hour.",
             "g3_term": "Collective Self-Consumption",
             "g3_desc": "Solar electricity generated on our roof and used immediately by building services in the same hour—power we never have to buy from the grid.",
             "g4_term": "Grid Surplus",
@@ -562,39 +608,28 @@ def _render_active_cups_table(
     rows: list[str] = []
     tot_cons = sum(item.annual_consumption_kwh for item in ctx.active_cups)
     tot_beta = sum(item.avg_solar_beta_pct for item in ctx.active_cups)
+    has_primary = any(item.primary for item in ctx.active_cups)
 
     for idx, item in enumerate(ctx.active_cups, start=1):
-        role_badges: list[str] = []
-        if item.primary:
-            role_badges.append(
-                f'<span class="pill pill-primary" data-i18n="ch1_role_primary">{ui["ch1_role_primary"]}</span>'
-            )
-        else:
-            role_badges.append(
-                f'<span class="pill pill-muted" data-i18n="ch1_role_member">{ui["ch1_role_member"]}</span>'
-            )
-        if item.min_share is not None:
-            role_badges.append(
-                f'<span class="pill pill-bylaw">Min {item.min_share * 100:.0f}%</span>'
-            )
-        if item.max_share is not None:
-            role_badges.append(
-                f'<span class="pill pill-bylaw">Max {item.max_share * 100:.0f}%</span>'
-            )
-
         service_name = (
             escape(item.use)
             if item.use
             else f"<span data-i18n='default_service'>{ui['default_service']}</span>"
+        )
+        primary_badge = (
+            f" <span class='primary-sun' data-i18n-title='ch1_primary_tip' "
+            f"data-i18n-aria='ch1_primary_tip' title='{escape(ui['ch1_primary_tip'])}' "
+            f"aria-label='{escape(ui['ch1_primary_tip'])}'>☀️</span>"
+            if item.primary
+            else ""
         )
         bar_w = max(0.0, min(100.0, item.consumption_share_pct))
 
         rows.append(
             "<tr>"
             f"<td class='num muted'>{idx}</td>"
-            f"<td><span class='color-dot' style='background:{item.color};'></span><strong>{service_name}</strong></td>"
+            f"<td><span class='color-dot' style='background:{item.color};'></span><strong>{service_name}</strong>{primary_badge}</td>"
             f"<td><code class='cups-full'>{escape(item.cups)}</code></td>"
-            f"<td><div class='badge-stack'>{''.join(role_badges)}</div></td>"
             f"<td class='num'><div><strong>{format_kwh(item.annual_consumption_kwh)}</strong> "
             f"<span class='muted'>({item.consumption_share_pct:.1f}%)</span></div>"
             f"<div class='mini-track'><div class='mini-fill' style='width:{bar_w:.1f}%;background:{item.color};'></div></div></td>"
@@ -603,6 +638,11 @@ def _render_active_cups_table(
         )
 
     tot_share_str = "100.0%" if tot_cons > 0 else "0.0%"
+    primary_note = (
+        f"<p class='table-footnote' data-i18n='ch1_primary_legend'>{ui['ch1_primary_legend']}</p>"
+        if has_primary
+        else ""
+    )
     return (
         "<div class='table-wrap'>"
         "<table id='activeCupsTable'>"
@@ -610,18 +650,17 @@ def _render_active_cups_table(
         f"<th class='num' data-i18n='ch1_col_rank'>{ui['ch1_col_rank']}</th>"
         f"<th data-i18n='ch1_col_service'>{ui['ch1_col_service']}</th>"
         f"<th data-i18n='ch1_col_cups'>{ui['ch1_col_cups']}</th>"
-        f"<th data-i18n='ch1_col_role'>{ui['ch1_col_role']}</th>"
         f"<th class='num'><span data-i18n='ch1_col_cons'>{ui['ch1_col_cons']}</span> ({escape(ctx.consumption_history.reference_period_label)})</th>"
         f"<th class='num' data-i18n='ch1_col_beta'>{ui['ch1_col_beta']}</th>"
         "</tr></thead>"
         f"<tbody>{''.join(rows)}</tbody>"
         "<tfoot><tr>"
         "<td></td>"
-        f"<td colspan='3'><span class='total-label' data-i18n='ch1_total_label'>{ui['ch1_total_label']}</span></td>"
+        f"<td colspan='2'><span class='total-label' data-i18n='ch1_total_label'>{ui['ch1_total_label']}</span></td>"
         f"<td class='num total-val'>{format_kwh(tot_cons)} ({tot_share_str})</td>"
         f"<td class='num total-val'>{tot_beta:.1f}%</td>"
         "</tr></tfoot>"
-        "</table></div>"
+        f"</table></div>{primary_note}"
     )
 
 
@@ -1256,6 +1295,8 @@ _CSS_STYLES: str = """
         }
         .legend-item { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 600; }
         .legend-swatch { width: 16px; height: 4px; border-radius: 2px; display: inline-block; }
+        .legend-bar-swatch { width: 14px; height: 10px; border-radius: 3px; display: inline-block; }
+        .monthly-balance-legend { margin-top: 0; margin-bottom: 0.75rem; }
         .chart-stats-strip {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -1444,6 +1485,8 @@ _CSS_STYLES: str = """
         .font-bold { font-weight: 700; }
         .muted { color: var(--text-dim); }
         .color-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.45rem; vertical-align: middle; }
+        .primary-sun { margin-left: 0.35rem; font-size: 0.9em; vertical-align: baseline; }
+        .table-footnote { margin-top: 0.65rem; font-size: 0.82rem; color: var(--text-dim); }
         .cups-full, .cups-id { font-family: var(--font-mono); font-size: 0.79rem; color: var(--text-muted); }
         .cups-cell { display: flex; flex-direction: column; gap: 0.1rem; }
         .cups-use { font-weight: 700; }
@@ -1533,6 +1576,8 @@ _SCRIPT_BODY: str = """
         let consCompareCups = [];
         let genSelectedYears = [];
         let genOverlayDemand = false;
+        let weatherMetric = 'temp';
+        let weatherSelectedYears = [];
         let simSelectedMonth = (STORY_DATA.simulator && STORY_DATA.simulator.active_months && STORY_DATA.simulator.active_months[0]) || '01';
 
         function escapeHtml(val) {
@@ -1932,6 +1977,296 @@ _SCRIPT_BODY: str = """
             renderGenerationSection();
         }
 
+        function getActiveWeatherSeries() {
+            const w = STORY_DATA.weather;
+            if (!w || !w.has_data || !w.years || !w.years.length) return [];
+            const palette = STORY_DATA.year_palette;
+            const yrs = weatherSelectedYears.length ? weatherSelectedYears : [String(w.years[w.years.length - 1] || '')];
+            return yrs.map((yr, idx) => {
+                const wObj = w.by_year[yr] || {
+                    temp_avg: [], temp_min: [], temp_max: [], clear_sky_pct: [], cloud_cover_pct: [],
+                    statuses: [], days: [], annual_avg_temp: null, annual_avg_clear_pct: null,
+                    sunny_days: 0, cloudy_days: 0, rainy_days: 0, has_weather_codes: false
+                };
+                return {
+                    key: yr,
+                    label: yr,
+                    color: palette[idx % palette.length],
+                    values: weatherMetric === 'temp' ? (wObj.temp_avg || []) : (wObj.clear_sky_pct || []),
+                    temp_min: wObj.temp_min || [],
+                    temp_max: wObj.temp_max || [],
+                    temp_avg: wObj.temp_avg || [],
+                    clear_sky_pct: wObj.clear_sky_pct || [],
+                    cloud_cover_pct: wObj.cloud_cover_pct || [],
+                    statuses: wObj.statuses || [],
+                    days: wObj.days || [],
+                    meta: wObj
+                };
+            });
+        }
+
+        function renderWeatherControls() {
+            const bar = document.getElementById('weather-subcontrols');
+            if (!bar) return;
+            const w = STORY_DATA.weather;
+            const t = I18N[currentLang] || I18N.en;
+            if (!w || !w.has_data || !w.years || !w.years.length) {
+                bar.style.display = 'none';
+                return;
+            }
+            bar.style.display = 'flex';
+            const years = w.years.map(String);
+            const yrBtns = years.map(y =>
+                `<button type="button" class="pill-btn ${weatherSelectedYears.includes(y) ? 'active' : ''}" data-yr="${escapeHtml(y)}" onclick="toggleWeatherYear(this.getAttribute('data-yr'))">${escapeHtml(y)}</button>`
+            ).join('');
+            bar.innerHTML = `<strong>${escapeHtml(t.lbl_years)}:</strong> ${yrBtns}`;
+        }
+
+        function renderWeatherLineSvg(seriesList) {
+            const svg = document.getElementById('weather-chart-svg');
+            if (!svg) return;
+            const t = I18N[currentLang] || I18N.en;
+            const width = 940;
+            const height = 340;
+            const padL = 74;
+            const padR = 26;
+            const padT = 28;
+            const padB = 46;
+            const chartW = width - padL - padR;
+            const chartH = height - padT - padB;
+            const slotW = chartW / 12;
+
+            const allNums = [];
+            seriesList.forEach(s => {
+                (s.values || []).forEach(v => { if (v !== null && v !== undefined) allNums.push(Number(v)); });
+                if (weatherMetric === 'temp' && seriesList.length === 1) {
+                    (s.temp_min || []).forEach(v => { if (v !== null && v !== undefined) allNums.push(Number(v)); });
+                    (s.temp_max || []).forEach(v => { if (v !== null && v !== undefined) allNums.push(Number(v)); });
+                }
+            });
+
+            if (seriesList.length === 0 || allNums.length === 0) {
+                svg.setAttribute('viewBox', `0 0 ${width} 140`);
+                svg.innerHTML = `<text x="${width / 2}" y="75" text-anchor="middle" class="axis-label">${escapeHtml(t.weather_no_data)}</text>`;
+                return;
+            }
+
+            svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+            let yMin = 0;
+            let yMax = 100;
+            if (weatherMetric === 'temp') {
+                const rawMin = Math.min.apply(null, allNums);
+                const rawMax = Math.max.apply(null, allNums);
+                yMin = Math.floor((rawMin - 2) / 5) * 5;
+                yMax = Math.ceil((rawMax + 2) / 5) * 5;
+                if (yMax <= yMin) yMax = yMin + 10;
+            }
+
+            const isHc = document.documentElement.getAttribute('data-theme') === 'high-contrast';
+            const parts = [];
+            for (let tier = 0; tier <= 4; tier++) {
+                const tv = yMin + ((yMax - yMin) / 4) * tier;
+                const yp = padT + chartH - (chartH * (tier / 4));
+                const lbl = weatherMetric === 'temp' ? `${tv.toFixed(0)} °C` : `${tv.toFixed(0)}%`;
+                parts.push(`<line x1="${padL}" y1="${yp.toFixed(1)}" x2="${width - padR}" y2="${yp.toFixed(1)}" class="grid-line"/>`);
+                parts.push(`<text x="${padL - 10}" y="${(yp + 4).toFixed(1)}" text-anchor="end" class="axis-label">${escapeHtml(lbl)}</text>`);
+            }
+
+            const xOf = mIdx => padL + mIdx * slotW + slotW / 2;
+            const yOf = val => padT + chartH - ((Number(val) - yMin) / (yMax - yMin)) * chartH;
+
+            if (weatherMetric === 'temp' && seriesList.length === 1) {
+                const s0 = seriesList[0];
+                const tMin = s0.temp_min || [];
+                const tMax = s0.temp_max || [];
+                for (let i = 0; i < 11; i++) {
+                    if (tMin[i] === null || tMin[i] === undefined || tMax[i] === null || tMax[i] === undefined) continue;
+                    if (tMin[i + 1] === null || tMin[i + 1] === undefined || tMax[i + 1] === null || tMax[i + 1] === undefined) continue;
+                    const pts = `${xOf(i).toFixed(1)},${yOf(tMax[i]).toFixed(1)} ${xOf(i + 1).toFixed(1)},${yOf(tMax[i + 1]).toFixed(1)} ${xOf(i + 1).toFixed(1)},${yOf(tMin[i + 1]).toFixed(1)} ${xOf(i).toFixed(1)},${yOf(tMin[i]).toFixed(1)}`;
+                    parts.push(`<polygon points="${pts}" fill="${s0.color}" fill-opacity="0.14"/>`);
+                }
+            }
+
+            seriesList.forEach((s, sIdx) => {
+                const shape = STORY_DATA.shapes[sIdx % STORY_DATA.shapes.length];
+                const baseDash = isHc ? STORY_DATA.dashes[sIdx % STORY_DATA.dashes.length] : '';
+                const vals = s.values || [];
+                const stats = s.statuses || [];
+
+                for (let i = 0; i < 11; i++) {
+                    if (vals[i] === null || vals[i] === undefined || vals[i + 1] === null || vals[i + 1] === undefined) continue;
+                    const incSeg = stats[i] === 'incomplete' || stats[i + 1] === 'incomplete';
+                    const dash = incSeg ? '5 4' : baseDash;
+                    const op = incSeg ? '0.78' : '0.95';
+                    const dashAttr = dash ? ` stroke-dasharray="${dash}"` : '';
+                    parts.push(`<line x1="${xOf(i).toFixed(1)}" y1="${yOf(vals[i]).toFixed(1)}" x2="${xOf(i + 1).toFixed(1)}" y2="${yOf(vals[i + 1]).toFixed(1)}" stroke="${s.color}" stroke-width="2.8" stroke-linecap="round" stroke-opacity="${op}"${dashAttr}/>`);
+                }
+
+                for (let i = 0; i < 12; i++) {
+                    if (vals[i] === null || vals[i] === undefined) continue;
+                    const cx = xOf(i);
+                    const cy = yOf(vals[i]);
+                    const isInc = stats[i] === 'incomplete';
+                    const fill = isInc ? 'var(--bg-surface)' : s.color;
+                    const strokeW = isInc ? '2.5' : '1.6';
+                    const strokeCol = isInc ? s.color : 'var(--bg-surface)';
+                    if (isInc) {
+                        parts.push(`<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="7.5" fill="none" stroke="var(--accent-solar)" stroke-width="1.4" stroke-dasharray="2 2"/>`);
+                    }
+                    parts.push(`${markerPath(shape, cx, cy, isInc ? 4.8 : 4.6)} fill="${fill}" stroke="${strokeCol}" stroke-width="${strokeW}"/>`);
+                }
+            });
+
+            for (let mIdx = 0; mIdx < 12; mIdx++) {
+                const mCode = String(mIdx + 1).padStart(2, '0');
+                const mShort = (t.months && t.months[mCode]) || mCode;
+                const cx = xOf(mIdx);
+                const tipPayload = escapeHtml(JSON.stringify({ mIdx: mIdx, mCode: mCode }));
+                parts.push(`<g class="chart-col" tabindex="0" data-weather-tip="${tipPayload}" onmouseenter="showWeatherTooltip(event, this)" onfocus="showWeatherTooltip(event, this)" onmouseleave="hideTooltip()" onblur="hideTooltip()">`);
+                parts.push(`<rect x="${(cx - slotW / 2).toFixed(1)}" y="${padT}" width="${slotW.toFixed(1)}" height="${chartH}" class="hover-bg"/>`);
+                parts.push(`<line x1="${cx.toFixed(1)}" y1="${padT}" x2="${cx.toFixed(1)}" y2="${padT + chartH}" class="crosshair-line"/>`);
+                parts.push(`<text x="${cx.toFixed(1)}" y="${height - padB + 22}" text-anchor="middle" class="x-label" data-month="${mCode}">${escapeHtml(mShort)}</text>`);
+                parts.push(`</g>`);
+            }
+            svg.innerHTML = parts.join('');
+        }
+
+        function renderWeatherLegend(seriesList) {
+            const box = document.getElementById('weather-chart-legend');
+            if (!box) return;
+            if (seriesList.length === 0) { box.innerHTML = ''; return; }
+            const t = I18N[currentLang] || I18N.en;
+            const items = seriesList.map(s =>
+                `<span class="legend-item"><span class="legend-swatch" style="background:${s.color};"></span>${escapeHtml(s.label)}</span>`
+            );
+            if (weatherMetric === 'temp' && seriesList.length === 1) {
+                items.push(`<span class="legend-item"><span class="legend-bar-swatch" style="background:${seriesList[0].color};opacity:0.25;"></span>${escapeHtml(t.weather_band_note)}</span>`);
+            }
+            items.push(`<span class="legend-item">● ${escapeHtml(t.legend_complete)}</span>`);
+            items.push(`<span class="legend-item">◌ ${escapeHtml(t.legend_incomplete)}</span>`);
+            box.innerHTML = items.join('');
+        }
+
+        function renderWeatherStats(seriesList) {
+            const box = document.getElementById('weather-chart-stats');
+            if (!box) return;
+            const focus = seriesList[seriesList.length - 1];
+            if (!focus) { box.innerHTML = ''; return; }
+            const t = I18N[currentLang] || I18N.en;
+            const meta = focus.meta || {};
+            const mName = idx => idx < 0 ? '—' : ((t.months && t.months[String(idx + 1).padStart(2, '0')]) || '');
+
+            let coldIdx = -1;
+            let coldVal = Infinity;
+            let warmIdx = -1;
+            let warmVal = -Infinity;
+            (meta.temp_avg || []).forEach((v, idx) => {
+                if (v === null || v === undefined) return;
+                const num = Number(v);
+                if (num < coldVal) { coldVal = num; coldIdx = idx; }
+                if (num > warmVal) { warmVal = num; warmIdx = idx; }
+            });
+
+            const avgTempStr = meta.annual_avg_temp !== null && meta.annual_avg_temp !== undefined
+                ? `${Number(meta.annual_avg_temp).toFixed(1)} °C` : '—';
+            const rangeStr = (coldIdx >= 0 && warmIdx >= 0)
+                ? `${mName(coldIdx)} ${coldVal.toFixed(1)}°C / ${mName(warmIdx)} ${warmVal.toFixed(1)}°C`
+                : '—';
+            const clearStr = meta.annual_avg_clear_pct !== null && meta.annual_avg_clear_pct !== undefined
+                ? `${Number(meta.annual_avg_clear_pct).toFixed(1)}%` : '—';
+            const daysVal = meta.has_weather_codes
+                ? `${meta.sunny_days || 0} ${t.weather_sunny_days} · ${meta.rainy_days || 0} ${t.weather_rainy_days}`
+                : `${meta.sunny_days || 0} ${t.weather_sunny_days} · ${meta.cloudy_days || 0} ${t.weather_cloudy_days}`;
+
+            box.innerHTML = `
+                <div class="stat-chip"><div class="stat-chip-label">${escapeHtml(t.weather_stat_temp)} (${escapeHtml(focus.label)})</div><div class="stat-chip-val">${escapeHtml(avgTempStr)}</div></div>
+                <div class="stat-chip"><div class="stat-chip-label">${escapeHtml(t.weather_stat_range)}</div><div class="stat-chip-val">${escapeHtml(rangeStr)}</div></div>
+                <div class="stat-chip"><div class="stat-chip-label">${escapeHtml(t.weather_stat_clear)} (${escapeHtml(focus.label)})</div><div class="stat-chip-val">${escapeHtml(clearStr)}</div></div>
+                <div class="stat-chip"><div class="stat-chip-label">${escapeHtml(t.weather_stat_days)} (${escapeHtml(focus.label)})</div><div class="stat-chip-val">${escapeHtml(daysVal)}</div></div>
+            `;
+        }
+
+        function renderWeatherSection() {
+            renderWeatherControls();
+            const series = getActiveWeatherSeries();
+            renderWeatherLineSvg(series);
+            renderWeatherLegend(series);
+            renderWeatherStats(series);
+        }
+
+        function setWeatherMetric(metric) {
+            weatherMetric = metric === 'clear' ? 'clear' : 'temp';
+            ['temp', 'clear'].forEach(m => {
+                const btn = document.getElementById('btn-weather-' + m);
+                if (btn) {
+                    btn.classList.toggle('active', m === weatherMetric);
+                    btn.setAttribute('aria-selected', m === weatherMetric ? 'true' : 'false');
+                }
+            });
+            renderWeatherSection();
+        }
+
+        function toggleWeatherYear(yr) {
+            if (weatherSelectedYears.includes(yr)) {
+                if (weatherSelectedYears.length > 1) weatherSelectedYears = weatherSelectedYears.filter(y => y !== yr);
+            } else {
+                weatherSelectedYears = weatherSelectedYears.concat([yr]).sort();
+            }
+            renderWeatherSection();
+        }
+
+        function showWeatherTooltip(evt, el) {
+            const raw = el.getAttribute('data-weather-tip');
+            if (!raw) return;
+            const info = JSON.parse(raw);
+            const t = I18N[currentLang] || I18N.en;
+            const mIdx = info.mIdx;
+            const mFull = (t.months_full && t.months_full[info.mCode]) || info.mCode;
+            const seriesList = getActiveWeatherSeries();
+            const rowsHtml = seriesList.map(s => {
+                const val = s.values ? s.values[mIdx] : null;
+                const st = s.statuses ? s.statuses[mIdx] : 'no_data';
+                const dPair = s.days && s.days[mIdx] ? s.days[mIdx] : null;
+                const tMin = s.temp_min ? s.temp_min[mIdx] : null;
+                const tMax = s.temp_max ? s.temp_max[mIdx] : null;
+                const tAvg = s.temp_avg ? s.temp_avg[mIdx] : null;
+                const clr = s.clear_sky_pct ? s.clear_sky_pct[mIdx] : null;
+                const cld = s.cloud_cover_pct ? s.cloud_cover_pct[mIdx] : null;
+                let rightStr = `<span class="muted">${escapeHtml(t.tip_no_data)}</span>`;
+                if (val !== null && val !== undefined) {
+                    const incTag = st === 'incomplete'
+                        ? ` <span style="color:#fbbf24;font-weight:700;">${escapeHtml(t.tip_inc_badge)}${dPair ? ` (${dPair[0]}/${dPair[1]} ${escapeHtml(t.tip_days)})` : ''}</span>`
+                        : '';
+                    if (weatherMetric === 'temp') {
+                        const rangeSub = (tMin !== null && tMax !== null) ? ` <span style="font-size:0.74rem;color:#cbd5e1;">(${tMin.toFixed(1)}–${tMax.toFixed(1)}°C)</span>` : '';
+                        const skySub = clr !== null ? ` · ☀️ ${clr.toFixed(0)}%` : '';
+                        rightStr = `<strong>${Number(val).toFixed(1)} °C</strong>${rangeSub}${skySub}${incTag}`;
+                    } else {
+                        const cldSub = cld !== null ? ` <span style="font-size:0.74rem;color:#cbd5e1;">(☁️ ${cld.toFixed(0)}%)</span>` : '';
+                        const tempSub = tAvg !== null ? ` · 🌡️ ${tAvg.toFixed(1)}°C` : '';
+                        rightStr = `<strong>${Number(val).toFixed(1)}%</strong>${cldSub}${tempSub}${incTag}`;
+                    }
+                }
+                return `<div style="display:flex;justify-content:space-between;gap:10px;margin-top:3px;"><span><span class="color-dot" style="background:${s.color};"></span>${escapeHtml(s.label)}</span><span>${rightStr}</span></div>`;
+            }).join('');
+
+            let yoyHtml = '';
+            if (seriesList.length >= 2) {
+                const v0 = seriesList[0].values[mIdx];
+                const v1 = seriesList[seriesList.length - 1].values[mIdx];
+                if (v0 !== null && v0 !== undefined && v1 !== null && v1 !== undefined) {
+                    const diff = Number(v1) - Number(v0);
+                    const sign = diff >= 0 ? '+' : '';
+                    const unit = weatherMetric === 'temp' ? ' °C' : ' pp';
+                    yoyHtml = `<div style="margin-top:6px;padding-top:5px;border-top:1px solid rgba(255,255,255,0.16);font-size:0.78rem;">${escapeHtml(t.tip_yoy)} (${escapeHtml(seriesList[0].label)}→${escapeHtml(seriesList[seriesList.length - 1].label)}): <strong>${sign}${diff.toFixed(1)}${unit}</strong></div>`;
+                }
+            }
+
+            const tip = document.getElementById('tooltip');
+            tip.innerHTML = `<div style="font-weight:700;border-bottom:1px solid rgba(255,255,255,0.16);padding-bottom:4px;margin-bottom:5px;">🌤️ ${escapeHtml(mFull)}</div>${rowsHtml}${yoyHtml}`;
+            placeTooltip(evt, tip);
+        }
+
         function renderSimulator() {
             const sim = STORY_DATA.simulator;
             if (!sim) return;
@@ -2181,6 +2516,7 @@ _SCRIPT_BODY: str = """
 
             updateDynamicNarrative();
             renderConsumptionSection();
+            renderWeatherSection();
             renderGenerationSection();
             renderSimulator();
         }
@@ -2196,6 +2532,7 @@ _SCRIPT_BODY: str = """
             });
             try { localStorage.setItem('esd_story_theme', theme); } catch (_) {}
             renderConsumptionSection();
+            renderWeatherSection();
             renderGenerationSection();
         }
 
@@ -2250,6 +2587,9 @@ _SCRIPT_BODY: str = """
             const genYears = (STORY_DATA.generation && STORY_DATA.generation.years || []).map(String);
             genSelectedYears = genYears.length <= 3 ? genYears.slice() : genYears.slice(-2);
 
+            const wYears = (STORY_DATA.weather && STORY_DATA.weather.years || []).map(String);
+            weatherSelectedYears = wYears.length <= 3 ? wYears.slice() : wYears.slice(-2);
+
             try {
                 const savedTheme = localStorage.getItem('esd_story_theme');
                 if (savedTheme && THEME_BTNS[savedTheme]) {
@@ -2271,6 +2611,7 @@ _SCRIPT_BODY: str = """
 
             updateDynamicNarrative();
             renderConsumptionSection();
+            renderWeatherSection();
             renderGenerationSection();
             renderSimulator();
             initScrollChrome();
@@ -2398,10 +2739,11 @@ def generate_story_html_report(
             <div class="chapter-links">
                 <a class="nav-pill" href="#ch-supplies" aria-current="location" data-i18n="nav_ch1">{ui["nav_ch1"]}</a>
                 <a class="nav-pill" href="#ch-consumption" data-i18n="nav_ch2">{ui["nav_ch2"]}</a>
-                <a class="nav-pill" href="#ch-generation" data-i18n="nav_ch3">{ui["nav_ch3"]}</a>
-                <a class="nav-pill" href="#ch-sharing" data-i18n="nav_ch4">{ui["nav_ch4"]}</a>
-                <a class="nav-pill" href="#ch-tables" data-i18n="nav_ch5">{ui["nav_ch5"]}</a>
-                <a class="nav-pill" href="#ch-glossary" data-i18n="nav_ch6">{ui["nav_ch6"]}</a>
+                <a class="nav-pill" href="#ch-weather" data-i18n="nav_ch3">{ui["nav_ch3"]}</a>
+                <a class="nav-pill" href="#ch-generation" data-i18n="nav_ch4">{ui["nav_ch4"]}</a>
+                <a class="nav-pill" href="#ch-sharing" data-i18n="nav_ch5">{ui["nav_ch5"]}</a>
+                <a class="nav-pill" href="#ch-tables" data-i18n="nav_ch6">{ui["nav_ch6"]}</a>
+                <a class="nav-pill" href="#ch-glossary" data-i18n="nav_ch7">{ui["nav_ch7"]}</a>
             </div>
             <div class="controls-group">
                 <div class="seg-group" role="group" aria-label="Language">
@@ -2525,28 +2867,51 @@ def generate_story_html_report(
             </div>
         </section>
 
-        <!-- Chapter 3: Solar Generation -->
-        <section id="ch-generation" class="story-section" aria-labelledby="ch3-heading">
+        <!-- Chapter 3: Local Weather -->
+        <section id="ch-weather" class="story-section" aria-labelledby="ch3-weather-heading">
             <div class="chapter-head">
                 <span class="chapter-badge" data-i18n="ch3_badge">{ui["ch3_badge"]}</span>
-                <h2 id="ch3-heading" class="chapter-title" data-i18n="ch3_title">{ui["ch3_title"]}</h2>
+                <h2 id="ch3-weather-heading" class="chapter-title" data-i18n="ch3_title">{ui["ch3_title"]}</h2>
                 <p class="chapter-intro" data-i18n="ch3_intro">{ui["ch3_intro"]}</p>
+            </div>
+            <div class="chart-card-box">
+                <div class="chart-controls-row">
+                    <div class="seg-group" role="tablist" aria-label="Weather metric">
+                        <button type="button" role="tab" aria-selected="true" class="btn-seg active" id="btn-weather-temp" onclick="setWeatherMetric('temp')" data-i18n="weather_mode_temp">{ui["weather_mode_temp"]}</button>
+                        <button type="button" role="tab" aria-selected="false" class="btn-seg" id="btn-weather-clear" onclick="setWeatherMetric('clear')" data-i18n="weather_mode_clear">{ui["weather_mode_clear"]}</button>
+                    </div>
+                </div>
+                <div id="weather-subcontrols" class="subcontrols-bar"></div>
+                <div class="chart-container">
+                    <svg id="weather-chart-svg" class="chart-svg chart-line-svg" role="img" aria-labelledby="ch3-weather-heading" xmlns="http://www.w3.org/2000/svg"></svg>
+                </div>
+                <div id="weather-chart-legend" class="chart-legend"></div>
+                <div id="weather-chart-stats" class="chart-stats-strip"></div>
+            </div>
+        </section>
+
+        <!-- Chapter 4: Solar Generation -->
+        <section id="ch-generation" class="story-section" aria-labelledby="ch4-gen-heading">
+            <div class="chapter-head">
+                <span class="chapter-badge" data-i18n="ch4_badge">{ui["ch4_badge"]}</span>
+                <h2 id="ch4-gen-heading" class="chapter-title" data-i18n="ch4_title">{ui["ch4_title"]}</h2>
+                <p class="chapter-intro" data-i18n="ch4_intro">{ui["ch4_intro"]}</p>
             </div>
             <div class="chart-card-box">
                 <div id="gen-subcontrols" class="subcontrols-bar"></div>
                 <div class="chart-container">
-                    <svg id="generation-chart-svg" class="chart-svg chart-line-svg" role="img" aria-labelledby="ch3-heading" xmlns="http://www.w3.org/2000/svg"></svg>
+                    <svg id="generation-chart-svg" class="chart-svg chart-line-svg" role="img" aria-labelledby="ch4-gen-heading" xmlns="http://www.w3.org/2000/svg"></svg>
                 </div>
                 <div id="gen-chart-legend" class="chart-legend"></div>
                 <div id="gen-chart-stats" class="chart-stats-strip"></div>
             </div>
         </section>
 
-        <!-- Chapter 4: Sharing the Sun -->
-        <section id="ch-sharing" class="story-section" aria-labelledby="ch4-heading">
+        <!-- Chapter 5: Sharing the Sun -->
+        <section id="ch-sharing" class="story-section" aria-labelledby="ch5-share-heading">
             <div class="chapter-head">
-                <span class="chapter-badge" data-i18n="ch4_badge">{ui["ch4_badge"]}</span>
-                <h2 id="ch4-heading" class="chapter-title" data-i18n="ch4_title">{ui["ch4_title"]}</h2>
+                <span class="chapter-badge" data-i18n="ch5_badge">{ui["ch5_badge"]}</span>
+                <h2 id="ch5-share-heading" class="chapter-title" data-i18n="ch5_title">{ui["ch5_title"]}</h2>
             </div>
 
             <div class="callout callout-solar">
@@ -2561,7 +2926,12 @@ def generate_story_html_report(
 
             <div class="subsection">
                 <h3 class="sub-title" data-i18n="chart_traj_title">{ui["chart_traj_title"]}</h3>
-                <p style="font-size:0.88rem;color:var(--text-muted);margin-bottom:0.85rem;" data-i18n="chart_traj_sub">{ui["chart_traj_sub"]}</p>
+                <p style="font-size:0.88rem;color:var(--text-muted);margin-bottom:0.75rem;" data-i18n="chart_traj_sub">{ui["chart_traj_sub"]}</p>
+                <div class="chart-legend monthly-balance-legend" aria-label="Chart legend">
+                    <span class="legend-item"><span class="legend-bar-swatch" style="background:#d97706;"></span><span data-i18n="legend_bal_gen">{ui["legend_bal_gen"]}</span></span>
+                    <span class="legend-item"><span class="legend-bar-swatch" style="background:#0284c7;"></span><span data-i18n="legend_bal_dem">{ui["legend_bal_dem"]}</span></span>
+                    <span class="legend-item"><span class="legend-bar-swatch" style="background:#059669;"></span><span data-i18n="legend_bal_sc">{ui["legend_bal_sc"]}</span></span>
+                </div>
                 <div class="chart-container">{svg_monthly_chart}</div>
             </div>
 
@@ -2627,12 +2997,12 @@ def generate_story_html_report(
             </div>
         </section>
 
-        <!-- Chapter 5: Official Share Tables & 100 kWh Simulator -->
-        <section id="ch-tables" class="story-section" aria-labelledby="ch5-heading">
+        <!-- Chapter 6: Official Share Tables & 100 kWh Simulator -->
+        <section id="ch-tables" class="story-section" aria-labelledby="ch6-heading">
             <div class="chapter-head">
-                <span class="chapter-badge" data-i18n="ch5_badge">{ui["ch5_badge"]}</span>
-                <h2 id="ch5-heading" class="chapter-title" data-i18n="ch5_title">{ui["ch5_title"]}</h2>
-                <p class="chapter-intro" data-i18n="ch5_intro">{ui["ch5_intro"]}</p>
+                <span class="chapter-badge" data-i18n="ch6_badge">{ui["ch6_badge"]}</span>
+                <h2 id="ch6-heading" class="chapter-title" data-i18n="ch6_title">{ui["ch6_title"]}</h2>
+                <p class="chapter-intro" data-i18n="ch6_intro">{ui["ch6_intro"]}</p>
             </div>
 
             <div class="sim-box">
@@ -2646,12 +3016,12 @@ def generate_story_html_report(
             {matrices_html}
         </section>
 
-        <!-- Chapter 6: Glossary -->
-        <section id="ch-glossary" class="story-section" aria-labelledby="ch6-heading">
+        <!-- Chapter 7: Glossary -->
+        <section id="ch-glossary" class="story-section" aria-labelledby="ch7-heading">
             <div class="chapter-head">
-                <span class="chapter-badge" data-i18n="ch6_badge">{ui["ch6_badge"]}</span>
-                <h2 id="ch6-heading" class="chapter-title" data-i18n="ch6_title">{ui["ch6_title"]}</h2>
-                <p class="chapter-intro" data-i18n="ch6_intro">{ui["ch6_intro"]}</p>
+                <span class="chapter-badge" data-i18n="ch7_badge">{ui["ch7_badge"]}</span>
+                <h2 id="ch7-heading" class="chapter-title" data-i18n="ch7_title">{ui["ch7_title"]}</h2>
+                <p class="chapter-intro" data-i18n="ch7_intro">{ui["ch7_intro"]}</p>
             </div>
             <div class="glossary-grid">
                 <article class="glossary-card"><h3 data-i18n="g1_term">{ui["g1_term"]}</h3><p data-i18n="g1_desc">{ui["g1_desc"]}</p></article>

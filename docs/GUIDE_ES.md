@@ -220,7 +220,7 @@ esd clean [--force]
 
 | Nombre de Archivo | Formato | Comando de Origen y Utilidad Práctica |
 | :--- | :--- | :--- |
-| `*_esd_interactive_report.html` | HTML (Independiente) | `calculate`: Informe narrativo vecinal interactivo offline ES/EN accesible con tabla de CUPS activos (`cups.json`), gráficos de líneas multianuales de Consumo y Generación (`[Inc]`), comparativa Invierno vs. Verano, progresión en 4 pasos, simulador 100 kWh, matrices Mensual y Quincenal, glosario, temas Claro/Oscuro/Alto Contraste y ajuste tipográfico. |
+| `*_esd_interactive_report.html` | HTML (Independiente) | `calculate`: Informe narrativo vecinal interactivo offline ES/EN accesible con tabla de CUPS activos (`cups.json`), gráficos de líneas multianuales de Consumo, Clima y Generación (`[Inc]`), comparativa invierno-verano, leyenda del balance mensual, progresión en 4 pasos, simulador 100 kWh, matrices mensual y quincenal, glosario, temas claro/oscuro/alto contraste y ajuste tipográfico. |
 | `*_esd_monthly_shares.csv` | CSV (`;`) | `calculate`: Desglose mensual completo por CUPS: consumo, generación, porcentaje ($\beta_i$ %), kWh autoconsumidos, excedentes y demanda residual, ordenado por mes y `use`. |
 | `*_esd_monthly_shares_lite.csv` | CSV (`;`) | `calculate`: Matriz mensual compacta con porcentajes de reparto $\beta_i$ % (`cups`, `use` en eje Y frente a meses `01`..`12` en eje X). |
 | `*_esd_fortnight_shares.csv` | CSV (`;`) | `calculate`: Desglose quincenal completo (`1`: días 1–15, `2`: días 16–fin) y balance energético por CUPS. |

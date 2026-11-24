@@ -12,7 +12,7 @@ from src.curation.curator import DataCurator, dataframe_to_aligned_dataset, read
 from src.domain.models import BylawConstraints
 from src.i18n import t
 from src.ingestion.schema import IngestionSummary
-from src.ingestion.weather import resolve_community_coordinates
+from src.ingestion.weather import WeatherLoader, resolve_community_coordinates
 from src.optimization.engine import DistributionOptimizer
 from src.optimization.models import OptimizationResult, OptimizationStrategy
 from src.presentation.export import ReportExporter
@@ -249,6 +249,38 @@ class CalculationService:
                 except Exception:
                     generation_df = None
 
+        analyzed_years: set[int] = {
+            int(str(ts)[:4])
+            for ts in aligned.data.index
+            if len(str(ts)) >= 4 and str(ts)[:4].isdigit()
+        }
+        for ts_df in (consumption_df, generation_df):
+            if ts_df is not None and not ts_df.empty and "timestamp" in ts_df.columns:
+                for yr_str in ts_df["timestamp"].astype(str).str.strip().str.slice(0, 4).unique():
+                    if len(yr_str) == 4 and yr_str.isdigit():
+                        analyzed_years.add(int(yr_str))
+
+        weather_df: pd.DataFrame | None = None
+        if analyzed_years and request.weather_dir.exists():
+            coords = curator.get_default_location(cups_cfg)
+            lat_val = coords[0] if coords else None
+            lon_val = coords[1] if coords else None
+            weather_loader = WeatherLoader(request.weather_dir)
+            weather_frames: list[pd.DataFrame] = []
+            for yr in sorted(analyzed_years):
+                try:
+                    w_yr = weather_loader.load_year(year=yr, latitude=lat_val, longitude=lon_val)
+                    if not w_yr.empty:
+                        weather_frames.append(w_yr)
+                except Exception:
+                    continue
+            if len(weather_frames) == 1:
+                weather_df = weather_frames[0]
+            elif len(weather_frames) > 1:
+                import pandas as pd
+
+                weather_df = pd.concat(weather_frames, ignore_index=True)
+
         story_context = build_story_context(
             opt_result=opt_result,
             ingestion_summary=aligned.metadata,
@@ -256,6 +288,7 @@ class CalculationService:
             consumption_df=consumption_df,
             generation_df=generation_df,
             aligned_dataset=aligned,
+            weather_df=weather_df,
         )
 
         exporter = ReportExporter(output_dir=request.output_dir)
